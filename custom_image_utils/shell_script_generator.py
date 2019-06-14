@@ -58,7 +58,7 @@ function main() {{
   gsutil cp \
       {customization_script} \
       gs://{bucket_name}/{run_id}/sources/init_actions.sh
-  gsutil cp run.sh gs://{bucket_name}/{run_id}/sources/
+  gsutil cp startup_script/run.sh gs://{bucket_name}/{run_id}/sources/
 
   echo 'Creating disk.'
   gcloud compute disks create {image_name}-install \
