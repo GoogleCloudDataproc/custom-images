@@ -1,1 +1,0 @@
-../../../../../maven/src/main/scala/demo/TranslateExample.scala
