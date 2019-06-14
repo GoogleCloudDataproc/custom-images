@@ -4,8 +4,7 @@
 default: clean unit_tests
 
 clean:
-	rm -f custom_image_utils/*.pyc
-	rm -f tests/*.pyc
+	rm -f custom_image_utils/*.pyc tests/*.pyc
 
 unit_tests:
 	python2 -m unittest discover
