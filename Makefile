@@ -1,12 +1,14 @@
 .PHONY: clean
 .PHONY: tests
 
-all: clean tests
+default: clean unit_tests
 
 clean:
 	rm -f custom_image_utils/*.pyc
 	rm -f tests/*.pyc
 
-tests:
+unit_tests:
 	python2 -m unittest discover
 
+integration_tests:
+	bash tests/test_create_custom_image.sh
