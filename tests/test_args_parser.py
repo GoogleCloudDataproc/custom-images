@@ -11,8 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import unittest
-import args_parser
+
+from custom_image_utils import args_parser
 
 
 class TestArgsParser(unittest.TestCase):

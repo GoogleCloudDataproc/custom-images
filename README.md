@@ -1,4 +1,4 @@
-# Build custom Dataproc images
+# Build Dataproc custom images
 
 This page describes how to generate a custom Dataproc image.
 
@@ -10,14 +10,14 @@ Note that custom image will expire in [60 days](https://cloud.google.com/datapro
 2.  gcloud >= 181.0.0 (2017-11-30)
     *   gcloud beta components is required. Use `gcloud components install beta`
         or `sudo apt-get install google-cloud-sdk`.
-3.  Daisy, from
+3.  A GCE project with billing, Google Cloud Dataproc API, Google Compute Engine
+    API, and Google Cloud Storage APIs enabled.
+4.  Use `gcloud config set project <your-project>` to specify which project to
+    use to create and save your custom image.
+5.  (Optional) Daisy, from
     [GoogleCloudPlatform/compute-image-tools](https://github.com/GoogleCloudPlatform/compute-image-tools)
     *   Please make sure the daisy binary have execution permission: `chmod +x
         daisy`.
-4.  A GCE project with billing, Google Cloud Dataproc API, Google Compute Engine
-    API, and Google Cloud Storage APIs enabled.
-5.  Use `gcloud config set project <your-project>` to specify which project to
-    use to create and save your custom image.
 
 ## Generate custom image
 

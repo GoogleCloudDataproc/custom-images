@@ -13,7 +13,8 @@
 # limitations under the License.
 
 import unittest
-import shell_script_generator
+
+from custom_image_utils import shell_script_generator
 
 _expected_script = """
 #!/usr/bin/env bash
@@ -52,7 +53,7 @@ function exit_handler() {
 function main() {
   echo 'Uploading files to GCS bucket.'
   gsutil cp       /tmp/my-script.sh       gs://my-bucket/custom-image-my-image-20190611-160823/sources/init_actions.sh
-  gsutil cp run.sh gs://my-bucket/custom-image-my-image-20190611-160823/sources/
+  gsutil cp startup_script/run.sh gs://my-bucket/custom-image-my-image-20190611-160823/sources/
 
   echo 'Creating disk.'
   gcloud compute disks create my-image-install       --project=my-project       --zone=us-west1-a       --image=projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01       --type=pd-ssd       --size=40GB

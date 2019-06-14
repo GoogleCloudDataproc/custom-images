@@ -41,10 +41,10 @@ import sys
 import tempfile
 import uuid
 
-import args_parser
-import constants
-import daisy_image_creator
-import shell_image_creator
+from custom_image_utils import args_parser
+from custom_image_utils import constants
+from custom_image_utils import daisy_image_creator
+from custom_image_utils import shell_image_creator
 
 
 _IMAGE_URI = "projects/{}/global/images/{}"
@@ -309,7 +309,7 @@ def infer_args(args):
   # Daisy sources
   if args.daisy_path:
     run_script_path = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), "run.sh")
+        os.path.dirname(os.path.realpath(__file__)), "startup_script/run.sh")
     daisy_sources = {
       "run.sh": run_script_path,
       "init_actions.sh": os.path.abspath(args.customization_script)

@@ -13,7 +13,8 @@
 # limitations under the License.
 
 import unittest
-import daisy_workflow_generator
+
+from custom_image_utils import daisy_workflow_generator
 
 
 class TestDaisyWorkflowGenerator(unittest.TestCase):
