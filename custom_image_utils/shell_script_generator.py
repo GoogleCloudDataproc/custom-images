@@ -80,7 +80,8 @@ function main() {{
       --disk=auto-delete=yes,boot=yes,mode=rw,name={image_name}-install \
       {service_account_flag} \
       --scopes=cloud-platform \
-      --metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},daisy-sources-path={daisy_sources_path},startup-script-url={startup_script_url}
+      --metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},daisy-sources-path={daisy_sources_path} \
+      --metadata-from-file startup-script=startup_script/run.sh
   touch /tmp/{run_id}/vm_created
 
   echo 'Waiting for customization script to finish and VM shutdown.'
@@ -128,9 +129,6 @@ class Generator:
     self.args["bucket_name"] = self.args["gcs_bucket"].replace("gs://", "")
     self.args[
         "daisy_sources_path"] = "gs://{bucket_name}/{run_id}/sources".format(
-            **self.args)
-    self.args[
-        "startup_script_url"] = "gs://{bucket_name}/{run_id}/sources/run.sh".format(
             **self.args)
     self.args["log_dir"] = "/tmp/{run_id}/logs".format(**self.args)
     self.args["gcs_log_dir"] = "gs://{bucket_name}/{run_id}/logs".format(**self.args)

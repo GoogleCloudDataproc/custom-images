@@ -26,6 +26,8 @@
 #    client machine.
 # 4. Shutdown GCE instance.
 
+set -x
+
 # get daisy-sources-path
 DAISY_SOURCES_PATH=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/attributes/daisy-sources-path" -H "Metadata-Flavor: Google")
 # get time to wait for stdout to flush
@@ -53,9 +55,15 @@ function wait_until_ready() {
   fi
 }
 
-function run_custom_script() {
-  # copy down all sources (along with init_actions.sh script)
+function download_scripts() {
   gsutil -m cp -r "${DAISY_SOURCES_PATH}/*" ./
+}
+
+function run_custom_script() {
+  if ! download_scripts; then
+    echo "BuildFailed: failed to download scripts from ${DAISY_SOURCES_PATH}."
+    return 1
+  fi
 
   # run init actions
   bash -x ./init_actions.sh
