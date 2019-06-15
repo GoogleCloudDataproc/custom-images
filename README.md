@@ -120,7 +120,7 @@ python generate_custom_image.py \
 *   **--dry-run**: Dry run mode which only validates input and generates
     workflow script without creating image. Disabled by default.
 
-### Example
+### Examples
 
 #### Create a custom image without Daisy (recommended)
 
