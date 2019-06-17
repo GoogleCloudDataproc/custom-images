@@ -45,6 +45,7 @@ from custom_image_utils import args_parser
 from custom_image_utils import constants
 from custom_image_utils import daisy_image_creator
 from custom_image_utils import shell_image_creator
+from custom_image_utils import smoke_test_runner
 
 
 _IMAGE_URI = "projects/{}/global/images/{}"
@@ -184,106 +185,6 @@ def _parse_date_time(timestamp_string):
                                     "%Y-%m-%dT%H:%M:%S.%f")
 
 
-def _create_workflow_template(workflow_name, image_name, project_id, zone, network, subnet):
-  """Create a Dataproc workflow template for testing."""
-
-  create_command = [
-      "gcloud", "beta", "dataproc", "workflow-templates", "create",
-      workflow_name, "--project", project_id
-  ]
-  set_cluster_command = [
-      "gcloud", "beta", "dataproc", "workflow-templates", "set-managed-cluster",
-      workflow_name, "--project", project_id, "--image", image_name, "--zone",
-      zone
-  ]
-  if network and not subnet:
-    set_cluster_command.extend(["--network", network])
-  else:
-    set_cluster_command.extend(["--subnet", subnet])
-  add_job_command = [
-      "gcloud", "beta", "dataproc", "workflow-templates", "add-job", "spark",
-      "--workflow-template", workflow_name, "--project", project_id,
-      "--step-id", "001", "--class", "org.apache.spark.examples.SparkPi",
-      "--jars", "file:///usr/lib/spark/examples/jars/spark-examples.jar", "--",
-      "1000"
-  ]
-  pipe = subprocess.Popen(create_command)
-  pipe.wait()
-  if pipe.returncode != 0:
-    raise RuntimeError("Error creating Dataproc workflow template '%s'.",
-                       workflow_name)
-
-  pipe = subprocess.Popen(set_cluster_command)
-  pipe.wait()
-  if pipe.returncode != 0:
-    raise RuntimeError(
-        "Error setting cluster for Dataproc workflow template '%s'.",
-        workflow_name)
-
-  pipe = subprocess.Popen(add_job_command)
-  pipe.wait()
-  if pipe.returncode != 0:
-    raise RuntimeError("Error adding job to Dataproc workflow template '%s'.",
-                       workflow_name)
-
-
-def _instantiate_workflow_template(workflow_name, project_id):
-  """Run a Dataproc workflow template to test the newly built custom image."""
-  command = [
-      "gcloud", "beta", "dataproc", "workflow-templates", "instantiate",
-      workflow_name, "--project", project_id
-  ]
-  pipe = subprocess.Popen(command)
-  pipe.wait()
-  if pipe.returncode != 0:
-    raise RuntimeError("Unable to instantiate workflow template.")
-
-
-def _delete_workflow_template(workflow_name, project_id):
-  """Delete a Dataproc workflow template."""
-  command = [
-      "gcloud", "beta", "dataproc", "workflow-templates", "delete",
-      workflow_name, "-q", "--project", project_id
-  ]
-  pipe = subprocess.Popen(command)
-  pipe.wait()
-  if pipe.returncode != 0:
-    raise RuntimeError("Error deleting workfloe template %s.", workflow_name)
-
-
-def verify_custom_image(image_name, project_id, zone, network, subnetwork):
-  """Verifies if custom image works with Dataproc."""
-
-  date = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-  # Note: workflow_name can collide if the script runs more than 10000
-  # times/second.
-  workflow_name = "verify-image-{}-{}".format(date, uuid.uuid4().hex[-8:])
-  try:
-    _LOG.info("Creating Dataproc workflow-template %s with image %s...",
-              workflow_name, image_name)
-    _create_workflow_template(
-        workflow_name, image_name, project_id, zone, network, subnetwork)
-    _LOG.info(
-        "Successfully created Dataproc workflow-template %s with image %s...",
-        workflow_name, image_name)
-    _LOG.info("Smoke testing Dataproc workflow-template %s...")
-    _instantiate_workflow_template(workflow_name, project_id)
-    _LOG.info("Successfully smoke tested Dataproc workflow-template %s...",
-              workflow_name)
-  except RuntimeError as e:
-    err_msg = "Verification of custom image {} failed: {}".format(image_name, e)
-    _LOG.error(err_msg)
-    raise RuntimeError(err_msg)
-  finally:
-    try:
-      _LOG.info("Deleting Dataproc workflow-template %s...", workflow_name)
-      _delete_workflow_template(workflow_name, project_id)
-      _LOG.info("Successfully deleted Dataproc workflow-template %s...",
-                workflow_name)
-    except RuntimeError:
-      pass
-
-
 def infer_args(args):
   if not args.project_id:
     args.project_id = get_project_id()
@@ -380,23 +281,6 @@ def add_label(args):
     _LOG.info("Skip setting label on custom image (dry run).")
 
 
-def run_smoke_test(args):
-  """Runs smoke test."""
-
-  if not args.dry_run:
-    if not args.no_smoke_test:
-      _LOG.info("Verifying the custom image...")
-      verify_custom_image(
-          args.image_name,
-          args.project_id,
-          args.zone,
-          args.network,
-          args.subnetwork)
-      _LOG.info("Successfully verified the custom image...")
-  else:
-    _LOG.info("Skip running smoke test (dry run).")
-
-
 def notify_expiration(args):
   """Notifies when the image will expire."""
 
@@ -421,7 +305,7 @@ def run():
   else:
     shell_image_creator.create(args)
   add_label(args)
-  run_smoke_test(args)
+  smoke_test_runner.run(args)
   notify_expiration(args)
 
 

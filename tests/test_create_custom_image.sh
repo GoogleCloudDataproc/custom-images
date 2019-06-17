@@ -24,4 +24,5 @@ python2 ${repo_dir}/generate_custom_image.py \
   --dataproc-version 1.4.5-debian9 \
   --customization-script ${repo_dir}/examples/customization_script.sh \
   --zone us-west1-a \
-  --gcs-bucket gs://dataproc-custom-images-presubmit
+  --gcs-bucket gs://dataproc-custom-images-presubmit \
+  --shutdown-instance-timer-sec 30
