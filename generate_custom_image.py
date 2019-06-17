@@ -42,97 +42,16 @@ import tempfile
 import uuid
 
 from custom_image_utils import args_parser
+from custom_image_utils import args_inferer
 from custom_image_utils import constants
 from custom_image_utils import daisy_image_creator
 from custom_image_utils import shell_image_creator
 from custom_image_utils import smoke_test_runner
 
 
-_IMAGE_URI = "projects/{}/global/images/{}"
-_FULL_IMAGE_URI = re.compile(r"https:\/\/www\.googleapis\.com\/compute\/([^\/]+)\/projects\/([^\/]+)\/global\/images\/([^\/]+)$")
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
 _LOG.setLevel(logging.INFO)
-
-def get_project_id():
-  """Get project id from gcloud config."""
-  gcloud_command = ["gcloud", "config", "get-value", "project"]
-  with tempfile.NamedTemporaryFile() as temp_file:
-    pipe = subprocess.Popen(gcloud_command, stdout=temp_file)
-    pipe.wait()
-    if pipe.returncode != 0:
-      raise RuntimeError("Cannot find gcloud project ID. "
-                         "Please setup the project ID in gcloud SDK")
-    # get proejct id
-    temp_file.seek(0)
-    stdout = temp_file.read()
-    return stdout.decode('utf-8').strip()
-
-def _get_image_name_and_project(uri):
-  """Get Dataproc image name and project."""
-  m = _FULL_IMAGE_URI.match(uri)
-  return m.group(2), m.group(3) # project, image_name
-
-def get_dataproc_image_version(uri):
-  """Get Dataproc image version from image URI."""
-  project, image_name = _get_image_name_and_project(uri)
-  command = ["gcloud", "compute", "images", "describe",
-             image_name, "--project", project,
-             "--format=value(labels.goog-dataproc-version)"]
-
-  # get stdout from compute images list --filters
-  with tempfile.NamedTemporaryFile() as temp_file:
-    pipe = subprocess.Popen(command, stdout=temp_file)
-    pipe.wait()
-    if pipe.returncode != 0:
-      raise RuntimeError(
-          "Cannot find dataproc base image, please check and verify "
-          "the base image URI.")
-
-    temp_file.seek(0)  # go to start of the stdout
-    stdout = temp_file.read()
-    # parse the first ready image with the dataproc version attached in labels
-    if stdout:
-      parsed_line = stdout.decode('utf-8').strip()  # should be just one value
-      return parsed_line
-
-  raise RuntimeError("Cannot find dataproc base image: %s", uri)
-
-
-def get_partial_image_uri(uri):
-  """Get the partial image URI from the full image URI."""
-  project, image_name = _get_image_name_and_project(uri)
-  return _IMAGE_URI.format(project, image_name)
-
-def get_dataproc_base_image(version):
-  """Get Dataproc base image name from version."""
-  # version regex already checked in arg parser
-  parsed_version = version.split(".")
-  filter_arg = "--filter=labels.goog-dataproc-version=\'{}-{}-{}\'".format(
-      parsed_version[0], parsed_version[1], parsed_version[2])
-  command = ["gcloud", "compute", "images", "list", "--project",
-             "cloud-dataproc", filter_arg,
-             "--format=csv[no-heading=true](name,status)"]
-
-  # get stdout from compute images list --filters
-  with tempfile.NamedTemporaryFile() as temp_file:
-    pipe = subprocess.Popen(command, stdout=temp_file)
-    pipe.wait()
-    if pipe.returncode != 0:
-      raise RuntimeError(
-          "Cannot find dataproc base image, please check and verify "
-          "[--dataproc-version]")
-
-    temp_file.seek(0)  # go to start of the stdout
-    stdout = temp_file.read()
-    # parse the first ready image with the dataproc version attached in labels
-    if stdout:
-      parsed_line = stdout.decode('utf-8').strip().split(",")  # should only be one image
-      if len(parsed_line) == 2 and parsed_line[0] and parsed_line[1] == "READY":
-        return _IMAGE_URI.format('cloud-dataproc', parsed_line[0])
-
-  raise RuntimeError("Cannot find dataproc base image with "
-                     "dataproc-version=%s.", version)
 
 
 def set_custom_image_label(image_name, version, project_id, parsed=False):
@@ -185,60 +104,12 @@ def _parse_date_time(timestamp_string):
                                     "%Y-%m-%dT%H:%M:%S.%f")
 
 
-def infer_args(args):
-  if not args.project_id:
-    args.project_id = get_project_id()
-
-  # get dataproc base image from dataproc version
-  _LOG.info("Getting Dataproc base image name...")
-  args.parsed_image_version = False
-  if args.base_image_uri:
-    args.dataproc_base_image = get_partial_image_uri(args.base_image_uri)
-    args.dataproc_version = get_dataproc_image_version(args.base_image_uri)
-    args.parsed_image_version = True
-  else:
-    args.dataproc_base_image = get_dataproc_base_image(args.dataproc_version)
-    args.dataproc_version = args.dataproc_version
-  _LOG.info("Returned Dataproc base image: %s", args.dataproc_base_image)
-
-  if args.oauth:
-    args.oauth = "\n    \"OAuthPath\": \"{}\",".format(
-        os.path.abspath(args.oauth))
-  else:
-    args.oauth = ""
-
-  # Daisy sources
-  if args.daisy_path:
-    run_script_path = os.path.join(
-        os.path.dirname(os.path.realpath(__file__)), "startup_script/run.sh")
-    daisy_sources = {
-      "run.sh": run_script_path,
-      "init_actions.sh": os.path.abspath(args.customization_script)
-    }
-    daisy_sources.update(args.extra_sources)
-    args.sources = ",\n".join(["\"{}\": \"{}\"".format(source, path)
-                          for source, path in daisy_sources.items()])
-
-  # When the user wants to create a VM in a shared VPC,
-  # only the subnetwork argument has to be provided whereas
-  # the network one has to be left empty.
-  if not args.network and not args.subnetwork:
-    args.network = 'global/networks/default'
-  # The --network flag requires format global/networks/<network>, which works
-  # for Daisy but not for gcloud, here we convert it to
-  # projects/<project>/global/networks/<network>, so that works for both.
-  if args.network.startswith('global/networks/'):
-    args.network = 'projects/{}/{}'.format(args.project_id, args.network)
-
-  args.shutdown_timer_in_sec = args.shutdown_instance_timer_sec
-
-
 def parse_args(raw_args):
   """Parses and infers command line arguments."""
 
   args = args_parser.parse_args(raw_args)
   _LOG.info("Parsed args: {}".format(args))
-  infer_args(args)
+  args_inferer.infer_args(args)
   _LOG.info("Inferred args: {}".format(args))
   return args
 
