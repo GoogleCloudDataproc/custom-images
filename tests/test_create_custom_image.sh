@@ -18,7 +18,7 @@ this_dir=$(cd $(dirname ${BASH_SOURCE[0]}) >/dev/null 2>&1 && pwd)
 repo_dir=$(realpath ${this_dir}/..)
 
 suffix=$(cat /dev/urandom | tr -dc 'a-z0-9' | head -c 6)
-image_name=test-image-${suffix}
+image_name=test-image-deb9-${suffix}
 echo "Creating custom Debian image: ${image_name}"
 
 python2 ${repo_dir}/generate_custom_image.py \
@@ -34,7 +34,7 @@ if [[ $? != 0 ]]; then
 fi
 
 suffix=$(cat /dev/urandom | tr -dc 'a-z0-9' | head -c 6)
-image_name=test-image-${suffix}
+image_name=test-image-ubu18-${suffix}
 echo "Creating custom Ubuntu image: ${image_name}"
 
 python2 ${repo_dir}/generate_custom_image.py \

@@ -45,6 +45,7 @@ from custom_image_utils import args_parser
 from custom_image_utils import args_inferer
 from custom_image_utils import constants
 from custom_image_utils import daisy_image_creator
+from custom_image_utils import image_labeller
 from custom_image_utils import shell_image_creator
 from custom_image_utils import smoke_test_runner
 
@@ -52,30 +53,6 @@ from custom_image_utils import smoke_test_runner
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
 _LOG.setLevel(logging.INFO)
-
-
-def set_custom_image_label(image_name, version, project_id, parsed=False):
-  """Set Dataproc version label in the newly built custom image."""
-  # parse the verions if version is still in the format of
-  # <major>.<minor>.<subminor>.
-  if not parsed:
-    # version regex already checked in arg parser
-    parsed_version = version.split(".")
-    filter_arg = "--labels=goog-dataproc-version={}-{}-{}".format(
-        parsed_version[0], parsed_version[1], parsed_version[2])
-  else:
-    # in this case, the version is already in the format of
-    # <major>-<minor>-<subminor>
-    filter_arg = "--labels=goog-dataproc-version={}".format(version)
-  command = ["gcloud", "compute", "images", "add-labels",
-             image_name, "--project", project_id, filter_arg]
-
-  # get stdout from compute images list --filters
-  pipe = subprocess.Popen(command)
-  pipe.wait()
-  if pipe.returncode != 0:
-    raise RuntimeError(
-        "Cannot set dataproc version to image label.")
 
 
 def get_custom_image_creation_timestamp(image_name, project_id):
@@ -140,18 +117,6 @@ def perform_sanity_checks(args):
   _LOG.info("Passed sanity checks...")
 
 
-def add_label(args):
-  """Sets custom image label."""
-
-  if not args.dry_run:
-    _LOG.info("Setting label on custom image...")
-    set_custom_image_label(args.image_name, args.dataproc_version,
-                           args.project_id, args.parsed_image_version)
-    _LOG.info("Successfully set label on custom image...")
-  else:
-    _LOG.info("Skip setting label on custom image (dry run).")
-
-
 def notify_expiration(args):
   """Notifies when the image will expire."""
 
@@ -175,7 +140,7 @@ def run():
     daisy_image_creator.create(args)
   else:
     shell_image_creator.create(args)
-  add_label(args)
+  image_labeller.add_label(args)
   smoke_test_runner.run(args)
   notify_expiration(args)
 
