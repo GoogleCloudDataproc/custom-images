@@ -25,13 +25,3 @@ version_help_text = """\
     Please refer to https://cloud.google.com/dataproc/docs/concepts/versioning/overview
     for more information on image versions.
     """
-
-notify_expiration_text = """\
-
-
-#####################################################################
-  WARNING: DATAPROC CUSTOM IMAGE '{}'
-           WILL EXPIRE ON {}.
-#####################################################################
-
-"""
