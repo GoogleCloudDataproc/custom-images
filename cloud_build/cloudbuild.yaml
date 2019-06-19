@@ -1,8 +1,8 @@
 steps:
-# 1. Create a Docker image containing dataproc-custom-images repo
+# 1. Create a Docker image containing the dataproc-custom-images repo
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--tag=gcr.io/google.com/cloud-dataproc-ci/dataproc-custom-images-presubmit', '-f', 'cloud_build/Dockerfile', '.']
+  args: ['build', '--tag=gcr.io/$_PROJECT_ID/dataproc-custom-images-presubmit', '-f', 'cloud_build/Dockerfile', '.']
 # 2. Run presumit tests
-- name: 'gcr.io/google.com/cloud-dataproc-ci/dataproc-custom-images-presubmit'
+- name: 'gcr.io/$_PROJECT_ID/dataproc-custom-images-presubmit'
   entrypoint: 'bash'
   args: ['/dataproc-custom-images/cloud_build/presubmit.sh']

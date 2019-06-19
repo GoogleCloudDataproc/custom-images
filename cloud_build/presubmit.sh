@@ -14,7 +14,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cd /dataproc-custom-images
-
 # Run all tests
 python2 -m unittest discover
