@@ -17,6 +17,29 @@
 this_dir=$(cd $(dirname ${BASH_SOURCE[0]}) >/dev/null 2>&1 && pwd)
 repo_dir=$(realpath ${this_dir}/..)
 
+daisy_path=$(which daisy)
+if [[ -n "${daisy_path}" ]]; then
+  suffix=$(cat /dev/urandom | tr -dc 'a-z0-9' | head -c 6)
+  image_name=test-image-deb9-daisy-${suffix}
+  echo "Creating custom Debian image with Daisy: ${image_name}"
+
+  python2 ${repo_dir}/generate_custom_image.py \
+    --image-name ${image_name} \
+    --dataproc-version 1.4.5-debian9 \
+    --daisy-path ${daisy_path} \
+    --customization-script ${repo_dir}/examples/customization_script.sh \
+    --zone us-west1-a \
+    --gcs-bucket gs://dataproc-custom-images-presubmit \
+    --shutdown-instance-timer-sec 30
+  if [[ $? != 0 ]]; then
+    echo "Creating image failed"
+    exit 1
+  fi
+else
+  echo "Daisy was not installed"
+  exit 1
+fi
+
 suffix=$(cat /dev/urandom | tr -dc 'a-z0-9' | head -c 6)
 image_name=test-image-deb9-${suffix}
 echo "Creating custom Debian image: ${image_name}"

@@ -150,11 +150,13 @@ def _infer_oauth(args):
 
 def _infer_daisy_sources(args):
   if args.daisy_path:
-    run_script_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                   "startup_script/run.sh")
+    utils_dir = os.path.dirname(os.path.realpath(__file__))
+    base_dir = os.path.abspath(os.path.join(utils_dir, os.pardir))
+    startup_script_path = os.path.join(base_dir, "startup_script/run.sh")
+    customization_script_path = os.path.abspath(args.customization_script)
     daisy_sources = {
-        "run.sh": run_script_path,
-        "init_actions.sh": os.path.abspath(args.customization_script)
+        "run.sh": startup_script_path,
+        "init_actions.sh": customization_script_path
     }
     daisy_sources.update(args.extra_sources)
     args.sources = ",\n".join([
