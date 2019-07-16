@@ -34,7 +34,7 @@ def run(shell_script):
 
     # Run the shell script from the temp file, then wait for it to complete.
     pipe = subprocess.Popen(
-        ['/usr/bin/bash', temp_file.name],
+        ['bash', temp_file.name],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
