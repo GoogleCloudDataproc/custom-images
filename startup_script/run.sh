@@ -86,6 +86,8 @@ function main() {
     run_custom_script
   fi
 
+  echo "Sleep ${SHUTDOWN_TIMER_IN_SEC}s before shutting down..."
+  echo "You can change the timeout value with --shutdown-instance-timer-sec"
   sleep ${SHUTDOWN_TIMER_IN_SEC} # wait for stdout to flush
   shutdown -h now
 }
