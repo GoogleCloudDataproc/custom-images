@@ -2,7 +2,11 @@
 
 This page describes how to generate a custom Dataproc image.
 
-Note that custom image will expire in [60 days](https://cloud.google.com/dataproc/docs/guides/dataproc-images).
+## Important notes
+
+To help ensure that clusters receive the latest service updates and bug fixes, the creation of clusters with a custom image is limited to **60 days** from the image creation date, but existing custom-image clusters can run indefinitely. Automation to continuously build a custom image may be necessary if you wish to create clusters with a custom image for a period greater than 60 days.
+
+Creating clusters with expired custom images is possible by following these [instructions](https://cloud.google.com/dataproc/docs/guides/dataproc-images#how_to_create_a_cluster_with_an_expired_custom_image), but Cloud Dataproc cannot guarantee support of issues that arise with these clusters.
 
 ## Requirements
 
