@@ -60,7 +60,7 @@ function main() {
   touch /tmp/custom-image-my-image-20190611-160823/disk_created
 
   echo 'Creating VM instance to run customization script.'
-  gcloud compute instances create my-image-install       --project=my-project       --zone=us-west1-a              --subnet=my-subnet       --no-address       --machine-type=n1-standard-2       --disk=auto-delete=yes,boot=yes,mode=rw,name=my-image-install       --service-account=my-service-account       --scopes=cloud-platform       --metadata=shutdown-timer-in-sec=500,daisy-sources-path=gs://my-bucket/custom-image-my-image-20190611-160823/sources       --metadata-from-file startup-script=startup_script/run.sh
+  gcloud compute instances create my-image-install       --project=my-project       --zone=us-west1-a              --subnet=my-subnet       --no-address       --machine-type=n1-standard-2       --disk=auto-delete=yes,boot=yes,mode=rw,name=my-image-install       --accelerator=type=nvidia-tesla-v100,count=2 --maintenance-policy terminate       --service-account=my-service-account       --scopes=cloud-platform       --metadata=shutdown-timer-in-sec=500,daisy-sources-path=gs://my-bucket/custom-image-my-image-20190611-160823/sources       --metadata-from-file startup-script=startup_script/run.sh
   touch /tmp/custom-image-my-image-20190611-160823/vm_created
 
   echo 'Waiting for customization script to finish and VM shutdown.'
@@ -97,6 +97,7 @@ class TestShellScriptGenerator(unittest.TestCase):
         'customization_script': '/tmp/my-script.sh',
         'machine_type': 'n1-standard-2',
         'disk_size': 40,
+        'accelerator': 'type=nvidia-tesla-v100,count=2',
         'gcs_bucket': 'gs://my-bucket',
         'network': 'my-network',
         'subnetwork': 'my-subnet',

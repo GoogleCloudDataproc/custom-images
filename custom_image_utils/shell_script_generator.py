@@ -78,6 +78,7 @@ function main() {{
       {no_external_ip_flag} \
       --machine-type={machine_type} \
       --disk=auto-delete=yes,boot=yes,mode=rw,name={image_name}-install \
+      {accelerator_flag} \
       {service_account_flag} \
       --scopes=cloud-platform \
       --metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},daisy-sources-path={daisy_sources_path} \
@@ -138,9 +139,12 @@ class Generator:
     elif self.args["network"]:
       self.args["network_flag"] = "--network={network}".format(**self.args)
       self.args["subnetwork_flag"] = ""
-    self.args["service_account_flag"] = "--service-account={service_account}".format(
-        **self.args) if self.args["service_account"] else ""
+    if self.args["service_account"]:
+      self.args["service_account_flag"] = "--service-account={service_account}".format(**self.args)
     self.args["no_external_ip_flag"] = "--no-address" if self.args["no_external_ip"] else ""
+    if self.args["accelerator"]:
+      self.args["accelerator_flag"] = "--accelerator={accelerator} --maintenance-policy terminate".format(**self.args)
+
 
 
   def generate(self, args):

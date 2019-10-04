@@ -116,6 +116,8 @@ python generate_custom_image.py \
     (sources in daisy)[https://googlecloudplatform.github.io/compute-image-tools/daisy-workflow-config-spec.html#sources] 
 *   **--disk-size**: The size in GB of the disk attached to the VM instance
     used to build custom image. The default is `15` GB.
+*   **--accelerator**: The accelerators (e.g. GPUs) attached to the VM instance
+    used to build custom image. By default not accelerators are attached.
 *   **--base-image-uri**: The partial image URI for the base Dataproc image. The
     customization script will be executed on top of this image instead of an
     out-of-the-box Dataproc image. This image must be a valid Dataproc image.

@@ -40,6 +40,7 @@ class TestArgsParser(unittest.TestCase):
         '--gcs-bucket', gcs_bucket])
 
     expected_result = self._make_expected_result(
+        accelerator=None,
         base_image_uri="None",
         customization_script="'{}'".format(customization_script),
         daisy_path="'{}'".format(daisy_path),
@@ -76,6 +77,7 @@ class TestArgsParser(unittest.TestCase):
     family = 'debian9'
     machine_type = 'n1-standard-4'
     disk_size = 40
+    accelerator = 'type=nvidia-tesla-v100,count=2'
     network = 'my-network'
     subnetwork = 'my-subnetwork'
     no_external_ip = True
@@ -85,6 +87,7 @@ class TestArgsParser(unittest.TestCase):
     shutdown_instance_timer_sec = 567
 
     args = args_parser.parse_args([
+        '--accelerator', str(accelerator),
         '--customization-script', customization_script,
         '--daisy-path', daisy_path,
         '--dataproc-version', dataproc_version,
@@ -106,6 +109,7 @@ class TestArgsParser(unittest.TestCase):
     ])
 
     expected_result = self._make_expected_result(
+        accelerator="'{}'".format(accelerator),
         base_image_uri="None",
         customization_script="'{}'".format(customization_script),
         daisy_path="'{}'".format(daisy_path),
@@ -136,6 +140,7 @@ class TestArgsParser(unittest.TestCase):
       daisy_path,
       dataproc_version,
       disk_size,
+      accelerator,
       dry_run,
       extra_sources,
       family,
@@ -153,6 +158,7 @@ class TestArgsParser(unittest.TestCase):
       zone):
     expected_result_template = (
         "Namespace("
+        "accelerator={}, "
         "base_image_uri={}, "
         "customization_script={}, "
         "daisy_path={}, "
@@ -174,6 +180,7 @@ class TestArgsParser(unittest.TestCase):
         "subnetwork={}, "
         "zone={})")
     return expected_result_template.format(
+        accelerator,
         base_image_uri,
         customization_script,
         daisy_path,
@@ -194,7 +201,6 @@ class TestArgsParser(unittest.TestCase):
         shutdown_instance_timer_sec,
         subnetwork,
         zone)
-
 
   if __name__ == '__main__':
     unittest.main()
