@@ -98,13 +98,13 @@ python generate_custom_image.py \
     the GCE VM instance which builds the custom Dataproc image. The default
     network is 'global/networks/default'. If the default network does not exist
     in your project, please specify a valid network interface. For more
-    information on network interfaces, please refer to (GCE VPC
-    documentation)[https://cloud.google.com/vpc/docs/vpc].
+    information on network interfaces, please refer to
+    [GCE VPC documentation](https://cloud.google.com/vpc/docs/vpc).
 *   **--subnetwork**: This parameter specifies the subnetwork that is used to
     launch the VM instance that builds the custom Dataprocimage. A full
     subnetwork URL is required. The default subnetwork is None. For more
-    information, please refer to (GCE VPC
-    documentation)[https://cloud.google.com/vpc/docs/vpc].
+    information, please refer to
+    [GCE VPC documentation](https://cloud.google.com/vpc/docs/vpc).
 *   **--no-external-ip**: This parameter is used to disables external IP for the
     image build VM. The VM will not be able to access the internet, but if
     [Private Google Access](https://cloud.google.com/vpc/docs/configure-private-google-access)
@@ -119,8 +119,8 @@ python generate_custom_image.py \
     access scripts and write logs.
 *   **--extra-sources**: Additional files/directories uploaded along with
     customization script. This argument is evaluated to a json dictionary. Read
-    more about (sources in
-    daisy)[https://googlecloudplatform.github.io/compute-image-tools/daisy-workflow-config-spec.html#sources]
+    more about
+    [sources in daisy](https://googlecloudplatform.github.io/compute-image-tools/daisy-workflow-config-spec.html#sources)
 *   **--disk-size**: The size in GB of the disk attached to the VM instance used
     to build custom image. The default is `15` GB.
 *   **--accelerator**: The accelerators (e.g. GPUs) attached to the VM instance
