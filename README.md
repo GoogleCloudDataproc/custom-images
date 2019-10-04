@@ -4,9 +4,16 @@ This page describes how to generate a custom Dataproc image.
 
 ## Important notes
 
-To help ensure that clusters receive the latest service updates and bug fixes, the creation of clusters with a custom image is limited to **60 days** from the image creation date, but existing custom-image clusters can run indefinitely. Automation to continuously build a custom image may be necessary if you wish to create clusters with a custom image for a period greater than 60 days.
+To help ensure that clusters receive the latest service updates and bug fixes,
+the creation of clusters with a custom image is limited to **60 days** from the
+image creation date, but existing custom-image clusters can run indefinitely.
+Automation to continuously build a custom image may be necessary if you wish to
+create clusters with a custom image for a period greater than 60 days.
 
-Creating clusters with expired custom images is possible by following these [instructions](https://cloud.google.com/dataproc/docs/guides/dataproc-images#how_to_create_a_cluster_with_an_expired_custom_image), but Cloud Dataproc cannot guarantee support of issues that arise with these clusters.
+Creating clusters with expired custom images is possible by following these
+[instructions](https://cloud.google.com/dataproc/docs/guides/dataproc-images#how_to_create_a_cluster_with_an_expired_custom_image),
+but Cloud Dataproc cannot guarantee support of issues that arise with these
+clusters.
 
 ## Requirements
 
@@ -53,16 +60,16 @@ python generate_custom_image.py \
 
 *   **--image-name**: The name for custom image.
 *   **--dataproc-version**: The Dataproc version for this custom image to build
-    on. Examples: `1.4.5-debian9`, `1.4.0-RC10-debian9`, `1.4.5-ubuntu18`.
-    For a complete list of Dataproc image versions, please refer to Dataproc
-    [release notes](https://cloud.google.com/dataproc/docs/release-notes).
-    To understand Dataproc versioning, please refer to
+    on. Examples: `1.4.5-debian9`, `1.4.0-RC10-debian9`, `1.4.5-ubuntu18`. For a
+    complete list of Dataproc image versions, please refer to Dataproc
+    [release notes](https://cloud.google.com/dataproc/docs/release-notes). To
+    understand Dataproc versioning, please refer to
     [documentation](https://cloud.google.com/dataproc/docs/concepts/versioning/overview).
     **This argument is mutually exclusive with --base-image-uri**.
 *   **--base-image-uri**: The full image URI for the base Dataproc image. The
-    customiziation script will be executed on top of this image instead of
-    an out-of-the-box Dataproc image. This image must be a valid Dataproc
-    image. **This argument is mutually exclusive with --dataproc-version.**
+    customization script will be executed on top of this image instead of an
+    out-of-the-box Dataproc image. This image must be a valid Dataproc image.
+    **This argument is mutually exclusive with --dataproc-version.**
 *   **--customization-script**: The script used to install custom packages on
     the image.
 *   **--zone**: The GCE zone for running your GCE instance.
@@ -70,8 +77,8 @@ python generate_custom_image.py \
 
 #### Optional Arguments
 
-*   **--daisy-path**: The path to Daisy binary. If specified, Daisy workflow will
-    be used to create the image; otherwise, shell script will be used.
+*   **--daisy-path**: The path to Daisy binary. If specified, Daisy workflow
+    will be used to create the image; otherwise, shell script will be used.
 *   **--family**: The family of the source image. This will cause the latest
     non-deprecated image in the family to be used as the source image.
 *   **--project-id**: The project Id of the project where the custom image is
@@ -91,18 +98,18 @@ python generate_custom_image.py \
     the GCE VM instance which builds the custom Dataproc image. The default
     network is 'global/networks/default'. If the default network does not exist
     in your project, please specify a valid network interface. For more
-    information on network interfaces, please refer to (GCE VPC
-    documentation)[https://cloud.google.com/vpc/docs/vpc].
+    information on network interfaces, please refer to
+    [GCE VPC documentation](https://cloud.google.com/vpc/docs/vpc).
 *   **--subnetwork**: This parameter specifies the subnetwork that is used to
     launch the VM instance that builds the custom Dataprocimage. A full
     subnetwork URL is required. The default subnetwork is None. For more
-    information, please refer to (GCE VPC
-    documentation)[https://cloud.google.com/vpc/docs/vpc].
+    information, please refer to
+    [GCE VPC documentation](https://cloud.google.com/vpc/docs/vpc).
 *   **--no-external-ip**: This parameter is used to disables external IP for the
     image build VM. The VM will not be able to access the internet, but if
     [Private Google Access](https://cloud.google.com/vpc/docs/configure-private-google-access)
-    is enabled for the subnetwork, it can still access Google services
-    (e.g., GCS) through internal IP of the VPC. This flag is ignored when
+    is enabled for the subnetwork, it can still access Google services (e.g.,
+    GCS) through internal IP of the VPC. This flag is ignored when
     `--daisy-path` is specified.
 *   **--service-account**: The service account that is used to launch the VM
     instance that builds the custom Dataproc image. The scope of this service
@@ -111,20 +118,25 @@ python generate_custom_image.py \
     Note: IAM role must allow the VM instance to access GCS bucket in order to
     access scripts and write logs.
 *   **--extra-sources**: Additional files/directories uploaded along with
-    customization script. This argument is evaluated to a json dictionary.
-    Read more about
-    (sources in daisy)[https://googlecloudplatform.github.io/compute-image-tools/daisy-workflow-config-spec.html#sources] 
-*   **--disk-size**: The size in GB of the disk attached to the VM instance
-    used to build custom image. The default is `15` GB.
+    customization script. This argument is evaluated to a json dictionary. Read
+    more about
+    [sources in daisy](https://googlecloudplatform.github.io/compute-image-tools/daisy-workflow-config-spec.html#sources)
+*   **--disk-size**: The size in GB of the disk attached to the VM instance used
+    to build custom image. The default is `15` GB.
+*   **--accelerator**: The accelerators (e.g. GPUs) attached to the VM instance
+    used to build custom image. This flag supports the same
+    [values](https://cloud.google.com/sdk/gcloud/reference/compute/instances/create#--accelerator)
+    as `gcloud compute instances create --accelerator` flag. By default no
+    accelerators are attached.
 *   **--base-image-uri**: The partial image URI for the base Dataproc image. The
     customization script will be executed on top of this image instead of an
     out-of-the-box Dataproc image. This image must be a valid Dataproc image.
     The format of the partial image URI is the following:
     "projects/<project_id>/global/images/<image_name>".
-*   **--shutdown-instance-timer-sec**: The time to wait in seconds before shutting down the VM
-      instance. This value may need to be increased if your init script
-      generates a lot of output on stdout. If not specified, the default value
-      of 300 seconds will be used.
+*   **--shutdown-instance-timer-sec**: The time to wait in seconds before
+    shutting down the VM instance. This value may need to be increased if your
+    init script generates a lot of output on stdout. If not specified, the
+    default value of 300 seconds will be used.
 *   **--dry-run**: Dry run mode which only validates input and generates
     workflow script without creating image. Disabled by default.
 

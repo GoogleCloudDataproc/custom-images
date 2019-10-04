@@ -173,6 +173,15 @@ def parse_args(args):
       that builds the custom image. If not specified, the default value of
       15 GB will be used.""")
   parser.add_argument(
+      "--accelerator",
+      type=str,
+      required=False,
+      default=None,
+      help=
+      """(Optional) The accelerators (e.g. GPUs) attached to the VM instance
+      that builds the custom image. If not specified, no accelerators are
+      attached.""")
+  parser.add_argument(
       "--shutdown-instance-timer-sec",
       type=int,
       required=False,
