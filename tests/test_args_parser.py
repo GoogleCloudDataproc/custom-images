@@ -28,14 +28,12 @@ class TestArgsParser(unittest.TestCase):
     """Verifies it succeeds if all required args are present."""
     image_name = 'my-image'
     customization_script = '/tmp/my-script.sh'
-    daisy_path = '/opt/daisy'
     zone = 'us-west1-a'
     gcs_bucket = 'gs://my-bucket'
 
     args = args_parser.parse_args([
         '--image-name', image_name,
         '--customization-script', customization_script,
-        '--daisy-path', daisy_path,
         '--zone', zone,
         '--gcs-bucket', gcs_bucket])
 
@@ -43,7 +41,6 @@ class TestArgsParser(unittest.TestCase):
         accelerator=None,
         base_image_uri="None",
         customization_script="'{}'".format(customization_script),
-        daisy_path="'{}'".format(daisy_path),
         dataproc_version="None",
         disk_size="15",
         dry_run=False,
@@ -68,7 +65,6 @@ class TestArgsParser(unittest.TestCase):
     """Verifies it succeeds with optional arguments specified."""
     image_name = 'my-image'
     customization_script = '/tmp/my-script.sh'
-    daisy_path = '/opt/daisy'
     zone = 'us-west1-a'
     gcs_bucket = 'gs://my-bucket'
     dataproc_version = '1.4.5-debian9'
@@ -89,7 +85,6 @@ class TestArgsParser(unittest.TestCase):
     args = args_parser.parse_args([
         '--accelerator', str(accelerator),
         '--customization-script', customization_script,
-        '--daisy-path', daisy_path,
         '--dataproc-version', dataproc_version,
         '--disk-size', str(disk_size),
         '--dry-run',
@@ -112,7 +107,6 @@ class TestArgsParser(unittest.TestCase):
         accelerator="'{}'".format(accelerator),
         base_image_uri="None",
         customization_script="'{}'".format(customization_script),
-        daisy_path="'{}'".format(daisy_path),
         dataproc_version="'{}'".format(dataproc_version),
         disk_size="{}".format(disk_size),
         dry_run="{}".format(dry_run),
@@ -137,7 +131,6 @@ class TestArgsParser(unittest.TestCase):
       self,
       base_image_uri,
       customization_script,
-      daisy_path,
       dataproc_version,
       disk_size,
       accelerator,
@@ -161,7 +154,6 @@ class TestArgsParser(unittest.TestCase):
         "accelerator={}, "
         "base_image_uri={}, "
         "customization_script={}, "
-        "daisy_path={}, "
         "dataproc_version={}, "
         "disk_size={}, "
         "dry_run={}, "
@@ -183,7 +175,6 @@ class TestArgsParser(unittest.TestCase):
         accelerator,
         base_image_uri,
         customization_script,
-        daisy_path,
         dataproc_version,
         disk_size,
         dry_run,

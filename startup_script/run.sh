@@ -14,22 +14,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# run.sh will be used by Daisy workflow to run custom initialization
+# run.sh will be used by image build workflow to run custom initialization
 # script when creating a custom image.
 #
-# Immediately after Daisy workflow creates an GCE instance, it will
+# Immediately after image build workflow creates an GCE instance, it will
 # execute run.sh on the GCE instance that it just created:
-# 1. Download user's custom init action script from daisy sourth path.
+# 1. Download user's custom init action script from cloud Storage bucket.
 # 2. Run the custom init action script.
 # 3. Check for init action script output, and print success or failure
-#    message. This message will get picked up by Daisy workflow on the
-#    client machine.
+#    message.
 # 4. Shutdown GCE instance.
 
 set -x
 
-# get daisy-sources-path
-DAISY_SOURCES_PATH=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/attributes/daisy-sources-path" -H "Metadata-Flavor: Google")
+# get custom-sources-path
+CUSTOM_SOURCES_PATH=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/attributes/custom-sources-path" -H "Metadata-Flavor: Google")
 # get time to wait for stdout to flush
 SHUTDOWN_TIMER_IN_SEC=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/attributes/shutdown-timer-in-sec" -H "Metadata-Flavor: Google")
 
@@ -37,7 +36,7 @@ ready=""
 
 function wait_until_ready() {
   # For Ubuntu, wait until /snap is mounted, so that gsutil is unavailable.
-  if [[ "$(. /etc/os-release && echo ${ID})" == 'ubuntu' ]]; then
+  if [[ $(. /etc/os-release && echo "${ID}") == ubuntu ]]; then
     for i in {0..10}; do
       sleep 5
 
@@ -46,7 +45,7 @@ function wait_until_ready() {
         break
       fi
 
-      if (( $i == 10 )); then
+      if ((i == 10)); then
         echo "BuildFailed: timed out waiting for gsutil to be available on Ubuntu."
       fi
     done
@@ -56,12 +55,12 @@ function wait_until_ready() {
 }
 
 function download_scripts() {
-  gsutil -m cp -r "${DAISY_SOURCES_PATH}/*" ./
+  gsutil -m cp -r "${CUSTOM_SOURCES_PATH}/*" ./
 }
 
 function run_custom_script() {
   if ! download_scripts; then
-    echo "BuildFailed: failed to download scripts from ${DAISY_SOURCES_PATH}."
+    echo "BuildFailed: failed to download scripts from ${CUSTOM_SOURCES_PATH}."
     return 1
   fi
 
@@ -88,7 +87,7 @@ function main() {
 
   echo "Sleep ${SHUTDOWN_TIMER_IN_SEC}s before shutting down..."
   echo "You can change the timeout value with --shutdown-instance-timer-sec"
-  sleep ${SHUTDOWN_TIMER_IN_SEC} # wait for stdout to flush
+  sleep "${SHUTDOWN_TIMER_IN_SEC}" # wait for stdout to flush
   shutdown -h now
 }
 

@@ -70,8 +70,6 @@ def parse_args(args):
       required=True,
       help="""User's script to install custom packages.""")
   required_args.add_argument(
-      "--daisy-path", type=str, required=False, help="""Path to daisy binary.""")
-  required_args.add_argument(
       "--zone",
       type=str,
       required=True,
@@ -80,7 +78,7 @@ def parse_args(args):
       "--gcs-bucket",
       type=str,
       required=True,
-      help="""GCS bucket used by daisy to store files and logs when
+      help="""GCS bucket used to store files and logs when
       building custom image.""")
   parser.add_argument(
       "--family",
@@ -138,8 +136,7 @@ def parse_args(args):
       help="""(Optional) Disables external IP for the image build VM. The VM
       will not be able to access the internet, but if Private Google
       Access is enabled for the subnetwork, it can still access Google services
-      (e.g., GCS) through internal IP of the VPC. This flag is ignored when
-      --daisy-path is specified.""")
+      (e.g., GCS) through internal IP of the VPC.""")
   parser.add_argument(
       "--service-account",
       type=str,
@@ -147,19 +144,17 @@ def parse_args(args):
       default="default",
       help=
       """(Optional) The service account that is used to launch the VM instance
-      that builds the custom image. If not specified, Daisy would use the
-      default service account under the GCE project. The scope of this service
+      that builds the custom image. If not specified, the default service
+      account under the GCE project will be used. The scope of this service
       account is defaulted to /auth/cloud-platform.""")
   parser.add_argument(
       "--extra-sources",
       type=json.loads,
       required=False,
-      default={},
+      default="{}",
       help=
       """(Optional) Additional files/directories uploaded along with
       customization script. This argument is evaluated to a json dictionary.
-      Read more about sources in daisy https://googlecloudplatform.github.io/
-      compute-image-tools/daisy-workflow-config-spec.html#sources.
       For example:
       '--extra-sources "{\\"notes.txt\\": \\"/path/to/notes.txt\\"}"'
       """)

@@ -17,15 +17,14 @@ Shell script based custom image creator.
 """
 
 import logging
-import os
 
-import shell_script_generator
-import shell_script_executor
-
+from custom_image_utils import shell_script_executor
+from custom_image_utils import shell_script_generator
 
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
 _LOG.setLevel(logging.INFO)
+
 
 def create(args):
   """Creates a custom image with generated Shell script."""

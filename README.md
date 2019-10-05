@@ -25,10 +25,6 @@ clusters.
     API, and Google Cloud Storage APIs enabled.
 4.  Use `gcloud config set project <your-project>` to specify which project to
     use to create and save your custom image.
-5.  (Optional) Daisy, from
-    [GoogleCloudPlatform/compute-image-tools](https://github.com/GoogleCloudPlatform/compute-image-tools)
-    *   Please make sure the daisy binary have execution permission: `chmod +x
-        daisy`.
 
 ## Generate custom image
 
@@ -39,19 +35,6 @@ python generate_custom_image.py \
     --image-name <new_custom_image_name> \
     --dataproc-version <Dataproc version> \
     --customization-script <custom script to install custom packages> \
-    --zone <zone to create instance to build custom image> \
-    --gcs-bucket <gcs bucket to write logs>
-```
-
-For backwards compatiblity, you can also use the deprecated Daisy workflow to
-generate the image by specifying the `--daisy-path` flag:
-
-```shell
-python generate_custom_image.py \
-    --image-name <new_custom_image_name> \
-    --dataproc-version <Dataproc version> \
-    --customization-script <custom script to install custom packages> \
-    --daisy-path <path to local daisy binary> \
     --zone <zone to create instance to build custom image> \
     --gcs-bucket <gcs bucket to write logs>
 ```
@@ -77,8 +60,6 @@ python generate_custom_image.py \
 
 #### Optional Arguments
 
-*   **--daisy-path**: The path to Daisy binary. If specified, Daisy workflow
-    will be used to create the image; otherwise, shell script will be used.
 *   **--family**: The family of the source image. This will cause the latest
     non-deprecated image in the family to be used as the source image.
 *   **--project-id**: The project Id of the project where the custom image is
@@ -109,8 +90,7 @@ python generate_custom_image.py \
     image build VM. The VM will not be able to access the internet, but if
     [Private Google Access](https://cloud.google.com/vpc/docs/configure-private-google-access)
     is enabled for the subnetwork, it can still access Google services (e.g.,
-    GCS) through internal IP of the VPC. This flag is ignored when
-    `--daisy-path` is specified.
+    GCS) through internal IP of the VPC.
 *   **--service-account**: The service account that is used to launch the VM
     instance that builds the custom Dataproc image. The scope of this service
     account is defaulted to "/auth/cloud-platform", which authorizes VM instance
@@ -118,9 +98,7 @@ python generate_custom_image.py \
     Note: IAM role must allow the VM instance to access GCS bucket in order to
     access scripts and write logs.
 *   **--extra-sources**: Additional files/directories uploaded along with
-    customization script. This argument is evaluated to a json dictionary. Read
-    more about
-    [sources in daisy](https://googlecloudplatform.github.io/compute-image-tools/daisy-workflow-config-spec.html#sources)
+    customization script. This argument is evaluated to a json dictionary.
 *   **--disk-size**: The size in GB of the disk attached to the VM instance used
     to build custom image. The default is `15` GB.
 *   **--accelerator**: The accelerators (e.g. GPUs) attached to the VM instance
@@ -142,7 +120,7 @@ python generate_custom_image.py \
 
 ### Examples
 
-#### Create a custom image without Daisy (recommended)
+#### Create a custom image
 
 Create a custom image with name `custom-image-1-4-5` with Dataproc version
 `1.4.5-debian9`:
@@ -154,34 +132,6 @@ python generate_custom_image.py \
     --customization-script ~/custom-script.sh \
     --zone us-central1-f \
     --gcs-bucket gs://my-test-bucket
-```
-
-#### Create a custom image with Daisy (deprecated)
-
-Create a custom image with name `custom-image-1-4-5` with Dataproc version
-`1.4.5-debian9`:
-
-```shell
-python generate_custom_image.py \
-    --image-name custom-image-1-4-5 \
-    --dataproc-version 1.4.5-debian9 \
-    --customization-script ~/custom-script.sh \
-    --daisy-path ~/daisy \
-    --zone us-central1-f \
-    --gcs-bucket gs://my-test-bucket
-```
-
-Create a custom image with extra sources for Daisy:
-
-```shell
-python generate_custom_image.py \
-    --image-name custom-image-1-4-5 \
-    --dataproc-version 1.4.5-debian9 \
-    --customization-script ~/custom-script.sh \
-    --daisy-path ~/daisy \
-    --zone us-central1-f \
-    --gcs-bucket gs://my-test-bucket \
-    --extra-sources '{"requirements.txt": "/path/to/requirements.txt"}'
 ```
 
 #### Create a custom image without running smoke test

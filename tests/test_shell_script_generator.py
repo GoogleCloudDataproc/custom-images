@@ -52,15 +52,17 @@ function exit_handler() {
 
 function main() {
   echo 'Uploading files to GCS bucket.'
-  gsutil cp       /tmp/my-script.sh       gs://my-bucket/custom-image-my-image-20190611-160823/sources/init_actions.sh
-  gsutil cp startup_script/run.sh gs://my-bucket/custom-image-my-image-20190611-160823/sources/
+  declare -A sources=([run.sh]='startup_script/run.sh' [init_actions.sh]='/tmp/my-script.sh' [extra_src.txt]='/path/to/extra.txt')
+  for source in "${!sources[@]}"; do
+    gsutil cp "${sources[$source]}" "gs://my-bucket/custom-image-my-image-20190611-160823/sources/$source"
+  done
 
   echo 'Creating disk.'
   gcloud compute disks create my-image-install       --project=my-project       --zone=us-west1-a       --image=projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01       --type=pd-ssd       --size=40GB
-  touch /tmp/custom-image-my-image-20190611-160823/disk_created
+  touch "/tmp/custom-image-my-image-20190611-160823/disk_created"
 
   echo 'Creating VM instance to run customization script.'
-  gcloud compute instances create my-image-install       --project=my-project       --zone=us-west1-a              --subnet=my-subnet       --no-address       --machine-type=n1-standard-2       --disk=auto-delete=yes,boot=yes,mode=rw,name=my-image-install       --accelerator=type=nvidia-tesla-v100,count=2 --maintenance-policy terminate       --service-account=my-service-account       --scopes=cloud-platform       --metadata=shutdown-timer-in-sec=500,daisy-sources-path=gs://my-bucket/custom-image-my-image-20190611-160823/sources       --metadata-from-file startup-script=startup_script/run.sh
+  gcloud compute instances create my-image-install       --project=my-project       --zone=us-west1-a              --subnet=my-subnet       --no-address       --machine-type=n1-standard-2       --disk=auto-delete=yes,boot=yes,mode=rw,name=my-image-install       --accelerator=type=nvidia-tesla-v100,count=2 --maintenance-policy terminate       --service-account=my-service-account       --scopes=cloud-platform       --metadata=shutdown-timer-in-sec=500,custom-sources-path=gs://my-bucket/custom-image-my-image-20190611-160823/sources       --metadata-from-file startup-script=startup_script/run.sh
   touch /tmp/custom-image-my-image-20190611-160823/vm_created
 
   echo 'Waiting for customization script to finish and VM shutdown.'
@@ -95,6 +97,7 @@ class TestShellScriptGenerator(unittest.TestCase):
         'family': 'debian9',
         'image_name': 'my-image',
         'customization_script': '/tmp/my-script.sh',
+        'extra_sources': {"extra_src.txt": "/path/to/extra.txt"},
         'machine_type': 'n1-standard-2',
         'disk_size': 40,
         'accelerator': 'type=nvidia-tesla-v100,count=2',
@@ -104,7 +107,7 @@ class TestShellScriptGenerator(unittest.TestCase):
         'no_external_ip': True,
         'zone': 'us-west1-a',
         'dataproc_base_image':
-        'projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01',
+          'projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01',
         'service_account': 'my-service-account',
         'oauth': '',
         'project_id': 'my-project',
