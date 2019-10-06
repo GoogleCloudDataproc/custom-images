@@ -142,8 +142,7 @@ class Generator:
     if self.args["service_account"]:
       self.args["service_account_flag"] = "--service-account={service_account}".format(**self.args)
     self.args["no_external_ip_flag"] = "--no-address" if self.args["no_external_ip"] else ""
-    if self.args["accelerator"]:
-      self.args["accelerator_flag"] = "--accelerator={accelerator} --maintenance-policy terminate".format(**self.args)
+    self.args["accelerator_flag"] = "--accelerator={accelerator} --maintenance-policy terminate".format(**self.args) if self.args["accelerator"] else ""
 
 
 
