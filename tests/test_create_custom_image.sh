@@ -14,38 +14,55 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-this_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)
-repo_dir=$(realpath "${this_dir}/..")
+set -euxo pipefail
 
-suffix=$(tr -dc 'a-z0-9' </dev/urandom | head -c 6)
-image_name=test-image-deb9-${suffix}
-echo "Creating custom Debian image: ${image_name}"
+readonly CURRENT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)
+readonly REPO_DIR=$(realpath "${CURRENT_DIR}/..")
+readonly TEST_SUFFIX=$(tr -dc 'a-z0-9' </dev/urandom | head -c 6)
+readonly TEST_BUCKET="gs://dataproc-custom-images-presubmit"
 
-python2 "${repo_dir}/generate_custom_image.py" \
-  --image-name "${image_name}" \
-  --dataproc-version 1.4.5-debian9 \
-  --customization-script "${repo_dir}/examples/customization_script.sh" \
-  --zone us-west1-a \
-  --gcs-bucket gs://dataproc-custom-images-presubmit \
-  --shutdown-instance-timer-sec 30
-if [[ $? != 0 ]]; then
-  echo "Creating image failed"
-  exit 1
-fi
+test_debian_with_image_version() {
+  local image_name="test-image-deb9-${TEST_SUFFIX}"
+  echo "Creating custom Debian image: ${image_name}"
 
-suffix=$(tr -dc 'a-z0-9' </dev/urandom | head -c 6)
-image_name=test-image-ubu18-${suffix}
-echo "Creating custom Ubuntu image: ${image_name}"
+  python2 "${REPO_DIR}/generate_custom_image.py" \
+    --image-name "${image_name}" \
+    --dataproc-version 1.4.15-debian9 \
+    --customization-script "${REPO_DIR}/examples/customization_script.sh" \
+    --zone us-west1-a \
+    --gcs-bucket "${TEST_BUCKET}" \
+    --shutdown-instance-timer-sec 30
+}
 
-python2 "${repo_dir}/generate_custom_image.py" \
-  --image-name "${image_name}" \
-  --base-image-uri https://www.googleapis.com/compute/v1/projects/cloud-dataproc/global/images/dataproc-1-4-ubu18-20190606-000000-rc01 \
-  --customization-script "${repo_dir}/examples/customization_script.sh" \
-  --zone us-west1-a \
-  --gcs-bucket gs://dataproc-custom-images-presubmit \
-  --shutdown-instance-timer-sec 30
+test_ubuntu_with_image_uri() {
+  local image_name="test-image-ubu18-${TEST_SUFFIX}"
+  echo "Creating custom Ubuntu image: ${image_name}"
 
-if [[ $? != 0 ]]; then
-  echo "Creating image failed"
-  exit 1
-fi
+  python2 "${REPO_DIR}/generate_custom_image.py" \
+    --image-name "${image_name}" \
+    --base-image-uri projects/cloud-dataproc/global/images/dataproc-1-4-ubu18-20190606-000000-rc01 \
+    --customization-script "${REPO_DIR}/examples/customization_script.sh" \
+    --zone us-west1-a \
+    --gcs-bucket "${TEST_BUCKET}" \
+    --shutdown-instance-timer-sec 30
+}
+
+test_extra_sources() {
+  local image_name="test-image-extra-src-${TEST_SUFFIX}"
+  echo "Creating custom image: ${image_name}"
+
+  python2 "${REPO_DIR}/generate_custom_image.py" \
+    --image-name "${image_name}" \
+    --dataproc-version 1.4.15-ubuntu18 \
+    --customization-script "${REPO_DIR}/tests/data/customization_script_with_extra_sources.sh" \
+    --extra-sources "{\"extra/source.txt\": \"${REPO_DIR}/tests/data/extra_source.txt\"}" \
+    --zone us-west1-a \
+    --gcs-bucket "${TEST_BUCKET}" \
+    --shutdown-instance-timer-sec 30
+}
+
+test_debian_with_image_version
+test_ubuntu_with_image_uri
+test_extra_sources
+
+echo "All custom image tests succedded"
