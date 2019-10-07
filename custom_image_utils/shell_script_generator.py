@@ -55,10 +55,10 @@ function exit_handler() {{
 
 function main() {{
   echo 'Uploading files to GCS bucket.'
-  gsutil cp \
-      {customization_script} \
-      gs://{bucket_name}/{run_id}/sources/init_actions.sh
-  gsutil cp startup_script/run.sh gs://{bucket_name}/{run_id}/sources/
+  declare -A sources=({sources_map_items})
+  for source in "${{!sources[@]}}"; do
+    gsutil cp "${{sources[$source]}}" "{custom_sources_path}/$source"
+  done
 
   echo 'Creating disk.'
   gcloud compute disks create {image_name}-install \
@@ -67,7 +67,7 @@ function main() {{
       --image={dataproc_base_image} \
       --type=pd-ssd \
       --size={disk_size}GB
-  touch /tmp/{run_id}/disk_created
+  touch "/tmp/{run_id}/disk_created"
 
   echo 'Creating VM instance to run customization script.'
   gcloud compute instances create {image_name}-install \
@@ -81,7 +81,7 @@ function main() {{
       {accelerator_flag} \
       {service_account_flag} \
       --scopes=cloud-platform \
-      --metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},daisy-sources-path={daisy_sources_path} \
+      --metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},custom-sources-path={custom_sources_path} \
       --metadata-from-file startup-script=startup_script/run.sh
   touch /tmp/{run_id}/vm_created
 
@@ -128,11 +128,21 @@ class Generator:
       self.args["run_id"] = "custom-image-{image_name}-{timestamp}".format(
           timestamp=datetime.now().strftime("%Y%m%d-%H%M%S"), **self.args)
     self.args["bucket_name"] = self.args["gcs_bucket"].replace("gs://", "")
-    self.args[
-        "daisy_sources_path"] = "gs://{bucket_name}/{run_id}/sources".format(
-            **self.args)
+    self.args["custom_sources_path"] = "gs://{bucket_name}/{run_id}/sources".format(**self.args)
+
+    all_sources = {
+        "run.sh": "startup_script/run.sh",
+        "init_actions.sh": self.args["customization_script"]
+    }
+    all_sources.update(self.args["extra_sources"])
+    self.args["sources_map_items"] = " ".join([
+        "[{}]='{}'".format(source, path)
+        for source, path in all_sources.items()
+    ])
+
     self.args["log_dir"] = "/tmp/{run_id}/logs".format(**self.args)
-    self.args["gcs_log_dir"] = "gs://{bucket_name}/{run_id}/logs".format(**self.args)
+    self.args["gcs_log_dir"] = "gs://{bucket_name}/{run_id}/logs".format(
+      **self.args)
     if self.args["subnetwork"]:
       self.args["subnetwork_flag"] = "--subnet={subnetwork}".format(**self.args)
       self.args["network_flag"] = ""
@@ -140,11 +150,14 @@ class Generator:
       self.args["network_flag"] = "--network={network}".format(**self.args)
       self.args["subnetwork_flag"] = ""
     if self.args["service_account"]:
-      self.args["service_account_flag"] = "--service-account={service_account}".format(**self.args)
-    self.args["no_external_ip_flag"] = "--no-address" if self.args["no_external_ip"] else ""
-    self.args["accelerator_flag"] = "--accelerator={accelerator} --maintenance-policy terminate".format(**self.args) if self.args["accelerator"] else ""
-
-
+      self.args[
+        "service_account_flag"] = "--service-account={service_account}".format(
+        **self.args)
+    self.args["no_external_ip_flag"] = "--no-address" if self.args[
+      "no_external_ip"] else ""
+    self.args[
+      "accelerator_flag"] = "--accelerator={accelerator} --maintenance-policy terminate".format(
+        **self.args) if self.args["accelerator"] else ""
 
   def generate(self, args):
     self._init_args(args)

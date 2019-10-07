@@ -23,7 +23,7 @@ import tempfile
 
 _IMAGE_PATH = "projects/{}/global/images/{}"
 _IMAGE_URI = re.compile(
-    r"https:\/\/www\.googleapis\.com\/compute\/([^\/]+)\/projects\/([^\/]+)\/global\/images\/([^\/]+)$"
+    r"https://www\.googleapis\.com/compute/([^/]+)/projects/([^/]+)/global/images/([^/]+)$"
 )
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
@@ -148,32 +148,15 @@ def _infer_oauth(args):
     args.oauth = ""
 
 
-def _infer_daisy_sources(args):
-  if args.daisy_path:
-    utils_dir = os.path.dirname(os.path.realpath(__file__))
-    base_dir = os.path.abspath(os.path.join(utils_dir, os.pardir))
-    startup_script_path = os.path.join(base_dir, "startup_script/run.sh")
-    customization_script_path = os.path.abspath(args.customization_script)
-    daisy_sources = {
-        "run.sh": startup_script_path,
-        "init_actions.sh": customization_script_path
-    }
-    daisy_sources.update(args.extra_sources)
-    args.sources = ",\n".join([
-        "\"{}\": \"{}\"".format(source, path)
-        for source, path in daisy_sources.items()
-    ])
-
-
 def _infer_network(args):
   # When the user wants to create a VM in a shared VPC,
   # only the subnetwork argument has to be provided whereas
   # the network one has to be left empty.
   if not args.network and not args.subnetwork:
     args.network = 'global/networks/default'
-  # The --network flag requires format global/networks/<network>, which works
-  # for Daisy but not for gcloud, here we convert it to
-  # projects/<project>/global/networks/<network>, so that works for both.
+  # The --network flag requires format global/networks/<network>,
+  # which does not work for gcloud, here we convert it to
+  # projects/<project>/global/networks/<network>.
   if args.network.startswith('global/networks/'):
     args.network = 'projects/{}/{}'.format(args.project_id, args.network)
 
@@ -182,6 +165,5 @@ def infer_args(args):
   _infer_project_id(args)
   _infer_base_image(args)
   _infer_oauth(args)
-  _infer_daisy_sources(args)
   _infer_network(args)
   args.shutdown_timer_in_sec = args.shutdown_instance_timer_sec

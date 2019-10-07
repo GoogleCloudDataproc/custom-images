@@ -19,7 +19,7 @@ With the required arguments such as custom install packages script and
 Dataproc version, this script will run the following steps in order:
   1. Get user's gcloud project ID.
   2. Get Dataproc's base image name with Dataproc version.
-  3. Run Shell script or Daisy workflow to create a custom Dataproc image.
+  3. Run Shell script to create a custom Dataproc image.
     1. Create a disk with Dataproc's base image.
     2. Create an GCE instance with the disk.
     3. Run custom install packages script to install custom packages.
@@ -32,24 +32,17 @@ Once this script is completed, the custom Dataproc image should be ready to use.
 
 """
 
-import datetime
 import logging
 import os
-import re
 import subprocess
 import sys
-import tempfile
-import uuid
 
-from custom_image_utils import args_parser
 from custom_image_utils import args_inferer
-from custom_image_utils import constants
-from custom_image_utils import daisy_image_creator
-from custom_image_utils import expiration_notifier 
+from custom_image_utils import args_parser
+from custom_image_utils import expiration_notifier
 from custom_image_utils import image_labeller
 from custom_image_utils import shell_image_creator
 from custom_image_utils import smoke_test_runner
-
 
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
@@ -68,11 +61,6 @@ def parse_args(raw_args):
 
 def perform_sanity_checks(args):
   _LOG.info("Performing sanity checks...")
-
-  # Daisy binary
-  if args.daisy_path and not os.path.isfile(args.daisy_path):
-    raise Exception("Invalid path to Daisy binary: '{}' is not a file.".format(
-        args.daisy_path))
 
   # Customization script
   if not os.path.isfile(args.customization_script):
@@ -97,10 +85,7 @@ def main():
 
   args = parse_args(sys.argv[1:])
   perform_sanity_checks(args)
-  if args.daisy_path:
-    daisy_image_creator.create(args)
-  else:
-    shell_image_creator.create(args)
+  shell_image_creator.create(args)
   image_labeller.add_label(args)
   smoke_test_runner.run(args)
   expiration_notifier.notify(args)
