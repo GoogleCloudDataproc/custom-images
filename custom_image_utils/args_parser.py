@@ -151,7 +151,7 @@ def parse_args(args):
       "--extra-sources",
       type=json.loads,
       required=False,
-      default="{}",
+      default={},
       help=
       """(Optional) Additional files/directories uploaded along with
       customization script. This argument is evaluated to a json dictionary.
