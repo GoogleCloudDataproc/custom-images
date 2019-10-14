@@ -21,7 +21,7 @@ clusters.
 2.  gcloud >= 181.0.0 (2017-11-30)
     *   gcloud beta components is required. Use `gcloud components install beta`
         or `sudo apt-get install google-cloud-sdk`.
-3.  Bash 4+
+3.  Bash 4.0+.
 4.  A GCE project with billing, Google Cloud Dataproc API, Google Compute Engine
     API, and Google Cloud Storage APIs enabled.
 5.  Use `gcloud config set project <your-project>` to specify which project to
