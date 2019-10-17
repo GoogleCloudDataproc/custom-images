@@ -18,8 +18,10 @@ set -euxo pipefail
 
 readonly CURRENT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)
 readonly REPO_DIR=$(realpath "${CURRENT_DIR}/..")
+
 readonly TEST_SUFFIX=$(tr -dc 'a-z0-9' </dev/urandom | head -c 6)
 readonly TEST_BUCKET="gs://dataproc-custom-images-presubmit"
+readonly TEST_ZONE="us-central1-a"
 
 test_debian_with_image_version() {
   local image_name="test-image-deb9-${TEST_SUFFIX}"
@@ -29,7 +31,7 @@ test_debian_with_image_version() {
     --image-name "${image_name}" \
     --dataproc-version 1.4.15-debian9 \
     --customization-script "${REPO_DIR}/examples/customization_script.sh" \
-    --zone us-west1-a \
+    --zone "${TEST_ZONE}" \
     --gcs-bucket "${TEST_BUCKET}" \
     --shutdown-instance-timer-sec 30
 }
@@ -42,7 +44,7 @@ test_ubuntu_with_image_uri() {
     --image-name "${image_name}" \
     --base-image-uri projects/cloud-dataproc/global/images/dataproc-1-4-ubu18-20190606-000000-rc01 \
     --customization-script "${REPO_DIR}/examples/customization_script.sh" \
-    --zone us-west1-a \
+    --zone "${TEST_ZONE}" \
     --gcs-bucket "${TEST_BUCKET}" \
     --shutdown-instance-timer-sec 30
 }
@@ -56,7 +58,7 @@ test_extra_sources() {
     --dataproc-version 1.4.15-ubuntu18 \
     --customization-script "${REPO_DIR}/tests/data/customization_script_with_extra_sources.sh" \
     --extra-sources "{\"extra/source.txt\": \"${REPO_DIR}/tests/data/extra_source.txt\"}" \
-    --zone us-west1-a \
+    --zone "${TEST_ZONE}" \
     --gcs-bucket "${TEST_BUCKET}" \
     --shutdown-instance-timer-sec 30
 }

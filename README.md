@@ -112,6 +112,11 @@ python generate_custom_image.py \
     out-of-the-box Dataproc image. This image must be a valid Dataproc image.
     The format of the partial image URI is the following:
     "projects/<project_id>/global/images/<image_name>".
+*   **--storage-location**: The storage location (e.g. US, us-central1) of the
+    custom GCE image. This flag supports the same
+    [values](https://cloud.google.com/sdk/gcloud/reference/beta/compute/images/create#--storage-location)
+    as `gcloud compute images create --storage-location` flag. If not specified,
+    the default GCE image storage location is used.
 *   **--shutdown-instance-timer-sec**: The time to wait in seconds before
     shutting down the VM instance. This value may need to be increased if your
     init script generates a lot of output on stdout. If not specified, the

@@ -26,10 +26,10 @@ class TestArgsParser(unittest.TestCase):
 
   def test_minimal_required_args(self):
     """Verifies it succeeds if all required args are present."""
-    image_name = 'my-image'
     customization_script = '/tmp/my-script.sh'
-    zone = 'us-west1-a'
     gcs_bucket = 'gs://my-bucket'
+    image_name = 'my-image'
+    zone = 'us-west1-a'
 
     args = args_parser.parse_args([
         '--image-name', image_name,
@@ -56,6 +56,7 @@ class TestArgsParser(unittest.TestCase):
         project_id="None",
         service_account="'default'",
         shutdown_instance_timer_sec="300",
+        storage_location=None,
         subnetwork="''",
         zone="'{}'".format(zone)
     )
@@ -63,24 +64,25 @@ class TestArgsParser(unittest.TestCase):
 
   def test_optional_args(self):
     """Verifies it succeeds with optional arguments specified."""
-    image_name = 'my-image'
-    customization_script = '/tmp/my-script.sh'
-    zone = 'us-west1-a'
-    gcs_bucket = 'gs://my-bucket'
-    dataproc_version = '1.4.5-debian9'
-    project_id = 'my-project'
-    oauth = 'xyz'
-    family = 'debian9'
-    machine_type = 'n1-standard-4'
-    disk_size = 40
     accelerator = 'type=nvidia-tesla-v100,count=2'
+    customization_script = '/tmp/my-script.sh'
+    dataproc_version = '1.4.5-debian9'
+    disk_size = 40
+    dry_run = True
+    family = 'debian9'
+    gcs_bucket = 'gs://my-bucket'
+    image_name = 'my-image'
+    machine_type = 'n1-standard-4'
     network = 'my-network'
-    subnetwork = 'my-subnetwork'
     no_external_ip = True
     no_smoke_test = True
-    dry_run = True
+    oauth = 'xyz'
+    project_id = 'my-project'
     service_account = "my-service-account"
     shutdown_instance_timer_sec = 567
+    storage_location = 'us-east1'
+    subnetwork = 'my-subnetwork'
+    zone = 'us-west1-a'
 
     args = args_parser.parse_args([
         '--accelerator', str(accelerator),
@@ -99,6 +101,7 @@ class TestArgsParser(unittest.TestCase):
         '--project-id', project_id,
         '--service-account', service_account,
         '--shutdown-instance-timer-sec', str(shutdown_instance_timer_sec),
+        '--storage-location', str(storage_location),
         '--subnetwork', subnetwork,
         '--zone', zone,
     ])
@@ -122,6 +125,7 @@ class TestArgsParser(unittest.TestCase):
         project_id="'{}'".format(project_id),
         service_account="'{}'".format(service_account),
         shutdown_instance_timer_sec="{}".format(shutdown_instance_timer_sec),
+        storage_location="'{}'".format(storage_location),
         subnetwork="'{}'".format(subnetwork),
         zone="'{}'".format(zone)
     )
@@ -129,11 +133,11 @@ class TestArgsParser(unittest.TestCase):
 
   def _make_expected_result(
       self,
+      accelerator,
       base_image_uri,
       customization_script,
       dataproc_version,
       disk_size,
-      accelerator,
       dry_run,
       extra_sources,
       family,
@@ -147,6 +151,7 @@ class TestArgsParser(unittest.TestCase):
       project_id,
       service_account,
       shutdown_instance_timer_sec,
+      storage_location,
       subnetwork,
       zone):
     expected_result_template = (
@@ -169,6 +174,7 @@ class TestArgsParser(unittest.TestCase):
         "project_id={}, "
         "service_account={}, "
         "shutdown_instance_timer_sec={}, "
+        "storage_location={}, "
         "subnetwork={}, "
         "zone={})")
     return expected_result_template.format(
@@ -190,6 +196,7 @@ class TestArgsParser(unittest.TestCase):
         project_id,
         service_account,
         shutdown_instance_timer_sec,
+        storage_location,
         subnetwork,
         zone)
 
