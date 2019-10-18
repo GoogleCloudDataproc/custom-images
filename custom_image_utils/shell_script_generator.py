@@ -106,10 +106,11 @@ function main() {{
   fi
 
   echo 'Creating custom image.'
-  gcloud compute images create {image_name} \
+  gcloud beta compute images create {image_name} \
       --project={project_id} \
       --source-disk-zone={zone} \
       --source-disk={image_name}-install \
+      {storage_location_flag} \
       --family={family}
   touch /tmp/{run_id}/image_created
 }}
@@ -158,6 +159,9 @@ class Generator:
     self.args[
       "accelerator_flag"] = "--accelerator={accelerator} --maintenance-policy terminate".format(
         **self.args) if self.args["accelerator"] else ""
+    self.args[
+      "storage_location_flag"] = "--storage-location={storage_location}".format(
+        **self.args) if self.args["storage_location"] else ""
 
   def generate(self, args):
     self._init_args(args)

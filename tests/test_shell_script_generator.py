@@ -80,7 +80,7 @@ function main() {
   fi
 
   echo 'Creating custom image.'
-  gcloud compute images create my-image       --project=my-project       --source-disk-zone=us-west1-a       --source-disk=my-image-install       --family=debian9
+  gcloud beta compute images create my-image       --project=my-project       --source-disk-zone=us-west1-a       --source-disk=my-image-install       --storage-location=us-east1       --family=debian9
   touch /tmp/custom-image-my-image-20190611-160823/image_created
 }
 
@@ -111,6 +111,7 @@ class TestShellScriptGenerator(unittest.TestCase):
         'service_account': 'my-service-account',
         'oauth': '',
         'project_id': 'my-project',
+        'storage_location': 'us-east1',
         'shutdown_timer_in_sec': 500
     }
 
