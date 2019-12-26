@@ -22,20 +22,12 @@ _LOG = logging.getLogger(__name__)
 _LOG.setLevel(logging.INFO)
 
 
-def _set_custom_image_label(image_name, version, project_id, parsed=False):
+def _set_custom_image_label(image_name, version, project_id):
   """Sets Dataproc version label in the custom image."""
 
-  # parse the verions if version is still in the format of
-  # <major>.<minor>.<subminor>.
-  if not parsed:
-    # version regex already checked in arg parser
-    parsed_version = version.split(".")
-    label_flag = "--labels=goog-dataproc-version={}-{}-{}".format(
-        parsed_version[0], parsed_version[1], parsed_version[2])
-  else:
-    # in this case, the version is already in the format of
-    # <major>-<minor>-<subminor>
-    label_flag = "--labels=goog-dataproc-version={}".format(version)
+  # Convert `1.5.0-RC1-debian9` version to `1-5-0-rc1-debian9` label
+  version_label = version.replace('.', '-').lower()
+  label_flag = "--labels=goog-dataproc-version={}".format(version_label)
   command = [
       "gcloud", "compute", "images", "add-labels", image_name, "--project",
       project_id, label_flag
@@ -55,7 +47,7 @@ def add_label(args):
   if not args.dry_run:
     _LOG.info("Setting label on custom image...")
     _set_custom_image_label(args.image_name, args.dataproc_version,
-                           args.project_id, args.parsed_image_version)
+                            args.project_id)
     _LOG.info("Successfully set label on custom image...")
   else:
     _LOG.info("Skip setting label on custom image (dry run).")

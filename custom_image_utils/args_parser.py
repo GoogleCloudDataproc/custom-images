@@ -27,7 +27,7 @@ import constants
 # Old style images: 1.2.3
 # New style images: 1.2.3-deb8, 1.2.3-debian9, 1.2.3-RC10-debian9
 _VERSION_REGEX = re.compile(r"^\d+\.\d+\.\d+(-RC\d+)?(-[a-z]+\d+)?$")
-_FULL_IMAGE_URI = re.compile(r"https:\/\/www\.googleapis\.com\/compute\/([^\/]+)\/projects\/([^\/]+)\/global\/images\/([^\/]+)$")
+_FULL_IMAGE_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/([^/]+)$")
 
 
 def _version_regex_type(s):

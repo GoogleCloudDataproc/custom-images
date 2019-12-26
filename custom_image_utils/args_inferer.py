@@ -23,7 +23,7 @@ import tempfile
 
 _IMAGE_PATH = "projects/{}/global/images/{}"
 _IMAGE_URI = re.compile(
-    r"https://www\.googleapis\.com/compute/([^/]+)/projects/([^/]+)/global/images/([^/]+)$"
+    r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/([^/]+)$"
 )
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ def _get_project_id():
 def _extract_image_name_and_project(image_uri):
   """Get Dataproc image name and project."""
   m = _IMAGE_URI.match(image_uri)
-  return m.group(2), m.group(3)  # project, image_name
+  return m.group(3), m.group(4)  # project, image_name
 
 
 def _get_dataproc_image_version(image_uri):
@@ -127,11 +127,9 @@ def _infer_project_id(args):
 def _infer_base_image(args):
   # get dataproc base image from dataproc version
   _LOG.info("Getting Dataproc base image name...")
-  args.parsed_image_version = False
   if args.base_image_uri:
     args.dataproc_base_image = _extract_image_path(args.base_image_uri)
     args.dataproc_version = _get_dataproc_image_version(args.base_image_uri)
-    args.parsed_image_version = True
   elif args.dataproc_version:
     args.dataproc_base_image = _get_dataproc_image_path_by_version(args.dataproc_version)
   else:
