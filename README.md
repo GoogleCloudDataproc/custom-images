@@ -111,7 +111,7 @@ python generate_custom_image.py \
     customization script will be executed on top of this image instead of an
     out-of-the-box Dataproc image. This image must be a valid Dataproc image.
     The format of the partial image URI is the following:
-    "projects/<project_id>/global/images/<image_name>".
+    `projects/<project_id>/global/images/<image_name>`.
 *   **--storage-location**: The storage location (e.g. US, us-central1) of the
     custom GCE image. This flag supports the same
     [values](https://cloud.google.com/sdk/gcloud/reference/beta/compute/images/create#--storage-location)
