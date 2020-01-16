@@ -21,7 +21,7 @@ import argparse
 import json
 import re
 
-import constants
+from custom_image_utils import constants
 
 
 # Old style images: 1.2.3
