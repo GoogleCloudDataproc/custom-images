@@ -13,11 +13,7 @@ conda update -n base -c defaults conda
 
 conda install python==3.6.8
 
-wget -q https://anaconda.org/conda-forge/qgis/3.12.1/download/linux-64/qgis-3.12.1-py36h77e4444_2.tar.bz2 -O /tmp/qgis-3.12.1-py36h77e4444_2.tar.bz2
-conda install --offline --use-local /tmp/qgis-3.8.3-py36hee8cbbe_0.tar.bz2
-
-wget -q https://anaconda.org/conda-forge/libspatialindex/1.9.3/download/win-64/libspatialindex-1.9.3-he025d50_3.tar.bz2 -O /tmp/libspatialindex-1.9.3-he025d50_3.tar.bz2
-conda install --offline --use-local /tmp/libspatialindex-1.9.3-he025d50_3.tar.bz2
+conda install qgis==3.12.1 --channel conda-forge
 
 conda install jupyterlab
 echo "source /etc/profile.d/effective-python.sh" >> /etc/bash.bashrc
