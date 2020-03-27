@@ -11,6 +11,23 @@ conda create --name qgis_dev
 conda activate qgis_dev
 conda install python==3.6.8
 conda install qgis==3.4.8 --channel conda-forge
+
+echo "checking if qgis is installed"
+QGIS_INSTALLED=$(conda list | grep qgis | awk '{ print $1 }')
+
+if [[ "${QGIS_INSTLLED}" == "qgis" ]]; then
+    echo "************************************************"
+    echo "************************************************"
+    echo "************************************************"
+    echo "qgis is installed via conda"
+    echo "************************************************"
+    echo "************************************************"
+    echo "************************************************"
+else
+    echo "qgis is not installe"
+    exit 99
+fi
+
 conda install jupyterlab
 echo "source /etc/profile.d/effective-python.sh" >> /etc/bash.bashrc
 conda install pysal geopandas
