@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # This image is manufactured using python generate_custom_image.py
+
 cat >>/etc/google-dataproc/dataproc.properties <<EOF
 dataproc.components.activate=anaconda
 EOF
@@ -8,7 +9,9 @@ bash /usr/local/share/google/dataproc/bdutil/components/activate/anaconda.sh
 source /etc/profile.d/effective-python.sh
 source /etc/profile.d/conda.sh
 
-/opt/conda/anaconda/bin/conda update -n base -c defaults conda
+conda update -n base -c defaults conda
+
+conda install python==3.6.8
 
 wget -q https://conda.anaconda.org/conda-forge/linux-64/qgis-3.8.3-py36hee8cbbe_0.tar.bz2 -O /tmp/qgis-3.8.3-py36hee8cbbe_0.tar.bz2
 conda install --offline --use-local /tmp/qgis-3.8.3-py36hee8cbbe_0.tar.bz2
@@ -24,7 +27,7 @@ conda install pysal geopandas
 
 sudo apt-get update
 #sudo apt-get install -y qgis python-qgis qgis-plugin-grass libspatialindex-dev uuid-dev libgdal-dev default-libmysqlclient-dev
-sudo apt-get install -y mlocate uuid-dev libgdal-dev default-libmysqlclient-dev libqca-qt5-2 libqt5keychain1
+sudo apt-get install -y mlocate uuid-dev libgdal-dev default-libmysqlclient-dev libqca-qt5-2 libqt5keychain1 qgis python-qgis qgis-plugin-grass
 
 #echo "Linking libsptailindex"
 #sudo ln -s /opt/conda/anaconda/lib/libspatialindex.so.6.1.1 /opt/conda/anaconda/lib/libspatialindex.so.5
@@ -35,7 +38,7 @@ echo 'export LD_LIBRARY_PATH=/opt/conda/anaconda/lib' >> /etc/bash.bashrc
 echo 'export PYTHONPATH=/opt/conda/anaconda/share/qgis/python' >> /etc/bash.bashrc
 
 echo "cloning moove datascience repo"
-git clone https://3f1c3edf9df4d55c12beb682c655f4c626379c92@github.com/moove-ai/moove-data-exploration.git
+git clone https://GITHUB_OAUTH_TOKEN@github.com/moove-ai/moove-data-exploration.git
 cd moove-data-exploration
 git checkout feture-branch-panel-data-set
 
