@@ -44,9 +44,9 @@ git checkout feture-branch-panel-data-set
 
 
 echo "pip installation"
-pip install msgpack  --upgrade --ignore-installed
-pip install wrapt  --upgrade --ignore-installed
-pip install -r ./requirements.txt --upgrade --ignore-installed
+#pip install msgpack  --upgrade --ignore-installed
+#pip install wrapt  --upgrade --ignore-installed
+#pip install -r ./requirements.txt --upgrade --ignore-installed
 
 # ensure pip is missing. This command should be run three times
 echo "ensure pip numpy is missing"
