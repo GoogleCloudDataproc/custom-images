@@ -7,6 +7,37 @@ dataproc.components.activate=anaconda
 EOF
 bash /usr/local/share/google/dataproc/bdutil/components/activate/anaconda.sh
 
+mkdir -p /opt/moove/scripts
+
+## Ensures jupyter notebook is running under the moove-dataproc environment
+cat >>/usr/lib/systemd/system/jupyter-fix.service <<EOF
+[Unit]
+Description=Disable USB power
+Before=basic.target
+After=local-fs.target sysinit.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '/opt/moove/scripts/fixJupyter.sh'
+
+[Install]
+WantedBy=basic.target
+EOF
+
+cat>>/opt/moove/scripts/fixJupyter.sh <<EOF
+#!/usr/bin/env bash
+sed -i 's/anaconda/moove-dataproc/g' /usr/lib/systemd/system/jupyter.service
+sed -i 's/anaconda/moove-dataproc/g' /etc/default/jupyter
+systemctl disable jupyter-fix
+systemctl daemon-reload
+EOF
+
+chmod a+x /opt/moove/scripts/fixJupyter.sh
+
+systemctl daemon-reload
+systemctl enable jupyter-fix
+
 ## Get correct python path
 source /etc/profile.d/effective-python.sh
 source /etc/profile.d/conda.sh
