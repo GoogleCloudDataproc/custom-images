@@ -14,8 +14,8 @@ echo ". /opt/conda/anaconda/etc/profile.d/conda.sh" >> ~/.bashrc
 sudo ln -s /opt/conda/anaconda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 source /etc/profile.d/conda.sh
 conda activate /opt/conda/moove-dataproc
-conda install conda python==3.6.8
-conda install qgis -c conda-forge
+conda install -c anaconda libnetcdf
+conda install qgis==3.12.1=py36h77e4444_2 -c conda-forge
 conda install ipykernel
 python -m ipykernel install --user --name moove-dataproc --display-name="Python 3.6 qgis kernel"
 
