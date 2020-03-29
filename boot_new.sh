@@ -10,6 +10,9 @@ source /etc/profile.d/effective-python.sh
 source /etc/profile.d/conda.sh
 
 conda create --prefix /opt/conda/moove-dataproc
+echo ". /opt/conda/anaconda/etc/profile.d/conda.sh" >> ~/.bashrc
+sudo ln -s /opt/conda/anaconda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
+source /etc/profile.d/conda.sh
 conda activate /opt/conda/moove-dataproc
 conda install conda python==3.6.8
 conda install qgis -c conda-forge
