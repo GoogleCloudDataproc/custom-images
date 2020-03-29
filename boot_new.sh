@@ -9,7 +9,7 @@ bash /usr/local/share/google/dataproc/bdutil/components/activate/anaconda.sh
 source /etc/profile.d/effective-python.sh
 source /etc/profile.d/conda.sh
 
-conda create --prefix /opt/conda/moove-dataproc
+conda create --prefix /opt/conda/moove-dataproc conda python==3.6.8
 echo ". /opt/conda/anaconda/etc/profile.d/conda.sh" >> ~/.bashrc
 sudo ln -s /opt/conda/anaconda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 source /etc/profile.d/conda.sh
@@ -19,6 +19,7 @@ conda install qgis -c conda-forge
 conda install ipykernel
 python -m ipykernel install --user --name moove-dataproc --display-name="Python 3.6 qgis kernel"
 
+touch /root/.bashrc
 echo "source /etc/profile.d/conda.sh" >> /root/.bashrc
 
 #
