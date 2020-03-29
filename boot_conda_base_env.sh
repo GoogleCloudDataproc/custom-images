@@ -17,8 +17,10 @@ echo ". /opt/conda/anaconda/etc/profile.d/conda.sh" >> /root/.bashrc
 ln -s /opt/conda/anaconda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 source /etc/profile.d/conda.sh
 conda install jupyterlab
+conda install python==3.6.10
 conda install -c anaconda libnetcdf
-conda install qgis==3.12.1=py36h77e4444_2 -c conda-forge
+wget https://anaconda.org/conda-forge/qgis/3.12.1/download/linux-64/qgis-3.12.1-py36h77e4444_2.tar.bz2 -O /opt/qgis-3.12.1-py36h77e4444_2.tar.bz2
+conda install --use-local /opt/qgis-3.12.1-py36h77e4444_2.tar.bz2
 conda install ipykernel
 ln -s /opt/conda/anaconda/lib/libnetcdf.so.18 /opt/conda/anaconda/lib/libnetcdf.so.15
 python -m ipykernel install --user --name moove-dataproc --display-name="Python 3.6 qgis kernel"
