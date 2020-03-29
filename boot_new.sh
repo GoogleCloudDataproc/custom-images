@@ -19,6 +19,8 @@ conda install qgis -c conda-forge
 conda install ipykernel
 python -m ipykernel install --user --name moove-dataproc --display-name="Python 3.6 qgis kernel"
 
+echo "source /etc/profile.d/conda.sh" >> /root/.bashrc
+
 #
 ##conda install jupyterlab
 #echo "source /etc/profile.d/effective-python.sh" >> /etc/bash.bashrc
