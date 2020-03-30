@@ -15,7 +15,7 @@ source /etc/profile.d/conda.sh
 ## Setup conda environment with qgis
 conda create --prefix /opt/conda/moove-dataproc conda python==3.6.10
 touch /root/.bashrc
-echo ". /opt/conda/anaconda/etc/profile.d/conda.sh" >> /root/.bashrc
+echo ". /opt/conda/anaconda/etc/profile.d/conda.sh" >> /root/.bashrcx
 ln -s /opt/conda/anaconda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 source /etc/profile.d/conda.sh
 conda activate /opt/conda/moove-dataproc
@@ -34,8 +34,12 @@ echo "pip installation"
 pip install msgpack  --upgrade --ignore-installed
 pip install wrapt  --upgrade --ignore-installed
 pip install -r ./requirements.txt --upgrade --ignore-installed
+conda install -c conda-forge pandana
+
+pip install dill
+pip install urbanaccess
 pip install --upgrade google-api-python-client
-pip install google-cloud-bigquery
+pip install --upgrade google-cloud-bigquery
 pip install --upgrade google-cloud-storage
 
 
