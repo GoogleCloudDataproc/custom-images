@@ -7,36 +7,6 @@ dataproc.components.activate=anaconda
 EOF
 bash /usr/local/share/google/dataproc/bdutil/components/activate/anaconda.sh
 
-mkdir -p /opt/moove/scripts
-
-## Ensures jupyter notebook is running under the moove-dataproc environment
-cat >>/usr/lib/systemd/system/jupyter-fix.service <<EOF
-[Unit]
-Description=Disable USB power
-Before=basic.target
-After=local-fs.target sysinit.target
-DefaultDependencies=no
-
-[Service]
-Type=oneshot
-ExecStart=/bin/bash -c '/opt/moove/scripts/fixJupyter.sh'
-
-[Install]
-WantedBy=basic.target
-EOF
-
-cat>>/opt/moove/scripts/fixJupyter.sh <<EOF
-#!/usr/bin/env bash
-sed -i 's/anaconda/moove-dataproc/g' /usr/lib/systemd/system/jupyter.service
-sed -i 's/anaconda/moove-dataproc/g' /etc/default/jupyter
-systemctl disable jupyter-fix
-systemctl daemon-reload
-EOF
-
-chmod a+x /opt/moove/scripts/fixJupyter.sh
-
-systemctl daemon-reload
-systemctl enable jupyter-fix
 
 ## Get correct python path
 source /etc/profile.d/effective-python.sh
@@ -54,10 +24,10 @@ conda install -c anaconda libnetcdf
 conda install qgis==3.12.1=py36h77e4444_2 -c conda-forge
 conda install ipykernel
 ln -s /opt/conda/moove-dataproc/lib/libnetcdf.so.18 /opt/conda/moove-dataproc/lib/libnetcdf.so.15
-python -m ipykernel install --user --name moove-dataproc --display-name="Python 3.6 qgis kernel"
+python -m ipykernel install --user --name qgis-test-kernel --display-name="qgis-test-kernel"
 
 ## Install pip packages
-git clone https://17f36b202dde97a55aa349835b8d72fb01e3365d@github.com/moove-ai/moove-data-exploration.git
+git clone https://GITHUB_OAUTH_TOKEN@github.com/moove-ai/moove-data-exploration.git
 cd moove-data-exploration
 git checkout feture-branch-panel-data-set
 echo "pip installation"
