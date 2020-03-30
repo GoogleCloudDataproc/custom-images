@@ -34,6 +34,10 @@ echo "pip installation"
 pip install msgpack  --upgrade --ignore-installed
 pip install wrapt  --upgrade --ignore-installed
 pip install -r ./requirements.txt --upgrade --ignore-installed
+pip install --upgrade google-api-python-client
+pip install google-cloud-bigquery
+pip install --upgrade google-cloud-storage
+
 
 ## Setup spark jars
 mkdir -p /usr/lib/spark/jars
