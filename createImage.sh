@@ -22,6 +22,7 @@ python generate_custom_image.py \
 --zone us-central1-b \
 --gcs-bucket gs://moove-dataproc-custom \
 --disk-size 100  \
---machine-type n1-standard-8
+--machine-type n1-standard-8 \
+--extra-sources "{\"/tmp/jupyter.sh\": \"jupyter.sh\"}"
 
 git checkout -- ${BOOT_SCRIPT}

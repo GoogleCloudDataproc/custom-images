@@ -81,7 +81,7 @@ function main() {{
       {accelerator_flag} \
       {service_account_flag} \
       --scopes=cloud-platform \
-      --metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},custom-sources-path={custom_sources_path} \
+      --metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},custom-sources-path={custom_sources_path},dataproc-bucket=dataproc_jupiternb \
       --metadata-from-file startup-script=startup_script/run.sh
   touch /tmp/{run_id}/vm_created
 

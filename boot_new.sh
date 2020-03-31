@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 ### This image is manufactured using python generate_custom_image.py ###
 
-## Sets up anaconda
+# sets up anaconda and jupyter
+rm -f /usr/local/share/google/dataproc/bdutil/components/activate/jupyter.sh
+mv /tmp/jupyter.sh /usr/local/share/google/dataproc/bdutil/components/activate/jupyter.sh
 cat >>/etc/google-dataproc/dataproc.properties <<EOF
 dataproc.components.activate=anaconda
 EOF
 bash /usr/local/share/google/dataproc/bdutil/components/activate/anaconda.sh
-
 
 ## Get correct python path
 source /etc/profile.d/effective-python.sh
