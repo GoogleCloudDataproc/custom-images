@@ -23,19 +23,17 @@ logging.basicConfig()
 _LOG = logging.getLogger(__name__)
 _LOG.setLevel(logging.INFO)
 
-
-def _create_workflow_template(workflow_name, image_name, project_id, zone,
+def _create_workflow_template(workflow_name, image_name, project_id, zone, region,
                               network, subnet):
   """Create a Dataproc workflow template for testing."""
-
   create_command = [
       "gcloud", "beta", "dataproc", "workflow-templates", "create",
-      workflow_name, "--project", project_id
+      workflow_name, "--project", project_id, "--region", region
   ]
   set_cluster_command = [
       "gcloud", "beta", "dataproc", "workflow-templates",
       "set-managed-cluster", workflow_name, "--project", project_id, "--image",
-      image_name, "--zone", zone
+      image_name, "--zone", zone, "--region", region
   ]
   if network and not subnet:
     set_cluster_command.extend(["--network", network])
@@ -43,7 +41,7 @@ def _create_workflow_template(workflow_name, image_name, project_id, zone,
     set_cluster_command.extend(["--subnet", subnet])
   add_job_command = [
       "gcloud", "beta", "dataproc", "workflow-templates", "add-job", "spark",
-      "--workflow-template", workflow_name, "--project", project_id,
+      "--workflow-template", workflow_name, "--project", project_id, "--region", region,
       "--step-id", "001", "--class", "org.apache.spark.examples.SparkPi",
       "--jars", "file:///usr/lib/spark/examples/jars/spark-examples.jar", "--",
       "1000"
@@ -68,11 +66,11 @@ def _create_workflow_template(workflow_name, image_name, project_id, zone,
                        workflow_name)
 
 
-def _instantiate_workflow_template(workflow_name, project_id):
+def _instantiate_workflow_template(workflow_name, project_id, region):
   """Run a Dataproc workflow template to test the newly built custom image."""
   command = [
       "gcloud", "beta", "dataproc", "workflow-templates", "instantiate",
-      workflow_name, "--project", project_id
+      workflow_name, "--project", project_id, "--region", region
   ]
   pipe = subprocess.Popen(command)
   pipe.wait()
@@ -80,11 +78,11 @@ def _instantiate_workflow_template(workflow_name, project_id):
     raise RuntimeError("Unable to instantiate workflow template.")
 
 
-def _delete_workflow_template(workflow_name, project_id):
+def _delete_workflow_template(workflow_name, project_id, region):
   """Delete a Dataproc workflow template."""
   command = [
       "gcloud", "beta", "dataproc", "workflow-templates", "delete",
-      workflow_name, "-q", "--project", project_id
+      workflow_name, "-q", "--project", project_id, "--region", region
   ]
   pipe = subprocess.Popen(command)
   pipe.wait()
@@ -94,7 +92,7 @@ def _delete_workflow_template(workflow_name, project_id):
 
 def _verify_custom_image(image_name, project_id, zone, network, subnetwork):
   """Verifies if custom image works with Dataproc."""
-
+  region = zone[:-2]
   date = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
   # Note: workflow_name can collide if the script runs more than 10000
   # times/second.
@@ -102,13 +100,13 @@ def _verify_custom_image(image_name, project_id, zone, network, subnetwork):
   try:
     _LOG.info("Creating Dataproc workflow-template %s with image %s...",
               workflow_name, image_name)
-    _create_workflow_template(workflow_name, image_name, project_id, zone,
+    _create_workflow_template(workflow_name, image_name, project_id, zone, region,
                               network, subnetwork)
     _LOG.info(
         "Successfully created Dataproc workflow-template %s with image %s...",
         workflow_name, image_name)
     _LOG.info("Smoke testing Dataproc workflow-template %s...")
-    _instantiate_workflow_template(workflow_name, project_id)
+    _instantiate_workflow_template(workflow_name, project_id, region)
     _LOG.info("Successfully smoke tested Dataproc workflow-template %s...",
               workflow_name)
   except RuntimeError as e:
@@ -119,7 +117,7 @@ def _verify_custom_image(image_name, project_id, zone, network, subnetwork):
   finally:
     try:
       _LOG.info("Deleting Dataproc workflow-template %s...", workflow_name)
-      _delete_workflow_template(workflow_name, project_id)
+      _delete_workflow_template(workflow_name, project_id, region)
       _LOG.info("Successfully deleted Dataproc workflow-template %s...",
                 workflow_name)
     except RuntimeError:
