@@ -4,10 +4,12 @@
 # sets up anaconda and jupyter
 rm -f /usr/local/share/google/dataproc/bdutil/components/activate/jupyter.sh
 mv /tmp/jupyter.sh /usr/local/share/google/dataproc/bdutil/components/activate/jupyter.sh
+wget https://storage.googleapis.com/hadoop-lib/gcs/gcs-connector-hadoop2-latest.jar -O /usr/local/share/google/dataproc/lib/gcs-connector-hadoop2-latest.jar
 cat >>/etc/google-dataproc/dataproc.properties <<EOF
-dataproc.components.activate=anaconda
+dataproc.components.activate=anaconda jupyter
 EOF
 bash /usr/local/share/google/dataproc/bdutil/components/activate/anaconda.sh
+bash /usr/local/share/google/dataproc/bdutil/components/activate/jupyter.sh
 
 ## Get correct python path
 source /etc/profile.d/effective-python.sh
@@ -47,7 +49,7 @@ pip install --upgrade google-cloud-storage
 ## Setup spark jars
 mkdir -p /usr/lib/spark/jars
 gsutil cp gs://spark-lib/bigquery/spark-bigquery-latest.jar /usr/lib/spark/jars/
-
+sleep 10000;
 ### Install Netdata
 #[ "3058dbf398ba0d73d02c7626545610f5" = "$(curl -Ss https://my-netdata.io/kickstart.sh | md5sum | cut -d ' ' -f 1)" ] && export install_netdata=true || echo "FAILED, INVALID"
 #if [[ ${install_netdata} == "true" ]]; then
