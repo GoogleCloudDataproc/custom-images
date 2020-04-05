@@ -80,7 +80,7 @@ function main() {
   fi
 
   echo 'Creating custom image.'
-  gcloud beta compute images create my-image       --project=my-project       --source-disk-zone=us-west1-a       --source-disk=my-image-install       --storage-location=us-east1       --family=debian9
+  gcloud compute images create my-image       --project=my-project       --source-disk-zone=us-west1-a       --source-disk=my-image-install       --storage-location=us-east1       --family=debian9
   touch /tmp/custom-image-my-image-20190611-160823/image_created
 }
 

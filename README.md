@@ -19,8 +19,6 @@ clusters.
 
 1.  Python 2.7+.
 2.  gcloud >= 181.0.0 (2017-11-30)
-    *   gcloud beta components is required. Use `gcloud components install beta`
-        or `sudo apt-get install google-cloud-sdk`.
 3.  Bash 4.0+.
 4.  A GCE project with billing, Google Cloud Dataproc API, Google Compute Engine
     API, and Google Cloud Storage APIs enabled.
@@ -114,7 +112,7 @@ python generate_custom_image.py \
     `projects/<project_id>/global/images/<image_name>`.
 *   **--storage-location**: The storage location (e.g. US, us-central1) of the
     custom GCE image. This flag supports the same
-    [values](https://cloud.google.com/sdk/gcloud/reference/beta/compute/images/create#--storage-location)
+    [values](https://cloud.google.com/sdk/gcloud/reference/compute/images/create#--storage-location)
     as `gcloud compute images create --storage-location` flag. If not specified,
     the default GCE image storage location is used.
 *   **--shutdown-instance-timer-sec**: The time to wait in seconds before
