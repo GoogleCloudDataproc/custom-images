@@ -27,13 +27,8 @@ def _create_workflow_template(workflow_name, image_name, project_id, zone, regio
                               network, subnet):
   """Create a Dataproc workflow template for testing."""
   create_command = [
-<<<<<<< HEAD
       "gcloud", "dataproc", "workflow-templates", "create",
-      workflow_name, "--project", project_id
-=======
-      "gcloud", "beta", "dataproc", "workflow-templates", "create",
       workflow_name, "--project", project_id, "--region", region
->>>>>>> 549340792816de49c8a5bc5f345ec141369ee8a0
   ]
   set_cluster_command = [
       "gcloud", "dataproc", "workflow-templates",
@@ -45,13 +40,8 @@ def _create_workflow_template(workflow_name, image_name, project_id, zone, regio
   else:
     set_cluster_command.extend(["--subnet", subnet])
   add_job_command = [
-<<<<<<< HEAD
       "gcloud", "dataproc", "workflow-templates", "add-job", "spark",
-      "--workflow-template", workflow_name, "--project", project_id,
-=======
-      "gcloud", "beta", "dataproc", "workflow-templates", "add-job", "spark",
       "--workflow-template", workflow_name, "--project", project_id, "--region", region,
->>>>>>> 549340792816de49c8a5bc5f345ec141369ee8a0
       "--step-id", "001", "--class", "org.apache.spark.examples.SparkPi",
       "--jars", "file:///usr/lib/spark/examples/jars/spark-examples.jar", "--",
       "1000"
