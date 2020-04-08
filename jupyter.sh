@@ -583,7 +583,7 @@ END
 
 JUPYTERHUB_ENABLED=$(get_dataproc_property jupyter.hub.enabled)
 
-CAT<<EOF > "${JUPYTER_ENV_FILE}"
+cat <<EOF > "${JUPYTER_ENV_FILE}"
 PATH=/opt/conda/moove-dataproc/bin:/opt/conda/moove-dataproc/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 PYTHONPATH=/opt/conda/moove-dataproc/share/qgis/python/plugins:/opt/conda/moove-dataproc/share/qgis/python
 GDAL_DATA=/opt/conda/moove-dataproc/share/gdal
