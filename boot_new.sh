@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 ### This image is manufactured using python generate_custom_image.py ###
 
-# sets up anaconda and jupyter
+## sets up anaconda and jupyter
 rm -f /usr/local/share/google/dataproc/bdutil/components/activate/jupyter.sh
-cp /opt/jupyter.sh /usr/local/share/google/dataproc/bdutil/components/activate/jupyter.sh
+cp /opt/jupyter-custom.sh /usr/local/share/google/dataproc/bdutil/components/activate/jupyter.sh
 cat >>/etc/google-dataproc/dataproc.properties <<EOF
 dataproc.components.activate=anaconda
 EOF
@@ -17,7 +17,6 @@ source /etc/profile.d/conda.sh
 conda create --prefix /opt/conda/moove-dataproc conda python==3.6.10
 touch /root/.bashrc
 echo ". /opt/conda/anaconda/etc/profile.d/conda.sh" >> /root/.bashrcx
-ln -s /opt/conda/anaconda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 source /etc/profile.d/conda.sh
 conda activate /opt/conda/moove-dataproc
 conda install jupyterlab
@@ -36,20 +35,37 @@ pip install msgpack  --upgrade --ignore-installed
 pip install wrapt  --upgrade --ignore-installed
 pip install -r ./requirements.txt --upgrade --ignore-installed
 conda install -c conda-forge pandana
-
-pip install dill
-pip install urbanaccess
+pip install pysal install pyshp jenkspy urbanaccess dill ujson pandas-gbq
 pip install --upgrade google-api-python-client
 pip install --upgrade google-cloud-bigquery
 pip install --upgrade google-cloud-storage
 
-
 ## Setup spark jars
 mkdir -p /usr/lib/spark/jars
 gsutil cp gs://spark-lib/bigquery/spark-bigquery-latest.jar /usr/lib/spark/jars/
-### Install Netdata
-#[ "3058dbf398ba0d73d02c7626545610f5" = "$(curl -Ss https://my-netdata.io/kickstart.sh | md5sum | cut -d ' ' -f 1)" ] && export install_netdata=true || echo "FAILED, INVALID"
-#if [[ ${install_netdata} == "true" ]]; then
-#    yes | bash <(curl -Ss https://my-netdata.io/kickstart.sh)  --enable-ebpf  --dont-wait
-#    exit 0
-#fi
+
+## Setup monitoring
+wget https://github.com/prometheus/node_exporter/releases/download/v0.18.1/node_exporter-0.18.1.linux-amd64.tar.gz
+tar xvfz node_exporter-*.*-amd64.tar.gz
+mv node_exporter /usr/sbin/node_exporter
+
+cat >> /etc/default/node_exporter <<EOF
+OPTIONS=""
+EOF
+
+cat >> /usr/lib/systemd/system/node_exporter.service <<EOF
+[Unit]
+Description=Node Exporter
+
+[Service]
+User=node_exporter
+EnvironmentFile=/etc/default/node_exporter
+ExecStart=/usr/sbin/node_exporter $OPTIONS
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable node_exporter.service
+systemctl start node_exporter.service
