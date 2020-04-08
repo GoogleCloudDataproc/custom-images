@@ -28,9 +28,9 @@
 set -x
 
 # get custom-sources-path
-CUSTOM_SOURCES_PATH=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/attributes/custom-sources-path" -H "Metadata-Flavor: Google")
+CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sources-path)
 # get time to wait for stdout to flush
-SHUTDOWN_TIMER_IN_SEC=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/attributes/shutdown-timer-in-sec" -H "Metadata-Flavor: Google")
+SHUTDOWN_TIMER_IN_SEC=$(/usr/share/google/get_metadata_value attributes/shutdown-timer-in-sec)
 
 ready=""
 

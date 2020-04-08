@@ -58,7 +58,8 @@ class TestArgsParser(unittest.TestCase):
         shutdown_instance_timer_sec="300",
         storage_location=None,
         subnetwork="''",
-        zone="'{}'".format(zone)
+        zone="'{}'".format(zone),
+        metadata=None
     )
     self.assertEqual(str(args), expected_result)
 
@@ -83,6 +84,7 @@ class TestArgsParser(unittest.TestCase):
     storage_location = 'us-east1'
     subnetwork = 'my-subnetwork'
     zone = 'us-west1-a'
+    metadata = 'key1=value1,key2=value2'
 
     args = args_parser.parse_args([
         '--accelerator', str(accelerator),
@@ -104,6 +106,7 @@ class TestArgsParser(unittest.TestCase):
         '--storage-location', str(storage_location),
         '--subnetwork', subnetwork,
         '--zone', zone,
+        '--metadata', metadata,
     ])
 
     expected_result = self._make_expected_result(
@@ -118,6 +121,7 @@ class TestArgsParser(unittest.TestCase):
         gcs_bucket="'{}'".format(gcs_bucket),
         image_name="'{}'".format(image_name),
         machine_type="'{}'".format(machine_type),
+        metadata="'{}'".format(metadata),
         network="'{}'".format(network),
         no_external_ip="{}".format(no_external_ip),
         no_smoke_test="{}".format(no_smoke_test),
@@ -127,7 +131,7 @@ class TestArgsParser(unittest.TestCase):
         shutdown_instance_timer_sec="{}".format(shutdown_instance_timer_sec),
         storage_location="'{}'".format(storage_location),
         subnetwork="'{}'".format(subnetwork),
-        zone="'{}'".format(zone)
+        zone="'{}'".format(zone),
     )
     self.assertEqual(str(args), expected_result)
 
@@ -144,6 +148,7 @@ class TestArgsParser(unittest.TestCase):
       gcs_bucket,
       image_name,
       machine_type,
+      metadata,
       network,
       no_external_ip,
       no_smoke_test,
@@ -167,6 +172,7 @@ class TestArgsParser(unittest.TestCase):
         "gcs_bucket={}, "
         "image_name={}, "
         "machine_type={}, "
+        "metadata={}, "
         "network={}, "
         "no_external_ip={}, "
         "no_smoke_test={}, "
@@ -189,6 +195,7 @@ class TestArgsParser(unittest.TestCase):
         gcs_bucket,
         image_name,
         machine_type,
+        metadata,
         network,
         no_external_ip,
         no_smoke_test,

@@ -121,6 +121,13 @@ python generate_custom_image.py \
     default value of 300 seconds will be used.
 *   **--dry-run**: Dry run mode which only validates input and generates
     workflow script without creating image. Disabled by default.
+*   **--metadata**: VM metadata which can be read by the customization script
+    with `/usr/share/google/get_metadata_value attributes/<key>` at runtime. The
+    value of this flag takes the form of `key1=value1,key2=value2,...`. If the
+    value includes special characters (e.g., `=`, `,` or spaces) which needs to
+    be escaped, consider encoding the value, then decode it back in the
+    customization script. See more information about VM metadata on
+    https://cloud.google.com/sdk/gcloud/reference/compute/instances/create.
 
 ### Examples
 
@@ -134,6 +141,7 @@ python generate_custom_image.py \
     --image-name custom-image-1-4-5 \
     --dataproc-version 1.4.5-debian9 \
     --customization-script ~/custom-script.sh \
+    --metadata 'key1=value1,key2=value2' \
     --zone us-central1-f \
     --gcs-bucket gs://my-test-bucket
 ```

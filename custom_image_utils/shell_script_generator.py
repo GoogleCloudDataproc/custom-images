@@ -81,7 +81,7 @@ function main() {{
       {accelerator_flag} \
       {service_account_flag} \
       --scopes=cloud-platform \
-      --metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},custom-sources-path={custom_sources_path} \
+      {metadata_flag} \
       --metadata-from-file startup-script=startup_script/run.sh
   touch /tmp/{run_id}/vm_created
 
@@ -162,6 +162,12 @@ class Generator:
     self.args[
       "storage_location_flag"] = "--storage-location={storage_location}".format(
         **self.args) if self.args["storage_location"] else ""
+    metadata_flag_template = (
+        "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},"
+        "custom-sources-path={custom_sources_path}")
+    if self.args["metadata"]:
+      metadata_flag_template += ",{metadata}"
+    self.args["metadata_flag"] = metadata_flag_template.format(**self.args)
 
   def generate(self, args):
     self._init_args(args)
