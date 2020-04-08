@@ -70,6 +70,18 @@ def parse_args(args):
       required=True,
       help="""User's script to install custom packages.""")
   required_args.add_argument(
+      "--metadata",
+      type=str,
+      required=False,
+      help="""VM metadata which can be read by the customization script
+      with `/usr/share/google/get_metadata_value attributes/<key>` at runtime.
+      The value of this flag takes the form of `key1=value1,key2=value2,...`.
+      If the value includes special characters (e.g., `=`, `,` or spaces) which
+      needs to be escaped, consider encoding the value, then decode it back in
+      the customization script. See more information about VM metadata
+      on https://cloud.google.com/sdk/gcloud/reference/compute/instances/create.
+      """)
+  required_args.add_argument(
       "--zone",
       type=str,
       required=True,

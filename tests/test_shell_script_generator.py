@@ -62,7 +62,7 @@ function main() {
   touch "/tmp/custom-image-my-image-20190611-160823/disk_created"
 
   echo 'Creating VM instance to run customization script.'
-  gcloud compute instances create my-image-install       --project=my-project       --zone=us-west1-a              --subnet=my-subnet       --no-address       --machine-type=n1-standard-2       --disk=auto-delete=yes,boot=yes,mode=rw,name=my-image-install       --accelerator=type=nvidia-tesla-v100,count=2 --maintenance-policy terminate       --service-account=my-service-account       --scopes=cloud-platform       --metadata=shutdown-timer-in-sec=500,custom-sources-path=gs://my-bucket/custom-image-my-image-20190611-160823/sources       --metadata-from-file startup-script=startup_script/run.sh
+  gcloud compute instances create my-image-install       --project=my-project       --zone=us-west1-a              --subnet=my-subnet       --no-address       --machine-type=n1-standard-2       --disk=auto-delete=yes,boot=yes,mode=rw,name=my-image-install       --accelerator=type=nvidia-tesla-v100,count=2 --maintenance-policy terminate       --service-account=my-service-account       --scopes=cloud-platform       --metadata=shutdown-timer-in-sec=500,custom-sources-path=gs://my-bucket/custom-image-my-image-20190611-160823/sources,key1=value1,key2=value2       --metadata-from-file startup-script=startup_script/run.sh
   touch /tmp/custom-image-my-image-20190611-160823/vm_created
 
   echo 'Waiting for customization script to finish and VM shutdown.'
@@ -97,6 +97,7 @@ class TestShellScriptGenerator(unittest.TestCase):
         'family': 'debian9',
         'image_name': 'my-image',
         'customization_script': '/tmp/my-script.sh',
+        'metadata': 'key1=value1,key2=value2',
         'extra_sources': {"extra_src.txt": "/path/to/extra.txt"},
         'machine_type': 'n1-standard-2',
         'disk_size': 40,

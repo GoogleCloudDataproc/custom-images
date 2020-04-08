@@ -14,6 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -euxo pipefail
+
+METADATA1=$(/usr/share/google/get_metadata_value attributes/key1)
+echo "Metadata key1=${METADATA1}"
+METADATA2=$(/usr/share/google/get_metadata_value attributes/key2)
+echo "Metadata key1=${METADATA2}"
+
+if [[ ${METADATA1} != "value1" || ${METADATA2} != "value2" ]]; then
+  echo "Unexpected metadata values"
+  exit 1
+fi
 
 echo "Installing custom packages..."
 apt-get -y update
