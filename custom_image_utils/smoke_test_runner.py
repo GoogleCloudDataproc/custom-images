@@ -27,11 +27,11 @@ def _create_workflow_template(workflow_name, image_name, project_id, zone, regio
                               network, subnet):
   """Create a Dataproc workflow template for testing."""
   create_command = [
-      "gcloud", "beta", "dataproc", "workflow-templates", "create",
+      "gcloud", "dataproc", "workflow-templates", "create",
       workflow_name, "--project", project_id, "--region", region
   ]
   set_cluster_command = [
-      "gcloud", "beta", "dataproc", "workflow-templates",
+      "gcloud", "dataproc", "workflow-templates",
       "set-managed-cluster", workflow_name, "--project", project_id, "--image",
       image_name, "--zone", zone, "--region", region
   ]
@@ -40,7 +40,7 @@ def _create_workflow_template(workflow_name, image_name, project_id, zone, regio
   else:
     set_cluster_command.extend(["--subnet", subnet])
   add_job_command = [
-      "gcloud", "beta", "dataproc", "workflow-templates", "add-job", "spark",
+      "gcloud", "dataproc", "workflow-templates", "add-job", "spark",
       "--workflow-template", workflow_name, "--project", project_id, "--region", region,
       "--step-id", "001", "--class", "org.apache.spark.examples.SparkPi",
       "--jars", "file:///usr/lib/spark/examples/jars/spark-examples.jar", "--",
@@ -69,7 +69,7 @@ def _create_workflow_template(workflow_name, image_name, project_id, zone, regio
 def _instantiate_workflow_template(workflow_name, project_id, region):
   """Run a Dataproc workflow template to test the newly built custom image."""
   command = [
-      "gcloud", "beta", "dataproc", "workflow-templates", "instantiate",
+      "gcloud", "dataproc", "workflow-templates", "instantiate",
       workflow_name, "--project", project_id, "--region", region
   ]
   pipe = subprocess.Popen(command)
@@ -81,7 +81,7 @@ def _instantiate_workflow_template(workflow_name, project_id, region):
 def _delete_workflow_template(workflow_name, project_id, region):
   """Delete a Dataproc workflow template."""
   command = [
-      "gcloud", "beta", "dataproc", "workflow-templates", "delete",
+      "gcloud", "dataproc", "workflow-templates", "delete",
       workflow_name, "-q", "--project", project_id, "--region", region
   ]
   pipe = subprocess.Popen(command)

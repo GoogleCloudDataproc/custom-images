@@ -106,7 +106,7 @@ function main() {{
   fi
 
   echo 'Creating custom image.'
-  gcloud beta compute images create {image_name} \
+  gcloud compute images create {image_name} \
       --project={project_id} \
       --source-disk-zone={zone} \
       --source-disk={image_name}-install \
