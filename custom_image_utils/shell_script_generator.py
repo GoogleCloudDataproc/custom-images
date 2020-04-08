@@ -162,10 +162,12 @@ class Generator:
     self.args[
       "storage_location_flag"] = "--storage-location={storage_location}".format(
         **self.args) if self.args["storage_location"] else ""
+    metadata_flag_template = (
+        "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},"
+        "custom-sources-path={custom_sources_path}")
     if self.args["metadata"]:
-      self.args["metadata_flag"] = "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},custom-sources-path={custom_sources_path},{metadata}".format(**self.args)
-    else:
-      self.args["metadata_flag"] = "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},custom-sources-path={custom_sources_path}".format(**self.args)
+      metadata_flag_template += ",{metadata}"
+    self.args["metadata_flag"] = metadata_flag_template.format(**self.args)
 
   def generate(self, args):
     self._init_args(args)
