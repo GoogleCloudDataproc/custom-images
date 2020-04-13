@@ -41,6 +41,9 @@ pip install --upgrade google-api-python-client
 pip install --upgrade google-cloud-bigquery
 pip install --upgrade google-cloud-storage
 
+# Setup moove-dataproc environment for Jupyter in systemd
+env > /etc/default/jupyter
+
 ## Setup spark jars
 mkdir -p /usr/lib/spark/jars
 gsutil cp gs://spark-lib/bigquery/spark-bigquery-latest.jar /usr/lib/spark/jars/

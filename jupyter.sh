@@ -583,14 +583,6 @@ END
 
 JUPYTERHUB_ENABLED=$(get_dataproc_property jupyter.hub.enabled)
 
-cat <<EOF > "${JUPYTER_ENV_FILE}"
-PATH=/opt/conda/moove-dataproc/bin:/opt/conda/moove-dataproc/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-PYTHONPATH=/opt/conda/moove-dataproc/share/qgis/python/plugins:/opt/conda/moove-dataproc/share/qgis/python
-GDAL_DATA=/opt/conda/moove-dataproc/share/gdal
-PROJ_LIB=/opt/conda/moove-dataproc/share/proj
-QT_QPA_PLATFORM=offscreen
-EOF
-
 
 # If Jupyterhub is enabled, then pass it the environment and arguments.
 # Frontend validation will ensure that the image being used has python3 as the
