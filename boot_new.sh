@@ -35,7 +35,8 @@ pip install msgpack  --upgrade --ignore-installed
 pip install wrapt  --upgrade --ignore-installed
 pip install -r ./requirements.txt --upgrade --ignore-installed
 conda install -c conda-forge pandana
-pip install pysal install pyshp jenkspy urbanaccess dill ujson pandas-gbq
+conda install pyspark
+pip install  pysal install pyshp jenkspy urbanaccess dill ujson pandas-gbq
 pip install --upgrade google-api-python-client
 pip install --upgrade google-cloud-bigquery
 pip install --upgrade google-cloud-storage
