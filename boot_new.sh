@@ -36,14 +36,15 @@ pip install wrapt  --upgrade --ignore-installed
 pip install -r ./requirements.txt --upgrade --ignore-installed
 conda install -c conda-forge pandana
 conda install pyspark
-pip install  pysal install pyshp jenkspy urbanaccess dill ujson pandas-gbq
+pip install pysal pyshp jenkspy urbanaccess dill ujson pandas-gbq
 pip install --upgrade google-api-python-client
 pip install --upgrade google-cloud-bigquery
 pip install --upgrade google-cloud-storage
 
 # Setup moove-dataproc environment for Jupyter in systemd
 env > /etc/default/jupyter
-
+echo "PYSPARK_PYTHON=/opt/conda/moove-dataproc/bin/python" >> /etc/default/jupyter
+echo "PYSPARK_DRIVER_PYTHON=/opt/conda/moove-dataproc/bin/python" >> /etc/default/jupyter
 ## Setup spark jars
 mkdir -p /usr/lib/spark/jars
 gsutil cp gs://spark-lib/bigquery/spark-bigquery-latest.jar /usr/lib/spark/jars/
