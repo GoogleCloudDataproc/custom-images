@@ -28,21 +28,24 @@ ln -s /opt/conda/moove-dataproc/lib/libnetcdf.so.18 /opt/conda/moove-dataproc/li
 git clone https://GITHUB_OAUTH_TOKEN@github.com/moove-ai/moove-data-exploration.git
 cd moove-data-exploration
 git checkout feture-branch-panel-data-set
-echo "pip installation"
 pip install msgpack  --upgrade --ignore-installed
 pip install wrapt  --upgrade --ignore-installed
 pip install -r ./requirements.txt --ignore-installed
 conda install -c conda-forge pandana
 conda install pyspark
-pip install   urbanaccess dill ujson
+pip install urbanaccess dill ujson
 pip install --upgrade google-api-python-client
 pip install --upgrade google-cloud-bigquery
 pip install --upgrade google-cloud-storage
 
 # Setup moove-dataproc environment for Jupyter in systemd
 env > /etc/default/jupyter
-echo "PYSPARK_PYTHON=/opt/conda/moove-dataproc/bin/python" >> /etc/default/jupyter
-echo "PYSPARK_DRIVER_PYTHON=/opt/conda/moove-dataproc/bin/python" >> /etc/default/jupyter
+cat >> /etc/default/jupyter <<EOF
+PYSPARK_PYTHON=/opt/conda/moove-dataproc/bin/python
+PYSPARK_DRIVER_PYTHON=/opt/conda/moove-dataproc/bin/python
+SPARK_HOME=/usr/lib/spark
+EOF
+
 ## Setup spark jars
 mkdir -p /usr/lib/spark/jars
 gsutil cp gs://spark-lib/bigquery/spark-bigquery-latest.jar /usr/lib/spark/jars/
