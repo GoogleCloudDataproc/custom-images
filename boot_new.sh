@@ -16,15 +16,13 @@ source /etc/profile.d/conda.sh
 ## Setup conda environment with qgis
 conda create --prefix /opt/conda/moove-dataproc conda python==3.6.10
 touch /root/.bashrc
-echo ". /opt/conda/anaconda/etc/profile.d/conda.sh" >> /root/.bashrcx
+echo ". /opt/conda/anaconda/etc/profile.d/conda.sh" >> /root/.bashrc
 source /etc/profile.d/conda.sh
 conda activate /opt/conda/moove-dataproc
 conda install jupyterlab
 conda install -c anaconda libnetcdf
-conda install qgis==3.12.1=py36h77e4444_2 -c conda-forge
-conda install ipykernel
+conda install qgis -c conda-forge
 ln -s /opt/conda/moove-dataproc/lib/libnetcdf.so.18 /opt/conda/moove-dataproc/lib/libnetcdf.so.15
-python -m ipykernel install --user --name qgis-test-kernel --display-name="qgis-test-kernel"
 
 ## Install pip packages
 git clone https://GITHUB_OAUTH_TOKEN@github.com/moove-ai/moove-data-exploration.git
@@ -33,10 +31,10 @@ git checkout feture-branch-panel-data-set
 echo "pip installation"
 pip install msgpack  --upgrade --ignore-installed
 pip install wrapt  --upgrade --ignore-installed
-pip install -r ./requirements.txt --upgrade --ignore-installed
+pip install -r ./requirements.txt --ignore-installed
 conda install -c conda-forge pandana
 conda install pyspark
-pip install pysal pyshp jenkspy urbanaccess dill ujson pandas-gbq
+pip install   urbanaccess dill ujson
 pip install --upgrade google-api-python-client
 pip install --upgrade google-cloud-bigquery
 pip install --upgrade google-cloud-storage
