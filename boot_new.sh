@@ -50,10 +50,13 @@ EOF
 mkdir -p /usr/lib/spark/jars
 gsutil cp gs://spark-lib/bigquery/spark-bigquery-latest.jar /usr/lib/spark/jars/
 
+NODE_EXPORTER_VERSION="0.18.1"
+
 ## Setup monitoring
-wget https://github.com/prometheus/node_exporter/releases/download/v0.18.1/node_exporter-0.18.1.linux-amd64.tar.gz
-tar xvfz node_exporter-*.*-amd64.tar.gz
-mv node_exporter /usr/sbin/node_exporter
+useradd -r node_exporter
+wget "https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
+tar xvfz "node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz"
+mv "node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64/node_exporter" /usr/sbin/node_exporter
 
 cat >> /etc/default/node_exporter <<EOF
 OPTIONS=""
@@ -66,7 +69,7 @@ Description=Node Exporter
 [Service]
 User=node_exporter
 EnvironmentFile=/etc/default/node_exporter
-ExecStart=/usr/sbin/node_exporter $OPTIONS
+ExecStart=/usr/sbin/node_exporter \$OPTIONS
 
 [Install]
 WantedBy=multi-user.target
