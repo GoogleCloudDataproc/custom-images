@@ -24,6 +24,7 @@ python generate_custom_image.py \
 --disk-size 100  \
 --machine-type n1-standard-8 \
 --project moove-platform-staging \
---extra-sources "{\"/opt/jupyter-custom.sh\": \"jupyter.sh\"}"
+--extra-sources "{\"/opt/jupyter-custom.sh\": \"jupyter.sh\"}" \
+--extra-sources "{\"/usr/lib/spark/conf/spark.metrics.properties\": \"spark.metrics.properties\"}"
 
 git checkout -- ${BOOT_SCRIPT}
