@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ### This image is manufactured using python generate_custom_image.py ###
 
-## sets up anaconda and jupyter
+# sets up anaconda and jupyter
 rm -f /usr/local/share/google/dataproc/bdutil/components/activate/jupyter.sh
 cp /opt/jupyter-custom.sh /usr/local/share/google/dataproc/bdutil/components/activate/jupyter.sh
 cat >>/etc/google-dataproc/dataproc.properties <<EOF
@@ -9,11 +9,11 @@ dataproc.components.activate=anaconda
 EOF
 bash /usr/local/share/google/dataproc/bdutil/components/activate/anaconda.sh
 
-## Get correct python path
+# Get correct python path
 source /etc/profile.d/effective-python.sh
 source /etc/profile.d/conda.sh
 
-## Setup conda environment with qgis
+# Setup conda environment with qgis
 conda create --prefix /opt/conda/moove-dataproc conda python==3.6.10
 touch /root/.bashrc
 echo ". /opt/conda/anaconda/etc/profile.d/conda.sh" >> /root/.bashrc
@@ -31,19 +31,18 @@ git checkout feture-branch-panel-data-set
 pip install msgpack  --upgrade --ignore-installed
 pip install wrapt  --upgrade --ignore-installed
 pip install -r ./requirements.txt --ignore-installed
+pip install pyspark
 conda install -c conda-forge pandana
-conda install pyspark
 pip install urbanaccess dill ujson
 pip install --upgrade google-api-python-client
 pip install --upgrade google-cloud-bigquery
 pip install --upgrade google-cloud-storage
 
 # Setup moove-dataproc environment for Jupyter in systemd
-env > /etc/default/jupyter
+conda env export > /etc/default/jupyter
 cat >> /etc/default/jupyter <<EOF
-PYSPARK_PYTHON=/opt/conda/moove-dataproc/bin/python
-PYSPARK_DRIVER_PYTHON=/opt/conda/moove-dataproc/bin/python
-SPARK_HOME=/usr/lib/spark
+#PYSPARK_PYTHON=/opt/conda/moove-dataproc/bin/python
+#SPARK_HOME=/usr/lib/spark
 EOF
 
 ## Setup spark jars
