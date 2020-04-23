@@ -20,11 +20,10 @@ python generate_custom_image.py \
 --dataproc-version 1.4.25-debian9 \
 --customization-script $(pwd)/${BOOT_SCRIPT} \
 --zone us-central1-a \
---gcs-bucket gs://moove-dataproc-custom \
+--gcs-bucket gs://moove-dataproc-custom-2 \
 --disk-size 100  \
 --machine-type n1-standard-8 \
 --project moove-platform-staging \
---extra-sources "{\"/opt/jupyter-custom.sh\": \"jupyter.sh\"}" \
---extra-sources "{\"/usr/lib/spark/conf/spark.metrics.properties\": \"spark.metrics.properties\"}"
+--extra-sources "{\"/opt/jupyter-custom.sh\": \"jupyter.sh\", \"/usr/lib/spark/conf/spark.metrics.properties\": \"spark.metrics.properties\"}"
 
 git checkout -- ${BOOT_SCRIPT}

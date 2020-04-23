@@ -610,7 +610,7 @@ if [[ "${JUPYTERHUB_ENABLED}" == "true" ]]; then
   [Service]
   Type=simple
   EnvironmentFile=${JUPYTER_ENV_FILE}
-  ExecStart=/bin/bash -c '/opt/conda/moove-dataproc/bin/jupyter-lab &> /var/log/jupyter_notebook.log'
+  ExecStart=/bin/bash -c '/opt/conda/anaconda/envs/moove-dataproc/bin/jupyter-lab &> /var/log/jupyter_notebook.log'
   Restart=on-failure
   [Install]
   WantedBy=multi-user.target
@@ -629,7 +629,7 @@ else
   [Service]
   Type=simple
   EnvironmentFile=${JUPYTER_ENV_FILE}
-  ExecStart=/bin/bash -c '/opt/conda/moove-dataproc/bin/jupyter-lab &> /var/log/jupyter_notebook.log'
+  ExecStart=/bin/bash -c '/opt/conda/anaconda/envs/moove-dataproc/bin/jupyter-lab &> /var/log/jupyter_notebook.log'
   Restart=on-failure
   [Install]
   WantedBy=multi-user.target

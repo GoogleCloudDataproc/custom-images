@@ -14,15 +14,15 @@ source /etc/profile.d/effective-python.sh
 source /etc/profile.d/conda.sh
 
 # Setup conda environment with qgis
-conda create --prefix /opt/conda/moove-dataproc conda python==3.6.10
+conda create --name moove-dataproc conda python==3.6.10
 touch /root/.bashrc
 echo ". /opt/conda/anaconda/etc/profile.d/conda.sh" >> /root/.bashrc
 source /etc/profile.d/conda.sh
-conda activate /opt/conda/moove-dataproc
+conda activate moove-dataproc
 conda install jupyterlab
 conda install -c anaconda libnetcdf
 conda install qgis -c conda-forge
-ln -s /opt/conda/moove-dataproc/lib/libnetcdf.so.18 /opt/conda/moove-dataproc/lib/libnetcdf.so.15
+ln -s /opt/conda/anaconda/envs/moove-dataproc/lib/libnetcdf.so.18 /opt/conda/anaconda/envs/moove-dataproc/lib/libnetcdf.so.15
 
 ## Install pip packages
 git clone https://GITHUB_OAUTH_TOKEN@github.com/moove-ai/moove-data-exploration.git
@@ -34,12 +34,10 @@ pip install -r ./requirements.txt --ignore-installed
 pip install pyspark
 conda install -c conda-forge pandana
 pip install urbanaccess dill ujson
-pip install --upgrade google-api-python-client
-pip install --upgrade google-cloud-bigquery
-pip install --upgrade google-cloud-storage
+pip install --upgrade google-api-python-client google-cloud-bigquery google-cloud-storage
 
 # Setup moove-dataproc environment for Jupyter in systemd
-conda env export > /etc/default/jupyter
+env > /etc/default/jupyter
 cat >> /etc/default/jupyter <<EOF
 #PYSPARK_PYTHON=/opt/conda/moove-dataproc/bin/python
 #SPARK_HOME=/usr/lib/spark
