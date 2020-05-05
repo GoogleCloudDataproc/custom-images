@@ -3,3 +3,8 @@ steps:
   id: 'presubmit'
   entrypoint: 'bash'
   args: ['cloud_build/presubmit.sh']
+
+- name: 'gcr.io/cloud-builders/gcloud'
+  id: 'build'
+  entrypoint: 'bash'
+  args: ['createImage.sh boot.sh']
