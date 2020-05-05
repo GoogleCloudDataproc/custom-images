@@ -11,3 +11,6 @@ __pycache__
 
 # MacOS folder files
 .DS_Store
+
+# direnv secrets
+.envrc
