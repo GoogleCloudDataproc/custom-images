@@ -1,6 +1,7 @@
-# Build Dataproc custom images
+# Build Dataproc custom images for moove.ai
 
-This page describes how to generate a custom Dataproc image.
+This page describes how to generate a custom Dataproc image. This is a mix of google documentation and moove.ai docs.
+Sections pertaining to moove are noted with (moove.ai)
 
 ## Important notes
 
@@ -14,6 +15,19 @@ Creating clusters with expired custom images is possible by following these
 [instructions](https://cloud.google.com/dataproc/docs/guides/dataproc-images#how_to_create_a_cluster_with_an_expired_custom_image),
 but Cloud Dataproc cannot guarantee support of issues that arise with these
 clusters.
+
+## Build Automation (moove.ai)
+Opening a PR to the master branch (in the moove org, not google) will start build automation.
+1. The createImage.sh script is called.
+    * This script takes one argument and defaults to boot.sh.
+    * The argument determines which script to run to build the new image.
+2. createImage.sh decrypts a github token and injects it into the boot script so we can clone a private repo.
+3. The image is then built and tagged
+4. The latest image is always tagged "version: latest"
+5. Older images are tagged based on the git commit that created it with the `git_hash` label.
+6. Python packages are installed from [moove-data-exploration](https://github.com/moove-ai/moove-data-exploration) 
+    * requirements.txt file
+    * Uses the master branch
 
 ## Requirements
 

@@ -2,6 +2,7 @@
 __pycache__
 *.pyc
 
+*.bak
 # Ignore IntelliJ files.
 .idea/
 *.iml
@@ -10,3 +11,6 @@ __pycache__
 
 # MacOS folder files
 .DS_Store
+
+# direnv secrets
+.envrc
