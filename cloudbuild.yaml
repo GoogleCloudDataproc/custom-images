@@ -2,5 +2,4 @@ steps:
 - name: 'gcr.io/cloud-builders/gcloud'
   id: 'build'
   entrypoint: 'bash'
-  args: ['ls']
-  #args: ['createImage.sh boot.sh']
+  args: ['-c', 'createImage.sh boot.sh']
