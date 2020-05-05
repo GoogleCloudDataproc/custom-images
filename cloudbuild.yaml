@@ -6,4 +6,5 @@ steps:
   args:
     - '-c'
     - |
+      gcloud config set dataproc/region us-central1
       ./createImage.sh boot.sh
