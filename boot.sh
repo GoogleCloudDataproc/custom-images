@@ -21,20 +21,15 @@ source /etc/profile.d/conda.sh
 conda activate moove-dataproc
 conda install jupyterlab
 conda install -c anaconda libnetcdf
-conda install qgis -c conda-forge
+conda install -c conda-forge qgis
+conda install -c conda-forge pandana
 ln -s /opt/conda/anaconda/envs/moove-dataproc/lib/libnetcdf.so.18 /opt/conda/anaconda/envs/moove-dataproc/lib/libnetcdf.so.15
 
 ## Install pip packages
 git clone https://GITHUB_OAUTH_TOKEN@github.com/moove-ai/moove-data-exploration.git
 cd moove-data-exploration
-git checkout feture-branch-panel-data-set
-pip install msgpack  --upgrade --ignore-installed
-pip install wrapt  --upgrade --ignore-installed
+git checkout pyspark-dataproc
 pip install -r ./requirements.txt --ignore-installed
-pip install pyspark
-conda install -c conda-forge pandana
-pip install urbanaccess dill ujson
-pip install --upgrade google-api-python-client google-cloud-bigquery google-cloud-storage
 
 # Setup moove-dataproc environment for Jupyter in systemd
 env > /etc/default/jupyter
@@ -75,3 +70,15 @@ EOF
 systemctl daemon-reload
 systemctl enable node_exporter.service
 systemctl start node_exporter.service
+
+cat >> /usr/lib/systemd/system/jupyter-fix.service <<EOF
+[Unit]
+Description=Service to fix conda environment for jupyter notebooks
+Before=jupyter.service
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -c '/
+
+
+EOF

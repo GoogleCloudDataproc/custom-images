@@ -15,6 +15,9 @@ echo "Boot script: ${BOOT_SCRIPT}"
 
 sed -i '.bak' "s/GITHUB_OAUTH_TOKEN/$GITHUB_OAUTH_TOKEN/g" ${BOOT_SCRIPT}
 
+OLD_DATAPROC_IMAGE=$(gcloud compute images list --filter "name ~ dataproc-custom-1-4-5-anaconda" --project moove-platform-staging  | tail -n1 | awk '{ print $1 }')
+
+
 python generate_custom_image.py \
 --image-name dataproc-custom-1-4-5-anaconda-$(date +%Y%m%d%H%M) \
 --dataproc-version 1.4.25-debian9 \
@@ -26,4 +29,9 @@ python generate_custom_image.py \
 --project moove-platform-staging \
 --extra-sources "{\"/opt/jupyter-custom.sh\": \"jupyter.sh\", \"/usr/lib/spark/conf/spark.metrics.properties\": \"spark.metrics.properties\"}"
 
+DATAPROC_IMAGE=$(gcloud compute images list --filter "name ~ dataproc-custom-1-4-5-anaconda" --project moove-platform-staging  | tail -n1 | awk '{ print $1 }')
+
+gcloud compute images remove-labels ${OLD_DATAPROC_IMAGE} --labels "version=latest"
+gcloud compute images add-labels ${OLD_DATAPROC_IMAGE} --labels "version=$(git rev-parse --short HEAD)"
+gcloud compute images add-labels ${DATAPROC_IMAGE} --labels "version=latest"
 git checkout -- ${BOOT_SCRIPT}
