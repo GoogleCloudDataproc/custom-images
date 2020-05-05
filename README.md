@@ -25,6 +25,9 @@ Opening a PR to the master branch (in the moove org, not google) will start buil
 3. The image is then built and tagged
 4. The latest image is always tagged "version: latest"
 5. Older images are tagged based on the git commit that created it with the `git_hash` label.
+6. Python packages are installed from [moove-data-exploration](https://github.com/moove-ai/moove-data-exploration) 
+    * requirements.txt file
+    * Uses the master branch
 
 ## Requirements
 

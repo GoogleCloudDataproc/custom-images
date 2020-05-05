@@ -28,7 +28,6 @@ ln -s /opt/conda/anaconda/envs/moove-dataproc/lib/libnetcdf.so.18 /opt/conda/ana
 ## Install pip packages
 git clone https://GITHUB_OAUTH_TOKEN@github.com/moove-ai/moove-data-exploration.git
 cd moove-data-exploration
-git checkout pyspark-dataproc
 pip install -r ./requirements.txt --ignore-installed
 
 # Setup moove-dataproc environment for Jupyter in systemd
