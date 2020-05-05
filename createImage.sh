@@ -34,5 +34,3 @@ DATAPROC_IMAGE=$(gcloud compute images list --filter "name ~ dataproc-custom-1-4
 
 gcloud compute images remove-labels ${OLD_DATAPROC_IMAGE} --labels "version=latest"
 gcloud compute images add-labels ${DATAPROC_IMAGE} --labels=version=latest,git_hash=$(git rev-parse --short HEAD)
-
-git checkout -- ${BOOT_SCRIPT}
