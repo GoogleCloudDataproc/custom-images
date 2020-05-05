@@ -2,6 +2,7 @@ steps:
 - name: 'gcr.io/cloud-builders/gcloud'
   id: 'build'
   entrypoint: 'bash'
+  timeout: 1800s
   args:
     - '-c'
     - |

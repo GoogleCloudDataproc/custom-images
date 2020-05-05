@@ -33,7 +33,6 @@ python generate_custom_image.py \
 DATAPROC_IMAGE=$(gcloud compute images list --filter "name ~ dataproc-custom-1-4-5-anaconda" --project moove-platform-staging  | tail -n1 | awk '{ print $1 }')
 
 gcloud compute images remove-labels ${OLD_DATAPROC_IMAGE} --labels "version=latest"
-gcloud compute images add-labels ${OLD_DATAPROC_IMAGE} --labels "version=$(git rev-parse --short HEAD)"
-gcloud compute images add-labels ${DATAPROC_IMAGE} --labels "version=latest"
+gcloud compute images add-labels ${DATAPROC_IMAGE} --labels=version=latest,git_hash=$(git rev-parse --short HEAD)
 
 git checkout -- ${BOOT_SCRIPT}
