@@ -13,7 +13,7 @@ fi
 
 echo "Boot script: ${BOOT_SCRIPT}"
 
-GITHUB_OAUTH_TOKEN=$(gcloud beta secrets versions access latest --secret=github_oauth_key --project moove-platform-staging)
+GITHUB_OAUTH_TOKEN=$(gcloud --project moove-platform-staging beta secrets versions access latest --secret=github_oauth_token)
 
 sed -i '.bak' "s/GITHUB_OAUTH_TOKEN/$GITHUB_OAUTH_TOKEN/g" ${BOOT_SCRIPT}
 
