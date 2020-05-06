@@ -69,15 +69,3 @@ EOF
 systemctl daemon-reload
 systemctl enable node_exporter.service
 systemctl start node_exporter.service
-
-cat >> /usr/lib/systemd/system/jupyter-fix.service <<EOF
-[Unit]
-Description=Service to fix conda environment for jupyter notebooks
-Before=jupyter.service
-
-[Service]
-Type=simple
-ExecStart=/bin/bash -c '/
-
-
-EOF
