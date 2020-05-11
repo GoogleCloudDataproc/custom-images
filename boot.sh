@@ -26,8 +26,9 @@ conda install -c conda-forge pandana
 ln -s /opt/conda/anaconda/envs/moove-dataproc/lib/libnetcdf.so.18 /opt/conda/anaconda/envs/moove-dataproc/lib/libnetcdf.so.15
 
 ## Install pip packages
-git clone https://GITHUB_OAUTH_TOKEN@github.com/moove-ai/moove-data-exploration.git
-cd moove-data-exploration
+git clone https://GITHUB_OAUTH_TOKEN@github.com/moove-ai/moove-modules.git
+cd moove-modules
+mv modules/* /opt/conda/anaconda/envs/moove-dataproc/lib/python3.6/site-packages
 pip install -r ./requirements.txt --ignore-installed
 
 # Setup moove-dataproc environment for Jupyter in systemd
