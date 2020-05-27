@@ -55,9 +55,10 @@ function exit_handler() {{
 
 function main() {{
   echo 'Uploading files to GCS bucket.'
-  declare -A sources=({sources_map_items})
-  for source in "${{!sources[@]}}"; do
-    gsutil cp "${{sources[$source]}}" "{custom_sources_path}/$source"
+  declare -a sources_k=({sources_map_k})
+  declare -a sources_v=({sources_map_v})
+  for i in "${{!sources_k[@]}}"; do
+    gsutil cp "${{sources_v[i]}}" "{custom_sources_path}/${{sources_k[i]}}"
   done
 
   echo 'Creating disk.'
@@ -136,10 +137,12 @@ class Generator:
         "init_actions.sh": self.args["customization_script"]
     }
     all_sources.update(self.args["extra_sources"])
-    self.args["sources_map_items"] = " ".join([
-        "[{}]='{}'".format(source, path)
-        for source, path in all_sources.items()
-    ])
+
+    sources_map_items = tuple(enumerate(all_sources.items()))
+    self.args["sources_map_k"] = " ".join([
+        "[{}]='{}'".format(i, kv[0].replace("'", "'\\''")) for i, kv in sources_map_items])
+    self.args["sources_map_v"] = " ".join([
+        "[{}]='{}'".format(i, kv[1].replace("'", "'\\''")) for i, kv in sources_map_items])
 
     self.args["log_dir"] = "/tmp/{run_id}/logs".format(**self.args)
     self.args["gcs_log_dir"] = "gs://{bucket_name}/{run_id}/logs".format(
