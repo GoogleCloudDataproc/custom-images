@@ -25,9 +25,9 @@ _template = """
 
 set -euxo pipefail
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-NC='\033[0m'
+RED='\\e[0;31m'
+GREEN='\\e[0;32m'
+NC='\\e[0m'
 
 function exit_handler() {{
   echo 'Cleaning up before exiting.'
