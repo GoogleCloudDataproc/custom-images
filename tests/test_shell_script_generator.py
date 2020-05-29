@@ -23,9 +23,9 @@ _expected_script = """
 
 set -euxo pipefail
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-NC='\033[0m'
+RED='\\e[0;31m'
+GREEN='\\e[0;32m'
+NC='\\e[0m'
 
 function exit_handler() {
   echo 'Cleaning up before exiting.'
@@ -52,9 +52,10 @@ function exit_handler() {
 
 function main() {
   echo 'Uploading files to GCS bucket.'
-  declare -A sources=([run.sh]='startup_script/run.sh' [init_actions.sh]='/tmp/my-script.sh' [extra_src.txt]='/path/to/extra.txt')
-  for source in "${!sources[@]}"; do
-    gsutil cp "${sources[$source]}" "gs://my-bucket/custom-image-my-image-20190611-160823/sources/$source"
+  declare -a sources_k=([0]='run.sh' [1]='init_actions.sh' [2]='ext'\\''ra_src.txt')
+  declare -a sources_v=([0]='startup_script/run.sh' [1]='/tmp/my-script.sh' [2]='/path/to/extra.txt')
+  for i in "${!sources_k[@]}"; do
+    gsutil cp "${sources_v[i]}" "gs://my-bucket/custom-image-my-image-20190611-160823/sources/${sources_k[i]}"
   done
 
   echo 'Creating disk.'
@@ -98,7 +99,7 @@ class TestShellScriptGenerator(unittest.TestCase):
         'image_name': 'my-image',
         'customization_script': '/tmp/my-script.sh',
         'metadata': 'key1=value1,key2=value2',
-        'extra_sources': {"extra_src.txt": "/path/to/extra.txt"},
+        'extra_sources': {"ext'ra_src.txt": "/path/to/extra.txt"},
         'machine_type': 'n1-standard-2',
         'disk_size': 40,
         'accelerator': 'type=nvidia-tesla-v100,count=2',
