@@ -105,7 +105,7 @@ def _get_dataproc_image_path_by_version(version):
           "[--dataproc-version]")
 
     temp_file.seek(0)  # go to start of the stdout
-    stdout = temp_file.read()    
+    stdout = temp_file.read()
     # parse the first ready image with the dataproc version attached in labels
     if stdout:
       parsed_lines = stdout.decode('utf-8').strip().split(
@@ -114,7 +114,7 @@ def _get_dataproc_image_path_by_version(version):
       	parsed_image = line.split(",")
       	if len(
           parsed_image) == 2 and parsed_image[0] and parsed_image[1] == "READY" \
-           and parsed_image[0].encode('ascii','ignore').endswith("-eap") == False:
+           and not parsed_image[0].encode('ascii','ignore').endswith("-eap"):
         	return _IMAGE_PATH.format('cloud-dataproc', parsed_image[0])
 
   raise RuntimeError(
