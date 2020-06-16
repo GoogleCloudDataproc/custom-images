@@ -108,11 +108,14 @@ def _get_dataproc_image_path_by_version(version):
     stdout = temp_file.read()
     # parse the first ready image with the dataproc version attached in labels
     if stdout:
-      parsed_line = stdout.decode('utf-8').strip().split(
-          ",")  # should only be one image
-      if len(
-          parsed_line) == 2 and parsed_line[0] and parsed_line[1] == "READY":
-        return _IMAGE_PATH.format('cloud-dataproc', parsed_line[0])
+      parsed_lines = stdout.decode('utf-8').strip().split(
+          '\n')  # in case there are multiple images
+      for line in parsed_lines:
+      	parsed_image = line.split(",")
+      	if len(
+          parsed_image) == 2 and parsed_image[0] and parsed_image[1] == "READY" \
+           and not parsed_image[0].encode('ascii','ignore').endswith("-eap"):
+        	return _IMAGE_PATH.format('cloud-dataproc', parsed_image[0])
 
   raise RuntimeError(
       "Cannot find dataproc base image with "
