@@ -47,11 +47,15 @@ python generate_custom_image.py \
     [release notes](https://cloud.google.com/dataproc/docs/release-notes). To
     understand Dataproc versioning, please refer to
     [documentation](https://cloud.google.com/dataproc/docs/concepts/versioning/overview).
-    **This argument is mutually exclusive with --base-image-uri**.
+    **This argument is mutually exclusive with --base-image-uri and --source-image-family**.
 *   **--base-image-uri**: The full image URI for the base Dataproc image. The
     customization script will be executed on top of this image instead of an
     out-of-the-box Dataproc image. This image must be a valid Dataproc image.
-    **This argument is mutually exclusive with --dataproc-version.**
+    **This argument is mutually exclusive with --dataproc-version and --source-image-family.**
+*   **--source-image-family**: The image family that the boot disk will be
+    initialized with. The latest non-deprecated image from the family
+    will be used.
+    **This argument is mutually exclusive with --dataproc-version and --base-image-uri.**    
 *   **--customization-script**: The script used to install custom packages on
     the image.
 *   **--zone**: The GCE zone for running your GCE instance.

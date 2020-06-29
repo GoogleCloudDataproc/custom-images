@@ -56,6 +56,7 @@ class TestArgsParser(unittest.TestCase):
         project_id="None",
         service_account="'default'",
         shutdown_instance_timer_sec="300",
+        source_image_family_uri="None",
         storage_location=None,
         subnetwork="''",
         zone="'{}'".format(zone),
@@ -129,6 +130,7 @@ class TestArgsParser(unittest.TestCase):
         project_id="'{}'".format(project_id),
         service_account="'{}'".format(service_account),
         shutdown_instance_timer_sec="{}".format(shutdown_instance_timer_sec),
+        source_image_family_uri="None",
         storage_location="'{}'".format(storage_location),
         subnetwork="'{}'".format(subnetwork),
         zone="'{}'".format(zone),
@@ -156,6 +158,7 @@ class TestArgsParser(unittest.TestCase):
       project_id,
       service_account,
       shutdown_instance_timer_sec,
+      source_image_family_uri,
       storage_location,
       subnetwork,
       zone):
@@ -180,6 +183,7 @@ class TestArgsParser(unittest.TestCase):
         "project_id={}, "
         "service_account={}, "
         "shutdown_instance_timer_sec={}, "
+        "source_image_family_uri={}, "
         "storage_location={}, "
         "subnetwork={}, "
         "zone={})")
@@ -203,6 +207,7 @@ class TestArgsParser(unittest.TestCase):
         project_id,
         service_account,
         shutdown_instance_timer_sec,
+        source_image_family_uri,
         storage_location,
         subnetwork,
         zone)

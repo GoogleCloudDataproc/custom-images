@@ -25,6 +25,10 @@ _IMAGE_PATH = "projects/{}/global/images/{}"
 _IMAGE_URI = re.compile(
     r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/([^/]+)$"
 )
+_IMAGE_FAMILY_PATH = "projects/{}/global/images/family/{}"
+_IMAGE_FAMILY_URI = re.compile(
+    r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/family/([^/]+)$"
+)
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
 _LOG.setLevel(logging.INFO)
@@ -48,6 +52,12 @@ def _get_project_id():
 def _extract_image_name_and_project(image_uri):
   """Get Dataproc image name and project."""
   m = _IMAGE_URI.match(image_uri)
+  return m.group(3), m.group(4)  # project, image_name
+
+
+def _extract_image_name_and_project_from_family_uri(image_uri):
+  """Get Dataproc image family name and project."""
+  m = _IMAGE_FAMILY_URI.match(image_uri)
   return m.group(3), m.group(4)  # project, image_name
 
 
@@ -78,11 +88,41 @@ def _get_dataproc_image_version(image_uri):
   raise RuntimeError("Cannot find dataproc base image: %s", image_uri)
 
 
+def _get_dataproc_image_family_version(image_family_uri):
+  """Get Dataproc image family version from family name."""
+  project, image_family_name = _extract_image_name_and_project_from_family_uri(image_family_uri)
+  command = [
+      "gcloud", "compute", "images", "describe-from-family", image_family_name, "--project",
+      project, "--format=value(labels.goog-dataproc-version)"
+  ]
+
+  # get stdout from compute images list --filters
+  with tempfile.NamedTemporaryFile() as temp_file:
+    pipe = subprocess.Popen(command, stdout=temp_file)
+    pipe.wait()
+    if pipe.returncode != 0:
+      raise RuntimeError(
+          "Cannot find dataproc base family image, please check and verify "
+          "the family URI.")
+
+    temp_file.seek(0)  # go to start of the stdout
+    stdout = temp_file.read()
+    # parse the first ready image with the dataproc version attached in labels
+    if stdout:
+      parsed_line = stdout.decode('utf-8').strip()  # should be just one value
+      return parsed_line
+
+  raise RuntimeError("Cannot find dataproc base image family: %s", image_family_uri)
+
 def _extract_image_path(image_uri):
   """Get the partial image URI from the full image URI."""
   project, image_name = _extract_image_name_and_project(image_uri)
   return _IMAGE_PATH.format(project, image_name)
 
+def _extract_image_family_path(image_family_uri):
+  """Get the partial image family URI from the full image family URI."""
+  project, image_name = _extract_image_name_and_project_from_family_uri(image_family_uri)
+  return _IMAGE_FAMILY_PATH.format(project, image_name)
 
 def _get_dataproc_image_path_by_version(version):
   """Get Dataproc base image name from version."""
@@ -137,9 +177,12 @@ def _infer_base_image(args):
     args.dataproc_version = _get_dataproc_image_version(args.base_image_uri)
   elif args.dataproc_version:
     args.dataproc_base_image = _get_dataproc_image_path_by_version(args.dataproc_version)
+  elif args.source_image_family_uri:
+    args.dataproc_base_image = _extract_image_family_path(args.source_image_family_uri)
+    args.dataproc_version = _get_dataproc_image_family_version(args.source_image_family_uri)
   else:
     raise RuntimeError(
-        "Neither --dataproc-version nor --base-image-uri is specified.")
+        "Neither --dataproc-version nor --base-image-uri nor --source-image-family-uri is specified.")
   _LOG.info("Returned Dataproc base image: %s", args.dataproc_base_image)
 
 
