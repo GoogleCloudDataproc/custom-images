@@ -62,18 +62,18 @@ function main() {{
   done
 
   echo 'Creating disk.'
-  if [ '{source_image_family_uri}' = '' -o  '{source_image_family_uri}' = 'None' ]; then
+  if [[ '{base_image_family}' = '' ||  '{base_image_family}' = 'None' ]]; then
      IMAGE_SOURCE="--image={dataproc_base_image}"
   else
-     IMAGE_SOURCE="--image-family={source_image_family_uri}"
+     IMAGE_SOURCE="--image-family={base_image_family}"
   fi
   
   gcloud compute disks create {image_name}-install \
-    --project={project_id} \
-    --zone={zone} \
-    ${{IMAGE_SOURCE}} \
-    --type=pd-ssd \
-    --size={disk_size}GB
+      --project={project_id} \
+      --zone={zone} \
+      ${{IMAGE_SOURCE}} \
+      --type=pd-ssd \
+      --size={disk_size}GB
 
   touch "/tmp/{run_id}/disk_created"
 

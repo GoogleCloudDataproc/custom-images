@@ -59,13 +59,13 @@ function main() {
   done
 
   echo 'Creating disk.'
-  if [ 'projects/my-dataproc-project/global/images/family/debian-10' = '' -o  'projects/my-dataproc-project/global/images/family/debian-10' = 'None' ]; then
+  if [[ 'projects/my-dataproc-project/global/images/family/debian-10' = '' ||  'projects/my-dataproc-project/global/images/family/debian-10' = 'None' ]]; then
      IMAGE_SOURCE="--image=projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01"
   else
      IMAGE_SOURCE="--image-family=projects/my-dataproc-project/global/images/family/debian-10"
   fi
   
-  gcloud compute disks create my-image-install     --project=my-project     --zone=us-west1-a     ${IMAGE_SOURCE}     --type=pd-ssd     --size=40GB
+  gcloud compute disks create my-image-install       --project=my-project       --zone=us-west1-a       ${IMAGE_SOURCE}       --type=pd-ssd       --size=40GB
 
   touch "/tmp/custom-image-my-image-20190611-160823/disk_created"
 
@@ -122,7 +122,7 @@ class TestShellScriptGenerator(unittest.TestCase):
         'project_id': 'my-project',
         'storage_location': 'us-east1',
         'shutdown_timer_in_sec': 500,
-        'source_image_family_uri': 'projects/my-dataproc-project/global/images/family/debian-10'
+        'base_image_family': 'projects/my-dataproc-project/global/images/family/debian-10'
     }
 
     script = shell_script_generator.Generator().generate(args)

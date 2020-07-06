@@ -72,7 +72,7 @@ def parse_args(args):
       image.
       """)
   image_args.add_argument(
-      "--source-image-family-uri",
+      "--base-image-family",
       type=_full_image_family_uri_regex_type,
       help="""The source image family URI. The latest non-depracated image associated with the family will be used.
       """)      

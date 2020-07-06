@@ -88,7 +88,7 @@ def _get_dataproc_image_version(image_uri):
   raise RuntimeError("Cannot find dataproc base image: %s", image_uri)
 
 
-def _get_dataproc_image_family_version(image_family_uri):
+def _get_dataproc_version_from_image_family(image_family_uri):
   """Get Dataproc image family version from family name."""
   project, image_family_name = _extract_image_name_and_project_from_family_uri(image_family_uri)
   command = [
@@ -109,8 +109,8 @@ def _get_dataproc_image_family_version(image_family_uri):
     stdout = temp_file.read()
     # parse the first ready image with the dataproc version attached in labels
     if stdout:
-      parsed_line = stdout.decode('utf-8').strip()  # should be just one value
-      return parsed_line
+      dataproc_version = stdout.decode('utf-8').strip()  # should be just one value
+      return dataproc_version
 
   raise RuntimeError("Cannot find dataproc base image family: %s", image_family_uri)
 
@@ -177,9 +177,9 @@ def _infer_base_image(args):
     args.dataproc_version = _get_dataproc_image_version(args.base_image_uri)
   elif args.dataproc_version:
     args.dataproc_base_image = _get_dataproc_image_path_by_version(args.dataproc_version)
-  elif args.source_image_family_uri:
-    args.dataproc_base_image = _extract_image_family_path(args.source_image_family_uri)
-    args.dataproc_version = _get_dataproc_image_family_version(args.source_image_family_uri)
+  elif args.base_image_family:
+    args.dataproc_base_image = _extract_image_family_path(args.base_image_family)
+    args.dataproc_version = _get_dataproc_version_from_image_family(args.base_image_family)
   else:
     raise RuntimeError(
         "Neither --dataproc-version nor --base-image-uri nor --source-image-family-uri is specified.")

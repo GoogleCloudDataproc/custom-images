@@ -39,6 +39,7 @@ class TestArgsParser(unittest.TestCase):
 
     expected_result = self._make_expected_result(
         accelerator=None,
+        base_image_family="None",
         base_image_uri="None",
         customization_script="'{}'".format(customization_script),
         dataproc_version="None",
@@ -56,7 +57,6 @@ class TestArgsParser(unittest.TestCase):
         project_id="None",
         service_account="'default'",
         shutdown_instance_timer_sec="300",
-        source_image_family_uri="None",
         storage_location=None,
         subnetwork="''",
         zone="'{}'".format(zone),
@@ -112,6 +112,7 @@ class TestArgsParser(unittest.TestCase):
 
     expected_result = self._make_expected_result(
         accelerator="'{}'".format(accelerator),
+        base_image_family="None",        
         base_image_uri="None",
         customization_script="'{}'".format(customization_script),
         dataproc_version="'{}'".format(dataproc_version),
@@ -130,7 +131,6 @@ class TestArgsParser(unittest.TestCase):
         project_id="'{}'".format(project_id),
         service_account="'{}'".format(service_account),
         shutdown_instance_timer_sec="{}".format(shutdown_instance_timer_sec),
-        source_image_family_uri="None",
         storage_location="'{}'".format(storage_location),
         subnetwork="'{}'".format(subnetwork),
         zone="'{}'".format(zone),
@@ -140,6 +140,7 @@ class TestArgsParser(unittest.TestCase):
   def _make_expected_result(
       self,
       accelerator,
+      base_image_family,      
       base_image_uri,
       customization_script,
       dataproc_version,
@@ -158,13 +159,13 @@ class TestArgsParser(unittest.TestCase):
       project_id,
       service_account,
       shutdown_instance_timer_sec,
-      source_image_family_uri,
       storage_location,
       subnetwork,
       zone):
     expected_result_template = (
         "Namespace("
         "accelerator={}, "
+        "base_image_family={}, "        
         "base_image_uri={}, "
         "customization_script={}, "
         "dataproc_version={}, "
@@ -183,12 +184,12 @@ class TestArgsParser(unittest.TestCase):
         "project_id={}, "
         "service_account={}, "
         "shutdown_instance_timer_sec={}, "
-        "source_image_family_uri={}, "
         "storage_location={}, "
         "subnetwork={}, "
         "zone={})")
     return expected_result_template.format(
         accelerator,
+        base_image_family,        
         base_image_uri,
         customization_script,
         dataproc_version,
@@ -207,7 +208,6 @@ class TestArgsParser(unittest.TestCase):
         project_id,
         service_account,
         shutdown_instance_timer_sec,
-        source_image_family_uri,
         storage_location,
         subnetwork,
         zone)

@@ -52,9 +52,11 @@ python generate_custom_image.py \
     customization script will be executed on top of this image instead of an
     out-of-the-box Dataproc image. This image must be a valid Dataproc image.
     **This argument is mutually exclusive with --dataproc-version and --source-image-family.**
-*   **--source-image-family**: The image family that the boot disk will be
-    initialized with. The latest non-deprecated image from the family
-    will be used.
+*   **--base-image-family**: The image family that the boot disk will be
+    initialized with. The latest non-deprecated image from the family will be used.  
+    An example base image family URI is projects/PROJECT_NAME/global/images/family/FAMILY_NAME.  
+    To get the list of image families (and the associated image), run  
+    gcloud compute images list [--project <PROJECT_NAME>]  
     **This argument is mutually exclusive with --dataproc-version and --base-image-uri.**    
 *   **--customization-script**: The script used to install custom packages on
     the image.
