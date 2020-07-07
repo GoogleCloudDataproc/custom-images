@@ -39,6 +39,7 @@ class TestArgsParser(unittest.TestCase):
 
     expected_result = self._make_expected_result(
         accelerator=None,
+        base_image_family="None",
         base_image_uri="None",
         customization_script="'{}'".format(customization_script),
         dataproc_version="None",
@@ -111,6 +112,7 @@ class TestArgsParser(unittest.TestCase):
 
     expected_result = self._make_expected_result(
         accelerator="'{}'".format(accelerator),
+        base_image_family="None",        
         base_image_uri="None",
         customization_script="'{}'".format(customization_script),
         dataproc_version="'{}'".format(dataproc_version),
@@ -138,6 +140,7 @@ class TestArgsParser(unittest.TestCase):
   def _make_expected_result(
       self,
       accelerator,
+      base_image_family,      
       base_image_uri,
       customization_script,
       dataproc_version,
@@ -162,6 +165,7 @@ class TestArgsParser(unittest.TestCase):
     expected_result_template = (
         "Namespace("
         "accelerator={}, "
+        "base_image_family={}, "        
         "base_image_uri={}, "
         "customization_script={}, "
         "dataproc_version={}, "
@@ -185,6 +189,7 @@ class TestArgsParser(unittest.TestCase):
         "zone={})")
     return expected_result_template.format(
         accelerator,
+        base_image_family,        
         base_image_uri,
         customization_script,
         dataproc_version,

@@ -24,7 +24,7 @@ _LOG = logging.getLogger(__name__)
 _LOG.setLevel(logging.INFO)
 
 def _create_workflow_template(workflow_name, image_name, project_id, zone, region,
-                              network, subnet):
+                              network, subnet, no_external_ip):
   """Create a Dataproc workflow template for testing."""
   create_command = [
       "gcloud", "dataproc", "workflow-templates", "create",
@@ -39,6 +39,8 @@ def _create_workflow_template(workflow_name, image_name, project_id, zone, regio
     set_cluster_command.extend(["--network", network])
   else:
     set_cluster_command.extend(["--subnet", subnet])
+  if no_external_ip:
+    set_cluster_command.extend(["--no-address"])
   add_job_command = [
       "gcloud", "dataproc", "workflow-templates", "add-job", "spark",
       "--workflow-template", workflow_name, "--project", project_id, "--region", region,
@@ -90,7 +92,7 @@ def _delete_workflow_template(workflow_name, project_id, region):
     raise RuntimeError("Error deleting workfloe template %s.", workflow_name)
 
 
-def _verify_custom_image(image_name, project_id, zone, network, subnetwork):
+def _verify_custom_image(image_name, project_id, zone, network, subnetwork, no_external_ip):
   """Verifies if custom image works with Dataproc."""
   region = zone[:-2]
   date = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -101,7 +103,7 @@ def _verify_custom_image(image_name, project_id, zone, network, subnetwork):
     _LOG.info("Creating Dataproc workflow-template %s with image %s...",
               workflow_name, image_name)
     _create_workflow_template(workflow_name, image_name, project_id, zone, region,
-                              network, subnetwork)
+                              network, subnetwork, no_external_ip)
     _LOG.info(
         "Successfully created Dataproc workflow-template %s with image %s...",
         workflow_name, image_name)
@@ -131,7 +133,7 @@ def run(args):
     if not args.no_smoke_test:
       _LOG.info("Verifying the custom image...")
       _verify_custom_image(args.image_name, args.project_id, args.zone,
-                           args.network, args.subnetwork)
+                           args.network, args.subnetwork, args.no_external_ip)
       _LOG.info("Successfully verified the custom image...")
   else:
     _LOG.info("Skip running smoke test (dry run).")

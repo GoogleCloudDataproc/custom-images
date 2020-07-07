@@ -28,6 +28,7 @@ from custom_image_utils import constants
 # New style images: 1.2.3-deb8, 1.2.3-debian9, 1.2.3-RC10-debian9
 _VERSION_REGEX = re.compile(r"^\d+\.\d+\.\d+(-RC\d+)?(-[a-z]+\d+)?$")
 _FULL_IMAGE_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/([^/]+)$")
+_FULL_IMAGE_FAMILY_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/family/([^/]+)$")
 
 
 def _version_regex_type(s):
@@ -41,6 +42,12 @@ def _full_image_uri_regex_type(s):
   if not _FULL_IMAGE_URI.match(s):
     raise argparse.ArgumentTypeError("Invalid image URI: {}.".format(s))
   return s
+
+def _full_image_family_uri_regex_type(s):
+  """Check if the partial image family uri string matches regex."""
+  if not _FULL_IMAGE_FAMILY_URI.match(s):
+    raise argparse.ArgumentTypeError("Invalid image family URI: {}.".format(s))
+  return s  
 
 def parse_args(args):
   """Parses command-line arguments."""
@@ -64,6 +71,11 @@ def parse_args(args):
       an out-of-the-box Dataproc image. This image must be a valid Dataproc
       image.
       """)
+  image_args.add_argument(
+      "--base-image-family",
+      type=_full_image_family_uri_regex_type,
+      help="""The source image family URI. The latest non-depracated image associated with the family will be used.
+      """)      
   required_args.add_argument(
       "--customization-script",
       type=str,

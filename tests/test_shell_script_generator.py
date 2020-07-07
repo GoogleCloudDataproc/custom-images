@@ -59,7 +59,14 @@ function main() {
   done
 
   echo 'Creating disk.'
-  gcloud compute disks create my-image-install       --project=my-project       --zone=us-west1-a       --image=projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01       --type=pd-ssd       --size=40GB
+  if [[ 'projects/my-dataproc-project/global/images/family/debian-10' = '' ||  'projects/my-dataproc-project/global/images/family/debian-10' = 'None' ]]; then
+     IMAGE_SOURCE="--image=projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01"
+  else
+     IMAGE_SOURCE="--image-family=projects/my-dataproc-project/global/images/family/debian-10"
+  fi
+  
+  gcloud compute disks create my-image-install       --project=my-project       --zone=us-west1-a       ${IMAGE_SOURCE}       --type=pd-ssd       --size=40GB
+
   touch "/tmp/custom-image-my-image-20190611-160823/disk_created"
 
   echo 'Creating VM instance to run customization script.'
@@ -114,7 +121,8 @@ class TestShellScriptGenerator(unittest.TestCase):
         'oauth': '',
         'project_id': 'my-project',
         'storage_location': 'us-east1',
-        'shutdown_timer_in_sec': 500
+        'shutdown_timer_in_sec': 500,
+        'base_image_family': 'projects/my-dataproc-project/global/images/family/debian-10'
     }
 
     script = shell_script_generator.Generator().generate(args)
