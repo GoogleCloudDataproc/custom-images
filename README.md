@@ -144,8 +144,8 @@ Create a custom image with name `custom-image-1-4-5` with Dataproc version
 
 ```shell
 python generate_custom_image.py \
-    --image-name custom-image-1-4-5 \
-    --dataproc-version 1.4.5-debian9 \
+    --image-name custom-image-1-5-9 \
+    --dataproc-version 1.5.9-debian10 \
     --customization-script ~/custom-script.sh \
     --metadata 'key1=value1,key2=value2' \
     --zone us-central1-f \
@@ -156,8 +156,8 @@ python generate_custom_image.py \
 
 ```shell
 python generate_custom_image.py \
-    --image-name custom-image-1-4-5 \
-    --dataproc-version 1.4.5-debian9 \
+    --image-name custom-image-1-5-9 \
+    --dataproc-version 1.5.9-debian10 \
     --customization-script ~/custom-script.sh \
     --zone us-central1-f \
     --gcs-bucket gs://my-test-bucket \
