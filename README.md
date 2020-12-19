@@ -135,6 +135,19 @@ python generate_custom_image.py \
     customization script. See more information about VM metadata on
     https://cloud.google.com/sdk/gcloud/reference/compute/instances/create.
 
+#### Override properties
+
+Custom images can also be used to overwrite properties set during cluster creation.
+Users can create file `dataproc.custom.properties` in `/etc/google-dataproc` using customization
+script. Sample contents of file
+
+```properties
+dataproc.conscrypt.provider.enable=false
+dataproc.logging.stackdriver.enable=true
+``` 
+
+Values for these properties from `dataproc.custom.properties` will be prioritized over any other source during cluster creation. 
+
 ### Examples
 
 #### Create a custom image
