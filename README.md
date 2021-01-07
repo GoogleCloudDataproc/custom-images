@@ -135,19 +135,30 @@ python generate_custom_image.py \
     customization script. See more information about VM metadata on
     https://cloud.google.com/sdk/gcloud/reference/compute/instances/create.
 
-#### Override properties
+#### Overriding dataproc cluster properties with a custom image
 
-Custom images can also be used to overwrite properties set during cluster creation.
-Users can create file `dataproc.custom.properties` in `/etc/google-dataproc` using customization
-script. Sample contents of file
+You can use custom images to overwrite any [cluster properties](https://cloud.google.com/dataproc/docs/concepts/configuring-clusters/cluster-properties)
+set during cluster creation. If a user creates a cluster with your custom image but sets cluster properties different from 
+those you set with your custom image, your custom image cluster property settings will take precedence.
 
-```properties
-dataproc.conscrypt.provider.enable=false
-dataproc.logging.stackdriver.enable=true
-``` 
+To set cluster properties with your custom image:
 
-Values for these properties from `dataproc.custom.properties` will be prioritized over any other source during cluster creation. 
+In your custom image
+   [customization script](https://cloud.devsite.corp.google.com/dataproc/docs/guides/dataproc-images#running_the_code),
+   create a `dataproc.custom.properties` file in `/etc/google-dataproc`, then set cluster property values in the file.
+   * Sample `dataproc.custom.properties` file contents:
+```shell
+     dataproc.conscrypt.provider.enable=true
+     dataproc.logging.stackdriver.enable=false
+```
 
+   * Sample customization script file-creation snippet to override two cluster properties:
+```shell
+cat <<EOF >/etc/google-dataproc/dataproc.custom.properties
+dataproc.conscrypt.provider.enable=true
+dataproc.logging.stackdriver.enable=false
+EOF
+```
 ### Examples
 
 #### Create a custom image
