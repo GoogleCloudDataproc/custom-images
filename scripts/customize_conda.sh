@@ -18,14 +18,14 @@ set -euxo pipefail
 
 # This customization-script can be used to customize the conda environment.
 # It expects the following metadata:
-#   conda-component: (Required) Must be either ANACONDA or MINICONDA3
+#   conda-component: (Required) Must be either ANACONDA or MINICONDA3.
 #   conda-env-config-uri: (Optional) Must be a gsutil path to the yaml config
 #   file.
 #   conda-packages: (Optional) A list of conda packages with versions to be
 #   installed in the base environment. Must be of the format
 #   <pkg1>:<version1>_<pkg2>:<version2>...
 #   Example: conda-packages=pytorch:1.4.0_visions:0.7.1
-#   conda-packages: (Optional) A list of pip packages with versions to be
+#   pip-packages: (Optional) A list of pip packages with versions to be
 #   installed in the base environment. Must be of the format
 #   <pkg1>:<version1>_<pkg2>:<version2>...
 #   Example: tokenizers:0.10.1_datasets:1.5.0
@@ -41,7 +41,7 @@ function customize_conda() {
 
   validate_conda_component "${conda_component}"
 
-  if [[ -n "${conda_env_config_uri}" && (( "${conda_packages}" || "${pip_packages}" )) ]]; then
+  if [[ -n "${conda_env_config_uri}" && (( -n "${conda_packages}" || -n "${pip_packages}" )) ]]; then
     echo "conda-env-config-uri is mutually exclusive with conda-packages and pip-packages."
     exit 1
   fi
@@ -49,7 +49,7 @@ function customize_conda() {
   local conda_bin_dir
   if [[ "${conda_component}" == 'ANACONDA' ]]; then
     conda_bin_dir="/opt/conda/anaconda/bin"
-  else
+  elif [[ "${conda_component}" == 'MINICONDA3' ]]; then
     conda_bin_dir="/opt/conda/miniconda3/bin"
   fi
   if [[ -n "${conda_env_config_uri}" ]]; then
@@ -110,14 +110,6 @@ function validate_conda_component() {
     echo "Metadata conda-component should either be ANACONDA or MINICONDA3"
     exit 1
   fi
-}
-
-function parse_packages() {
-  local packages=$1
-  local -n packages_array=$2
-
-  packages=$(echo "${packages}" | sed -r 's/:/==/g')
-  IFS='_' read -r -a packages_array <<< "${packages}"
 }
 
 function validate_package_formats() {
