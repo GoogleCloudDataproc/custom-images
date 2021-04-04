@@ -127,13 +127,27 @@ def _extract_image_family_path(image_family_uri):
 def _get_dataproc_image_path_by_version(version):
   """Get Dataproc base image name from version."""
   # version regex already checked in arg parser
-  parsed_version = version.split(".")
-  filter_arg = "--filter=labels.goog-dataproc-version=\'{}-{}-{}\'".format(
-      parsed_version[0], parsed_version[1], parsed_version[2])
-  command = [
-      "gcloud", "compute", "images", "list", "--project", "cloud-dataproc",
-      filter_arg, "--format=csv[no-heading=true](name,status)"
-  ]
+  if "*" in version:
+    parsed_version, parsed_family = version.split('-')
+    parsed_version = parsed_version.split('.') # eg. 1.2.* -> ['1','2','*']
+    parsed_version = ['\d+' if char=='*' else char for char in parsed_version]
+    filter_arg = "--filter=labels.goog-dataproc-version~'{}-{}-{}(?:-rc\d+)?-{}' AND creationTimestamp>-P4W".format(parsed_version[0], 
+        parsed_version[1], parsed_version[2], parsed_family)
+
+    command = [
+    "gcloud", "compute", "images", "list", "--project", "cloud-dataproc",
+    filter_arg, "--format=csv[no-heading=true](name,status)", 
+    "--sort-by=~labels.goog-dataproc-version", "--limit=5"
+    ]
+
+  else:
+    parsed_version = version.split(".")
+    filter_arg = "--filter=labels.goog-dataproc-version=\'{}-{}-{}\'".format(
+        parsed_version[0], parsed_version[1], parsed_version[2])
+    command = [
+        "gcloud", "compute", "images", "list", "--project", "cloud-dataproc",
+        filter_arg, "--format=csv[no-heading=true](name,status)"
+    ]
 
   # get stdout from compute images list --filters
   with tempfile.NamedTemporaryFile() as temp_file:
