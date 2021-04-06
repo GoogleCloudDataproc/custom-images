@@ -74,6 +74,7 @@ function customize_conda() {
   local -r conda_env_config_uri=$(/usr/share/google/get_metadata_value attributes/conda-env-config-uri)
   local conda_packages=$(/usr/share/google/get_metadata_value attributes/conda-packages)
   local pip_packages=$(/usr/share/google/get_metadata_value attributes/pip-packages)
+  local conda_bin_dir
 
   validate_conda_component "${conda_component}"
 
@@ -82,7 +83,6 @@ function customize_conda() {
     exit 1
   fi
 
-  local conda_bin_dir
   if [[ "${conda_component}" == 'ANACONDA' ]]; then
     conda_bin_dir="/opt/conda/anaconda/bin"
   elif [[ "${conda_component}" == 'MINICONDA3' ]]; then
@@ -143,7 +143,7 @@ function customize_with_package_list() {
       local -a packages
       conda_packages=$(echo "${conda_packages}" | sed -r 's/:/==/g')
       IFS='_' read -r -a packages <<< "${conda_packages}"
-      validate_package_formats "${packages}"
+      validate_package_formats "${packages[@]}"
 
       # Conda will upgrade dependencies only if required, and fail if conflict
       # resolution with existing packages is not possible.
@@ -153,7 +153,7 @@ function customize_with_package_list() {
       local -a packages
       pip_packages=$(echo "${pip_packages}" | sed -r 's/:/==/g')
       IFS='_' read -r -a packages <<< "${pip_packages}"
-      validate_package_formats "${packages}"
+      validate_package_formats "${packages[@]}"
 
       # Pip will upgrade dependencies only if required. Pip does not check for
       # conflicts and may result in inconsistent environment.
@@ -162,9 +162,9 @@ function customize_with_package_list() {
 }
 
 function validate_package_formats() {
-  local -r packages=$1
+  local -r packages=("$@")
   local -r regex='.+==[0-9]+[\\.[0-9]+]*'
-  for package in packages; do
+  for package in "${packages[@]}"; do
     if ! [[ "${package}" =~ $regex ]]; then
       echo "Invalid package format ${package}"
       exit 1
