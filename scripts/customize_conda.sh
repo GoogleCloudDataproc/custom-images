@@ -30,11 +30,11 @@ set -euxo pipefail
 #
 #   conda-packages: (Optional) A list of conda packages with versions to be
 #   installed in the base environment. Must be of the format
-#   <pkg1>:<version1>_<pkg2>:<version2>...
+#   <pkg1>:<version1>#<pkg2>:<version2>...
 #
 #   pip-packages: (Optional) A list of pip packages with versions to be
 #   installed in the base environment. Must be of the format
-#   <pkg1>:<version1>_<pkg2>:<version2>...
+#   <pkg1>:<version1>#<pkg2>:<version2>...
 #
 # conda-env-config-uri is mutually exclusive with conda-packages and
 # pip-packages. If both are provided, the script will fail.
@@ -66,7 +66,7 @@ set -euxo pipefail
 #    --customization-script scripts/customize_conda.sh \
 #    --zone <zone> \
 #    --gcs-bucket gs://<bucket-path> \
-#    --metadata 'conda-component=MINICONDA3,conda-packages=pytorch:1.4.0_visions:0.7.1,pip-packages=tokenizers:0.10.1_numpy:1.19.2'
+#    --metadata 'conda-component=MINICONDA3,conda-packages=pytorch:1.4.0#visions:0.7.1,pip-packages=tokenizers:0.10.1#numpy:1.19.2'
 
 
 function customize_conda() {
@@ -142,7 +142,7 @@ function customize_with_package_list() {
   if [[ -n "${conda_packages}" ]]; then
       local -a packages
       conda_packages=$(echo "${conda_packages}" | sed -r 's/:/==/g')
-      IFS='_' read -r -a packages <<< "${conda_packages}"
+      IFS='#' read -r -a packages <<< "${conda_packages}"
       validate_package_formats "${packages[@]}"
 
       # Conda will upgrade dependencies only if required, and fail if conflict
@@ -152,7 +152,7 @@ function customize_with_package_list() {
     if [[ -n "${pip_packages}" ]]; then
       local -a packages
       pip_packages=$(echo "${pip_packages}" | sed -r 's/:/==/g')
-      IFS='_' read -r -a packages <<< "${pip_packages}"
+      IFS='#' read -r -a packages <<< "${pip_packages}"
       validate_package_formats "${packages[@]}"
 
       # Pip will upgrade dependencies only if required. Pip does not check for
