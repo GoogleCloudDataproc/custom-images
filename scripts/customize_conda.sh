@@ -70,11 +70,15 @@ set -euxo pipefail
 
 
 function customize_conda() {
-  local -r conda_component=$(/usr/share/google/get_metadata_value attributes/conda-component)
-  local -r conda_env_config_uri=$(/usr/share/google/get_metadata_value attributes/conda-env-config-uri)
-  local conda_packages=$(/usr/share/google/get_metadata_value attributes/conda-packages)
-  local pip_packages=$(/usr/share/google/get_metadata_value attributes/pip-packages)
+  local conda_component
+  local conda_env_config_uri
+  local conda_packages
+  local pip_packages
   local conda_bin_dir
+  conda_component=$(/usr/share/google/get_metadata_value attributes/conda-component || true)
+  conda_env_config_uri=$(/usr/share/google/get_metadata_value attributes/conda-env-config-uri || true)
+  conda_packages=$(/usr/share/google/get_metadata_value attributes/conda-packages || true)
+  pip_packages=$(/usr/share/google/get_metadata_value attributes/pip-packages || true)
 
   validate_conda_component "${conda_component}"
 
