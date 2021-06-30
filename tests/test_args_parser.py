@@ -137,8 +137,8 @@ class TestArgsParser(unittest.TestCase):
     )
     self.assertEqual(str(args), expected_result)
 
-  def test_wildcard_versions(self):
-    """Verifies it succeeds if wildcard versions are present and formatted."""
+  def test_inferred_subminor_versions(self):
+    """Verifies it succeeds if inferred/unspecified subminor version is correctly formatted."""
     customization_script = '/tmp/my-script.sh'
     gcs_bucket = 'gs://my-bucket'
     image_name = 'my-image'
@@ -188,11 +188,12 @@ class TestArgsParser(unittest.TestCase):
       else:
         raise ValueError("Exception not raised")
 
-    self.assertEqual(str(_args_parsed('1.*.*-debian10')), _expected_result('1.*.*-debian10'))
-    self.assertEqual(str(_args_parsed('1.3.*-ubuntu18')), _expected_result('1.3.*-ubuntu18'))
-    self.assertEqual(str(_args_parsed('1.3.*-centos8')), _expected_result('1.3.*-centos8'))
+    self.assertEqual(str(_args_parsed('1.5-debian10')), _expected_result('1.5-debian10'))
+    self.assertEqual(str(_args_parsed('1.3-ubuntu18')), _expected_result('1.3-ubuntu18'))
+    self.assertEqual(str(_args_parsed('1.3-centos8')), _expected_result('1.3-centos8'))
 
-    invalid_dataproc_versions = ['*.*.*-debian10', '1.**.*-debian10', '1.*.8*-debian10', '11.*.*-debian', '1.*-debian10']
+    invalid_dataproc_versions = ['*.*.*-debian10', '1.**.*-debian10', '1.*.8*-debian10', '11.*.*-debian', 
+      '1.*-debian10', '1.5.*-debian10', '1.5.-debian10', '1.*.*-debian10']
     try:
       for version in invalid_dataproc_versions:
         _args_exception(version)

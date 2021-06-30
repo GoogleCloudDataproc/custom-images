@@ -29,12 +29,11 @@ from custom_image_utils import constants
 _VERSION_REGEX = re.compile(r"^\d+\.\d+\.\d+(-RC\d+)?(-[a-z]+\d+)?$")
 _FULL_IMAGE_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/([^/]+)$")
 _FULL_IMAGE_FAMILY_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/family/([^/]+)$")
-# _LATEST_FROM_FAMILY: Accepts x.*.*-familyx, or x.x.*-familyx, or x.*.x-familyx. Also x.x.x-familyx, but that will get picked up by the standard _VERSION_REGEX.
-_LATEST_FROM_FAMILY = re.compile(r"^(\d+)\.(\d+|\*)\.(\d+|\*)-((?:debian|ubuntu|centos)\d+)$")
+_LATEST_FROM_MINOR_VERSION = re.compile(r"^(\d+)\.(\d+)-((?:debian|ubuntu|centos)\d+)$")
 
 def _version_regex_type(s):
   """Check if version string matches regex."""
-  if not _VERSION_REGEX.match(s) and not _LATEST_FROM_FAMILY.match(s):
+  if not _VERSION_REGEX.match(s) and not _LATEST_FROM_MINOR_VERSION.match(s):
     raise argparse.ArgumentTypeError("Invalid version: {}.".format(s))
   return s
 
