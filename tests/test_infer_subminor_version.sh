@@ -23,13 +23,13 @@ readonly TEST_SUFFIX=$(tr -dc 'a-z0-9' </dev/urandom | head -c 6)
 readonly TEST_BUCKET="gs://dataproc-custom-images-presubmit"
 readonly TEST_ZONE="us-central1-a"
 
-test_wildcard_patch_version_debian() {
-  local image_name="test-image-wildcard-${TEST_SUFFIX}"
-  echo "Creating custom debian image with wildcard patch version: ${image_name}"
-  # Expected image - 1.3.88-debian10 - dataproc-1-3-deb10-20210311-093551-rc01
+test_inferred_subminor_version_debian() {
+  local image_name="test-image-infer-subminor-${TEST_SUFFIX}"
+  echo "Creating custom debian image with inferred subminor version: ${image_name}"
+  # Expected image - 1.5.35-debian10 - dataproc-1-5-deb10-20210413-000000-rc01, as of 2021-06-30.
   python2 "${REPO_DIR}/generate_custom_image.py" \
     --image-name "${image_name}" \
-    --dataproc-version '1.3.*-debian10' \
+    --dataproc-version '1.5-debian10' \
     --customization-script "${REPO_DIR}/examples/customization_script.sh" \
     --zone "${TEST_ZONE}" \
     --gcs-bucket "${TEST_BUCKET}" \
@@ -37,13 +37,13 @@ test_wildcard_patch_version_debian() {
     --dry-run
 }
 
-test_wildcard_minor_and_patch_version_debian() {
+test_inferred_subminor_version_ubuntu() {
   local image_name="test-image-wildcard-${TEST_SUFFIX}"
-  echo "Creating custom debian image with wildcard minor and patch versions: ${image_name}"
+  echo "Creating custom ubuntu image with inferred subminor version: ${image_name}"
 
   python2 "${REPO_DIR}/generate_custom_image.py" \
     --image-name "${image_name}" \
-    --dataproc-version '1.*.*-debian10' \
+    --dataproc-version '1.5-ubuntu18' \
     --customization-script "${REPO_DIR}/examples/customization_script.sh" \
     --zone "${TEST_ZONE}" \
     --gcs-bucket "${TEST_BUCKET}" \
@@ -51,13 +51,13 @@ test_wildcard_minor_and_patch_version_debian() {
     --dry-run
 }
 
-test_wildcard_ubuntu() {
+test_inferred_subminor_version_centos() {
   local image_name="test-image-wildcard-${TEST_SUFFIX}"
-  echo "Creating custom ubuntu image with wildcard minor and patch versions: ${image_name}"
+  echo "Creating custom centos image with inferred subminor version: ${image_name}"
 
   python2 "${REPO_DIR}/generate_custom_image.py" \
     --image-name "${image_name}" \
-    --dataproc-version '1.*.*-ubuntu18' \
+    --dataproc-version '1.5-centos8' \
     --customization-script "${REPO_DIR}/examples/customization_script.sh" \
     --zone "${TEST_ZONE}" \
     --gcs-bucket "${TEST_BUCKET}" \
@@ -65,23 +65,8 @@ test_wildcard_ubuntu() {
     --dry-run
 }
 
-test_wildcard_centos() {
-  local image_name="test-image-wildcard-${TEST_SUFFIX}"
-  echo "Creating custom centos image with wildcard minor and patch versions: ${image_name}"
+test_inferred_subminor_version_debian
+test_inferred_subminor_version_ubuntu
+test_inferred_subminor_version_centos
 
-  python2 "${REPO_DIR}/generate_custom_image.py" \
-    --image-name "${image_name}" \
-    --dataproc-version '1.*.*-centos8' \
-    --customization-script "${REPO_DIR}/examples/customization_script.sh" \
-    --zone "${TEST_ZONE}" \
-    --gcs-bucket "${TEST_BUCKET}" \
-    --shutdown-instance-timer-sec 10 \
-    --dry-run
-}
-
-test_wildcard_patch_version_debian
-test_wildcard_minor_and_patch_version_debian
-test_wildcard_ubuntu
-test_wildcard_centos
-
-echo "All custom image tests with wildcard dataproc versions succeeded"
+echo "All custom image tests with unspecified subminor dataproc versions succeeded"
