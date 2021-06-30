@@ -129,7 +129,7 @@ def _get_dataproc_image_path_by_version(version):
   # version regex already checked in arg parser
   parsed_version = version.split(".")
   if len(parsed_version) == 2:
-    parsed_version[1] = parsed_version[1].replace('-', '-\d+-') # [2, 0-*-debian10]
+    parsed_version[1] = parsed_version[1].replace('-', '-\d+-')
     filter_arg = "--filter=labels.goog-dataproc-version ~ {}-{}".format(parsed_version[0], 
         parsed_version[1])
     command = [
