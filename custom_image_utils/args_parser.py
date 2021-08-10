@@ -220,6 +220,13 @@ def parse_args(args):
       generates a lot of output on stdout. If not specified, the default value
       of 300 seconds will be used.""")
   parser.add_argument(
+      "--licenses",
+      type=str,
+      required=False,
+      default="",
+      help=
+      """(Optional) Comma-separated list of URIs to license resources (e.g. 'license-url-a,license-url-b').""")
+  parser.add_argument(
       "--dry-run",
       action="store_true",
       help="""(Optional) Only generates script without creating image.""")

@@ -119,7 +119,8 @@ function main() {{
       --source-disk-zone={zone} \
       --source-disk={image_name}-install \
       {storage_location_flag} \
-      --family={family}
+      --family={family} \
+      {licenses}
   touch /tmp/{run_id}/image_created
 }}
 
@@ -172,6 +173,9 @@ class Generator:
     self.args[
       "storage_location_flag"] = "--storage-location={storage_location}".format(
         **self.args) if self.args["storage_location"] else ""
+    self.args[
+      "licenses"] = "--licenses='{licenses}'".format(
+        **self.args) if self.args["licenses"] else ""
     metadata_flag_template = (
         "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},"
         "custom-sources-path={custom_sources_path}")

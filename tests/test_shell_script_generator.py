@@ -88,7 +88,7 @@ function main() {
   fi
 
   echo 'Creating custom image.'
-  gcloud compute images create my-image       --project=my-project       --source-disk-zone=us-west1-a       --source-disk=my-image-install       --storage-location=us-east1       --family=debian9
+  gcloud compute images create my-image       --project=my-project       --source-disk-zone=us-west1-a       --source-disk=my-image-install       --storage-location=us-east1       --family=debian9       --licenses='https://www.googleapis.com/compute/v1/projects/my-project/global/licenses/my-license'
   touch /tmp/custom-image-my-image-20190611-160823/image_created
 }
 
@@ -122,7 +122,8 @@ class TestShellScriptGenerator(unittest.TestCase):
         'project_id': 'my-project',
         'storage_location': 'us-east1',
         'shutdown_timer_in_sec': 500,
-        'base_image_family': 'projects/my-dataproc-project/global/images/family/debian-10'
+        'base_image_family': 'projects/my-dataproc-project/global/images/family/debian-10',
+        'licenses': 'https://www.googleapis.com/compute/v1/projects/my-project/global/licenses/my-license'
     }
 
     script = shell_script_generator.Generator().generate(args)

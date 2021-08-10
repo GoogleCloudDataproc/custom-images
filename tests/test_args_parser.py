@@ -49,6 +49,7 @@ class TestArgsParser(unittest.TestCase):
         family="'dataproc-custom-image'",
         gcs_bucket="'{}'".format(gcs_bucket),
         image_name="'{}'".format(image_name),
+        licenses="''",
         machine_type="'n1-standard-1'",
         network="'{}'".format(''),
         no_external_ip="False",
@@ -74,6 +75,7 @@ class TestArgsParser(unittest.TestCase):
     family = 'debian9'
     gcs_bucket = 'gs://my-bucket'
     image_name = 'my-image'
+    licenses = 'https://www.googleapis.com/compute/v1/projects/license/my-project/global/licenses/my-license'
     machine_type = 'n1-standard-4'
     network = 'my-network'
     no_external_ip = True
@@ -96,6 +98,7 @@ class TestArgsParser(unittest.TestCase):
         '--family', family,
         '--gcs-bucket', gcs_bucket,
         '--image-name', image_name,
+        '--licenses', licenses,
         '--machine-type', machine_type,
         '--network', network,
         '--no-external-ip',
@@ -122,6 +125,7 @@ class TestArgsParser(unittest.TestCase):
         family="'{}'".format(family),
         gcs_bucket="'{}'".format(gcs_bucket),
         image_name="'{}'".format(image_name),
+        licenses="'{}'".format(licenses),
         machine_type="'{}'".format(machine_type),
         metadata="'{}'".format(metadata),
         network="'{}'".format(network),
@@ -150,6 +154,7 @@ class TestArgsParser(unittest.TestCase):
       family,
       gcs_bucket,
       image_name,
+      licenses,
       machine_type,
       metadata,
       network,
@@ -175,6 +180,7 @@ class TestArgsParser(unittest.TestCase):
         "family={}, "
         "gcs_bucket={}, "
         "image_name={}, "
+        "licenses={}, "
         "machine_type={}, "
         "metadata={}, "
         "network={}, "
@@ -199,6 +205,7 @@ class TestArgsParser(unittest.TestCase):
         family,
         gcs_bucket,
         image_name,
+        licenses,
         machine_type,
         metadata,
         network,

@@ -134,6 +134,7 @@ python generate_custom_image.py \
     be escaped, consider encoding the value, then decode it back in the
     customization script. See more information about VM metadata on
     https://cloud.google.com/sdk/gcloud/reference/compute/instances/create.
+*   **--licenses**: Comma-separated list of URIs to license resources.
 
 #### Overriding cluster properties with a custom image
 
