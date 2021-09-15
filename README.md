@@ -155,15 +155,25 @@ To set cluster properties with your custom image:
 In your custom image
 [customization script](https://cloud.devsite.corp.google.com/dataproc/docs/guides/dataproc-images#running_the_code),
 create a `dataproc.custom.properties` file in `/etc/google-dataproc`, then set
-cluster property values in the file. * Sample `dataproc.custom.properties` file
-contents: `shell dataproc.conscrypt.provider.enable=true
-dataproc.logging.stackdriver.enable=false`
+cluster property values in the file.
+
+*   Sample `dataproc.custom.properties` file contents:
+
+    ```shell
+    dataproc.conscrypt.provider.enable=true
+    dataproc.logging.stackdriver.enable=false
+    ```
 
 *   Sample customization script file-creation snippet to override two cluster
-    properties: `shell cat
-    <<EOF >/etc/google-dataproc/dataproc.custom.properties
+    properties:
+
+    ```shell
+    cat <<EOF >/etc/google-dataproc/dataproc.custom.properties
     dataproc.conscrypt.provider.enable=true
-    dataproc.logging.stackdriver.enable=false EOF` ### Examples
+    dataproc.logging.stackdriver.enable=false EOF
+    ```
+
+### Examples
 
 #### Create a custom image
 
