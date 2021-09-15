@@ -83,10 +83,8 @@ function cleanup() {
   # transient authentication keys to access gcs bucket. The init_actions.sh and
   # run.sh are your customization and bootstrap scripts (this) which must be
   # removed after creating the image
-  rm -rf ~/.config/
-  rm -rf ~/.gsutil/
-  rm ./init_actions.sh
-  rm ./run.sh
+  rm -rf ~/.config/ ~/.gsutil/
+  rm ./init_actions.sh ./run.sh
 }
 
 function main() {
