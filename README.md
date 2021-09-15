@@ -34,7 +34,7 @@ python generate_custom_image.py \
     --image-name '<new_custom_image_name>' \
     --dataproc-version '<dataproc_version>' \
     --customization-script '<custom_script_to_install_custom_packages>' \
-    --zone "<zone_to_create_instance_to_build_custom_image>' \
+    --zone '<zone_to_create_instance_to_build_custom_image>' \
     --gcs-bucket '<gcs_bucket_to_write_logs>'
 ```
 
