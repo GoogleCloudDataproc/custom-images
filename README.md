@@ -31,11 +31,11 @@ To generate a custom image, you can run the following command:
 
 ```shell
 python generate_custom_image.py \
-    --image-name <new_custom_image_name> \
-    --dataproc-version <Dataproc version> \
-    --customization-script <custom script to install custom packages> \
-    --zone <zone to create instance to build custom image> \
-    --gcs-bucket <gcs bucket to write logs>
+    --image-name '<new_custom_image_name>' \
+    --dataproc-version '<dataproc_version>' \
+    --customization-script '<custom_script_to_install_custom_packages>' \
+    --zone "<zone_to_create_instance_to_build_custom_image>' \
+    --gcs-bucket '<gcs_bucket_to_write_logs>'
 ```
 
 ### Arguments
@@ -43,28 +43,26 @@ python generate_custom_image.py \
 *   **--image-name**: The name for custom image.
 *   **--dataproc-version**: The Dataproc version for this custom image to build
     on. Examples: `1.5.9-debian10`, `1.5.0-RC10-debian10`, `1.5.9-ubuntu18`. If
-    the sub-minor version is unspecified, the latest avaiable one will be used.
-    Examples: `1.5-debian10`. For a complete list of Dataproc image versions,
-    please refer to Dataproc
+    the sub-minor version is unspecified, the latest available one will be used.
+    Examples: `1.5-centos8`, `2.0-debian10`. For a complete list of Dataproc
+    image versions, please refer to Dataproc
     [release notes](https://cloud.google.com/dataproc/docs/release-notes). To
     understand Dataproc versioning, please refer to
     [documentation](https://cloud.google.com/dataproc/docs/concepts/versioning/overview).
-    **This argument is mutually exclusive with --base-image-uri and
-    --source-image-family**.
+    **This argument is mutually exclusive with `--base-image-uri` and
+    `--source-image-family`**.
 *   **--base-image-uri**: The full image URI for the base Dataproc image. The
     customization script will be executed on top of this image instead of an
     out-of-the-box Dataproc image. This image must be a valid Dataproc image.
-    **This argument is mutually exclusive with --dataproc-version and
-    --source-image-family.**
+    **This argument is mutually exclusive with `--dataproc-version` and
+    `--source-image-family`**.
 *   **--base-image-family**: The image family that the boot disk will be
     initialized with. The latest non-deprecated image from the family will be
-    used. \
-    An example base image family URI is
-    projects/PROJECT_NAME/global/images/family/FAMILY_NAME. \
-    To get the list of image families (and the associated image), run \
-    gcloud compute images list [--project <PROJECT_NAME>] \
-    **This argument is mutually exclusive with --dataproc-version and
-    --base-image-uri.**
+    used. An example base image family URI is
+    `projects/PROJECT_NAME/global/images/family/<FAMILY_NAME>`. To get the list
+    of image families (and the associated image), run `gcloud compute images
+    list [--project <PROJECT_NAME>]`. **This argument is mutually exclusive with
+    `--dataproc-version` and `--base-image-uri`**.
 *   **--customization-script**: The script used to install custom packages on
     the image.
 *   **--zone**: The GCE zone for running your GCE instance.
