@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import unittest
-
+import exceptions
 from custom_image_utils import args_parser
 
 
@@ -136,6 +136,69 @@ class TestArgsParser(unittest.TestCase):
         zone="'{}'".format(zone),
     )
     self.assertEqual(str(args), expected_result)
+
+  def test_inferred_subminor_versions(self):
+    """Verifies it succeeds if inferred/unspecified subminor version is correctly formatted."""
+    customization_script = '/tmp/my-script.sh'
+    gcs_bucket = 'gs://my-bucket'
+    image_name = 'my-image'
+    zone = 'us-west1-a'
+
+    def _args_parsed(dataproc_version):
+      return args_parser.parse_args([
+          '--image-name', image_name,
+          '--dataproc-version', dataproc_version,
+          '--customization-script', customization_script,
+          '--zone', zone,
+          '--gcs-bucket', gcs_bucket])
+
+    def _expected_result(dataproc_version):
+       return self._make_expected_result(
+          accelerator=None,
+          base_image_family="None",
+          base_image_uri="None",
+          customization_script="'{}'".format(customization_script),
+          dataproc_version="'{}'".format(dataproc_version),
+          disk_size="20",
+          dry_run=False,
+          extra_sources="{}",
+          family="'dataproc-custom-image'",
+          gcs_bucket="'{}'".format(gcs_bucket),
+          image_name="'{}'".format(image_name),
+          machine_type="'n1-standard-1'",
+          network="'{}'".format(''),
+          no_external_ip="False",
+          no_smoke_test="False",
+          oauth="None",
+          project_id="None",
+          service_account="'default'",
+          shutdown_instance_timer_sec="300",
+          storage_location=None,
+          subnetwork="''",
+          zone="'{}'".format(zone),
+          metadata=None
+    )
+
+    def _args_exception(dataproc_version):
+      # Checks that inputs produce an exception
+      try:
+        _args_parsed(dataproc_version)
+      except SystemExit as e:
+        self.assertEqual(e.__class__, exceptions.SystemExit)
+      else:
+        raise ValueError("Exception not raised")
+
+    self.assertEqual(str(_args_parsed('1.5-debian10')), _expected_result('1.5-debian10'))
+    self.assertEqual(str(_args_parsed('1.3-ubuntu18')), _expected_result('1.3-ubuntu18'))
+    self.assertEqual(str(_args_parsed('1.3-centos8')), _expected_result('1.3-centos8'))
+
+    invalid_dataproc_versions = ['*.*.*-debian10', '1.**.*-debian10', '1.*.8*-debian10', '11.*.*-debian', 
+      '1.*-debian10', '1.5.*-debian10', '1.5.-debian10', '1.*.*-debian10']
+    try:
+      for version in invalid_dataproc_versions:
+        _args_exception(version)
+    except ValueError as e:
+      raise e
 
   def _make_expected_result(
       self,

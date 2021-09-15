@@ -42,7 +42,7 @@ python generate_custom_image.py \
 
 *   **--image-name**: The name for custom image.
 *   **--dataproc-version**: The Dataproc version for this custom image to build
-    on. Examples: `1.5.9-debian10`, `1.5.0-RC10-debian10`, `1.5.9-ubuntu18`. For a
+    on. Examples: `1.5.9-debian10`, `1.5.0-RC10-debian10`, `1.5.9-ubuntu18`. If the sub-minor version is unspecified, the latest avaiable one will be used. Examples: `1.5-debian10`. For a
     complete list of Dataproc image versions, please refer to Dataproc
     [release notes](https://cloud.google.com/dataproc/docs/release-notes). To
     understand Dataproc versioning, please refer to
