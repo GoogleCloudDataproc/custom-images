@@ -42,22 +42,29 @@ python generate_custom_image.py \
 
 *   **--image-name**: The name for custom image.
 *   **--dataproc-version**: The Dataproc version for this custom image to build
-    on. Examples: `1.5.9-debian10`, `1.5.0-RC10-debian10`, `1.5.9-ubuntu18`. If the sub-minor version is unspecified, the latest avaiable one will be used. Examples: `1.5-debian10`. For a
-    complete list of Dataproc image versions, please refer to Dataproc
+    on. Examples: `1.5.9-debian10`, `1.5.0-RC10-debian10`, `1.5.9-ubuntu18`. If
+    the sub-minor version is unspecified, the latest avaiable one will be used.
+    Examples: `1.5-debian10`. For a complete list of Dataproc image versions,
+    please refer to Dataproc
     [release notes](https://cloud.google.com/dataproc/docs/release-notes). To
     understand Dataproc versioning, please refer to
     [documentation](https://cloud.google.com/dataproc/docs/concepts/versioning/overview).
-    **This argument is mutually exclusive with --base-image-uri and --source-image-family**.
+    **This argument is mutually exclusive with --base-image-uri and
+    --source-image-family**.
 *   **--base-image-uri**: The full image URI for the base Dataproc image. The
     customization script will be executed on top of this image instead of an
     out-of-the-box Dataproc image. This image must be a valid Dataproc image.
-    **This argument is mutually exclusive with --dataproc-version and --source-image-family.**
+    **This argument is mutually exclusive with --dataproc-version and
+    --source-image-family.**
 *   **--base-image-family**: The image family that the boot disk will be
-    initialized with. The latest non-deprecated image from the family will be used.  
-    An example base image family URI is projects/PROJECT_NAME/global/images/family/FAMILY_NAME.  
-    To get the list of image families (and the associated image), run  
-    gcloud compute images list [--project <PROJECT_NAME>]  
-    **This argument is mutually exclusive with --dataproc-version and --base-image-uri.**    
+    initialized with. The latest non-deprecated image from the family will be
+    used. \
+    An example base image family URI is
+    projects/PROJECT_NAME/global/images/family/FAMILY_NAME. \
+    To get the list of image families (and the associated image), run \
+    gcloud compute images list [--project <PROJECT_NAME>] \
+    **This argument is mutually exclusive with --dataproc-version and
+    --base-image-uri.**
 *   **--customization-script**: The script used to install custom packages on
     the image.
 *   **--zone**: The GCE zone for running your GCE instance.
@@ -137,29 +144,26 @@ python generate_custom_image.py \
 
 #### Overriding cluster properties with a custom image
 
-You can use custom images to overwrite any [cluster properties](https://cloud.google.com/dataproc/docs/concepts/configuring-clusters/cluster-properties)
-set during cluster creation. If a user creates a cluster with your custom image but sets cluster properties different from 
-those you set with your custom image, your custom image cluster property settings will take precedence.
+You can use custom images to overwrite any
+[cluster properties](https://cloud.google.com/dataproc/docs/concepts/configuring-clusters/cluster-properties)
+set during cluster creation. If a user creates a cluster with your custom image
+but sets cluster properties different from those you set with your custom image,
+your custom image cluster property settings will take precedence.
 
 To set cluster properties with your custom image:
 
 In your custom image
-   [customization script](https://cloud.devsite.corp.google.com/dataproc/docs/guides/dataproc-images#running_the_code),
-   create a `dataproc.custom.properties` file in `/etc/google-dataproc`, then set cluster property values in the file.
-   * Sample `dataproc.custom.properties` file contents:
-```shell
-     dataproc.conscrypt.provider.enable=true
-     dataproc.logging.stackdriver.enable=false
-```
+[customization script](https://cloud.devsite.corp.google.com/dataproc/docs/guides/dataproc-images#running_the_code),
+create a `dataproc.custom.properties` file in `/etc/google-dataproc`, then set
+cluster property values in the file. * Sample `dataproc.custom.properties` file
+contents: `shell dataproc.conscrypt.provider.enable=true
+dataproc.logging.stackdriver.enable=false`
 
-   * Sample customization script file-creation snippet to override two cluster properties:
-```shell
-cat <<EOF >/etc/google-dataproc/dataproc.custom.properties
-dataproc.conscrypt.provider.enable=true
-dataproc.logging.stackdriver.enable=false
-EOF
-```
-### Examples
+*   Sample customization script file-creation snippet to override two cluster
+    properties: `shell cat
+    <<EOF >/etc/google-dataproc/dataproc.custom.properties
+    dataproc.conscrypt.provider.enable=true
+    dataproc.logging.stackdriver.enable=false EOF` ### Examples
 
 #### Create a custom image
 
