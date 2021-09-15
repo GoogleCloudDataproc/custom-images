@@ -129,10 +129,14 @@ def _get_dataproc_image_path_by_version(version):
   # version regex already checked in arg parser
   parsed_version = version.split(".")
   if len(parsed_version) == 2:
+    # the input version must be of format 1.5-debian10 in which case we need to
+    # expand it to 1-5-\d+-debian10 so we can do a regexp on the minor version
     parsed_version[1] = parsed_version[1].replace('-', '-\d+-')
     filter_arg = "labels.goog-dataproc-version ~ ^{}-{} AND NOT name ~ -eap$ AND status = READY".format(parsed_version[0],
         parsed_version[1])
   else:
+    # moreover, push the filter of READY status and name not containing eap to
+    # gcloud command so we don't have to iterate the list
     filter_arg = "labels.goog-dataproc-version = {}-{}-{} AND NOT name ~ -eap$ AND status = READY".format(
         parsed_version[0], parsed_version[1], parsed_version[2])
 
