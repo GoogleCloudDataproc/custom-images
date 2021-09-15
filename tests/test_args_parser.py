@@ -275,5 +275,5 @@ class TestArgsParser(unittest.TestCase):
         subnetwork,
         zone)
 
-  if __name__ == '__main__':
+if __name__ == '__main__':
     unittest.main()
