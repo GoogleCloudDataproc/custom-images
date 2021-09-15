@@ -130,20 +130,17 @@ def _get_dataproc_image_path_by_version(version):
   parsed_version = version.split(".")
   if len(parsed_version) == 2:
     parsed_version[1] = parsed_version[1].replace('-', '-\d+-')
-    filter_arg = "--filter=labels.goog-dataproc-version ~ {}-{}".format(parsed_version[0], 
+    filter_arg = "labels.goog-dataproc-version ~ ^{}-{} AND NOT name ~ -eap$ AND status = READY".format(parsed_version[0],
         parsed_version[1])
-    command = [
-        "gcloud", "compute", "images", "list", "--project", "cloud-dataproc",
-        filter_arg, "--format=csv[no-heading=true](name,status)", 
-        "--sort-by=~creationTimestamp"
-    ]
-  else: 
-    filter_arg = "--filter=labels.goog-dataproc-version=\'{}-{}-{}\'".format(
+  else:
+    filter_arg = "labels.goog-dataproc-version = {}-{}-{} AND NOT name ~ -eap$ AND status = READY".format(
         parsed_version[0], parsed_version[1], parsed_version[2])
-    command = [
-        "gcloud", "compute", "images", "list", "--project", "cloud-dataproc",
-        filter_arg, "--format=csv[no-heading=true](name,status)"
-    ]
+
+  command = [
+      "gcloud", "compute", "images", "list", "--project", "cloud-dataproc",
+      "--filter", filter_arg, "--format", "csv[no-heading=true](name,labels.goog-dataproc-version)",
+      "--sort-by=~creationTimestamp"
+  ]
 
   # get stdout from compute images list --filters
   with tempfile.NamedTemporaryFile() as temp_file:
@@ -162,12 +159,8 @@ def _get_dataproc_image_path_by_version(version):
       parsed_lines = stdout.decode('utf-8').strip().split('\n')
       for line in parsed_lines:
         parsed_image = line.split(",")
-        if len(parsed_image) == 2 \
-            and parsed_image[1] == "READY" \
-            and parsed_image[0] \
-            and not parsed_image[0].encode('ascii', 'ignore').endswith(
-                "-eap".encode('ascii', 'ignore')):
-          return _IMAGE_PATH.format('cloud-dataproc', parsed_image[0])
+        if len(parsed_image) == 2:
+          return (_IMAGE_PATH.format('cloud-dataproc', parsed_image[0]), parsed_image[1])
 
   raise RuntimeError(
       "Cannot find dataproc base image with "
@@ -186,7 +179,7 @@ def _infer_base_image(args):
     args.dataproc_base_image = _extract_image_path(args.base_image_uri)
     args.dataproc_version = _get_dataproc_image_version(args.base_image_uri)
   elif args.dataproc_version:
-    args.dataproc_base_image = _get_dataproc_image_path_by_version(args.dataproc_version)
+    args.dataproc_base_image, args.dataproc_version = _get_dataproc_image_path_by_version(args.dataproc_version)
   elif args.base_image_family:
     args.dataproc_base_image = _extract_image_family_path(args.base_image_family)
     args.dataproc_version = _get_dataproc_version_from_image_family(args.base_image_family)
@@ -194,6 +187,7 @@ def _infer_base_image(args):
     raise RuntimeError(
         "Neither --dataproc-version nor --base-image-uri nor --source-image-family-uri is specified.")
   _LOG.info("Returned Dataproc base image: %s", args.dataproc_base_image)
+  _LOG.info("Returned Dataproc version   : %s", args.dataproc_version)
 
 
 def _infer_oauth(args):
