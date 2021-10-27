@@ -151,7 +151,7 @@ your custom image cluster property settings will take precedence.
 To set cluster properties with your custom image:
 
 In your custom image
-[customization script](https://cloud.devsite.corp.google.com/dataproc/docs/guides/dataproc-images#running_the_code),
+[customization script](https://cloud.google.com/dataproc/docs/guides/dataproc-images#running_the_code),
 create a `dataproc.custom.properties` file in `/etc/google-dataproc`, then set
 cluster property values in the file.
 
