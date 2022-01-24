@@ -156,7 +156,9 @@ def parse_args(args):
       do not use the --network argument.""")
   parser.add_argument(
       "--smoke-test-tags",
-      action="store_true",
+      type=str,
+      required=False,
+      default="",
       help="""(Optional) Network tags used to launch the Dataproc cluster used
       for the smoke test.""")
   parser.add_argument(
