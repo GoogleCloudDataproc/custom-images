@@ -17,7 +17,7 @@ clusters.
 
 ## Requirements
 
-1.  Python 2.7.
+1.  Python 2.7+.
 2.  gcloud 181.0.0 (2017-11-30).
 3.  Bash 3.0.
 4.  A GCE project with billing, Google Cloud Dataproc API, Google Compute Engine
