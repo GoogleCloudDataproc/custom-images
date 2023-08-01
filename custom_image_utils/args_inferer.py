@@ -129,14 +129,20 @@ def _get_dataproc_image_path_by_version(version):
   """Get Dataproc base image name from version."""
   # version regex already checked in arg parser
   parsed_version = version.split(".")
+  major_version = parsed_version[0]
+  subminor_version = None
   if len(parsed_version) == 2:
     # The input version must be of format 1.5-debian10 in which case we need to
     # expand it to 1-5-\d+-debian10 so we can do a regexp on the minor version
+    minor_version = parsed_version[1].split("-")[0]
     parsed_version[1] = parsed_version[1].replace("-", "-\d+-")
     filter_arg = ("labels.goog-dataproc-version ~ ^{}-{} AND NOT name ~ -eap$"
                   " AND status = READY").format(parsed_version[0],
                                                 parsed_version[1])
   else:
+    major_version=parsed_version[0]
+    minor_version=parsed_version[1]
+    subminor_version = parsed_version[2]
     # Moreover, push the filter of READY status and name not containing 'eap' to
     # gcloud command so we don't have to iterate the list
     filter_arg = ("labels.goog-dataproc-version = {}-{}-{} AND NOT name ~ -eap$"
@@ -144,20 +150,21 @@ def _get_dataproc_image_path_by_version(version):
                                                 parsed_version[1],
                                                 parsed_version[2])
   command = [
-      "gcloud", "compute", "images", "list", "--project", "cloud-dataproc",
-      "--filter", filter_arg, "--format",
-      "csv[no-heading=true](name,labels.goog-dataproc-version)",
-      "--sort-by=~creationTimestamp"
+    "gcloud", "compute", "images", "list", "--project", "cloud-dataproc",
+    "--filter", filter_arg, "--format",
+    "csv[no-heading=true](name,labels.goog-dataproc-version)",
+    "--sort-by=~creationTimestamp"
   ]
 
+  _LOG.info("Executing command: {}".format(command))
   # get stdout from compute images list --filters
   with tempfile.NamedTemporaryFile() as temp_file:
     pipe = subprocess.Popen(command, stdout=temp_file)
     pipe.wait()
     if pipe.returncode != 0:
       raise RuntimeError(
-          "Cannot find dataproc base image, please check and verify "
-          "[--dataproc-version]")
+        "Cannot find dataproc base image, please check and verify "
+        "[--dataproc-version]")
 
     temp_file.seek(0)  # go to start of the stdout
     stdout = temp_file.read()
@@ -165,14 +172,36 @@ def _get_dataproc_image_path_by_version(version):
     if stdout:
       # in case there are multiple images
       parsed_lines = stdout.decode('utf-8').strip().split('\n')
+      expected_prefix = "dataproc-{}-{}".format(major_version, minor_version)
+      _LOG.info("Filtering images : %s", expected_prefix)
+      image_versions=[]
+      all_images_for_version = {}
       for line in parsed_lines:
         parsed_image = line.split(",")
         if len(parsed_image) == 2:
-          return (_IMAGE_PATH.format("cloud-dataproc",
-                                     parsed_image[0]), parsed_image[1])
+          if not parsed_image[0].startswith(expected_prefix):
+            _LOG.info("Skipping non-release image %s", parsed_image[0])
+            # Not a regular dataproc release image. Maybe a custom image with same label.
+            continue
+          if parsed_image[1] not in all_images_for_version:
+            all_images_for_version[parsed_image[1]] = [_IMAGE_PATH.format("cloud-dataproc", parsed_image[0])]
+            image_versions.append(parsed_image[1])
+          else:
+            all_images_for_version[parsed_image[1]].append(_IMAGE_PATH.format("cloud-dataproc", parsed_image[0]))
+
+      _LOG.info("All Images : %s", all_images_for_version)
+      _LOG.info("All Image-Versions : %s", image_versions)
+
+      for image_version in image_versions:
+        if (len(all_images_for_version[image_version]) > 1):
+          raise RuntimeError(
+            "Found more than one images for dataproc-version={}. Images: {}".format(image_version, str(all_images_for_version[image_version])))
+
+      _LOG.info("Chosing image %s with version %s", all_images_for_version[image_versions[0]][0], image_versions[0])
+      return all_images_for_version[image_versions[0]][0], image_versions[0]
 
   raise RuntimeError(
-      "Cannot find dataproc base image with dataproc-version=%s." % version)
+    "Cannot find dataproc base image with dataproc-version=%s." % version)
 
 
 def _infer_project_id(args):
