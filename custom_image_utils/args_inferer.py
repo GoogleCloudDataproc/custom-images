@@ -130,7 +130,6 @@ def _get_dataproc_image_path_by_version(version):
   # version regex already checked in arg parser
   parsed_version = version.split(".")
   major_version = parsed_version[0]
-  subminor_version = None
   if len(parsed_version) == 2:
     # The input version must be of format 1.5-debian10 in which case we need to
     # expand it to 1-5-\d+-debian10 so we can do a regexp on the minor version
@@ -140,9 +139,8 @@ def _get_dataproc_image_path_by_version(version):
                   " AND status = READY").format(parsed_version[0],
                                                 parsed_version[1])
   else:
-    major_version=parsed_version[0]
-    minor_version=parsed_version[1]
-    subminor_version = parsed_version[2]
+    major_version = parsed_version[0]
+    minor_version = parsed_version[1]
     # Moreover, push the filter of READY status and name not containing 'eap' to
     # gcloud command so we don't have to iterate the list
     filter_arg = ("labels.goog-dataproc-version = {}-{}-{} AND NOT name ~ -eap$"
@@ -179,25 +177,29 @@ def _get_dataproc_image_path_by_version(version):
       for line in parsed_lines:
         parsed_image = line.split(",")
         if len(parsed_image) == 2:
-          if not parsed_image[0].startswith(expected_prefix):
-            _LOG.info("Skipping non-release image %s", parsed_image[0])
+          parsed_image_name = parsed_image[0]
+          if not parsed_image_name.startswith(expected_prefix):
+            _LOG.info("Skipping non-release image %s", parsed_image_name)
             # Not a regular dataproc release image. Maybe a custom image with same label.
             continue
-          if parsed_image[1] not in all_images_for_version:
-            all_images_for_version[parsed_image[1]] = [_IMAGE_PATH.format("cloud-dataproc", parsed_image[0])]
-            image_versions.append(parsed_image[1])
+          parsed_image_version = parsed_image[1]
+          if parsed_image_version not in all_images_for_version:
+            all_images_for_version[parsed_image_version] = [_IMAGE_PATH.format("cloud-dataproc", parsed_image_name)]
+            image_versions.append(parsed_image_version)
           else:
-            all_images_for_version[parsed_image[1]].append(_IMAGE_PATH.format("cloud-dataproc", parsed_image[0]))
+            all_images_for_version[parsed_image_version].append(_IMAGE_PATH.format("cloud-dataproc", parsed_image_name))
 
       _LOG.info("All Images : %s", all_images_for_version)
       _LOG.info("All Image-Versions : %s", image_versions)
 
-      for image_version in image_versions:
-        if (len(all_images_for_version[image_version]) > 1):
-          raise RuntimeError(
-            "Found more than one images for dataproc-version={}. Images: {}".format(image_version, str(all_images_for_version[image_version])))
+      latest_available_version = image_versions[0]
+      if (len(all_images_for_version[latest_available_version]) > 1):
+        raise RuntimeError(
+          "Found more than one images for latest dataproc-version={}. Images: {}".format(
+            latest_available_version,
+            str(all_images_for_version[latest_available_version])))
 
-      _LOG.info("Chosing image %s with version %s", all_images_for_version[image_versions[0]][0], image_versions[0])
+      _LOG.info("Choosing image %s with version %s", all_images_for_version[image_versions[0]][0], image_versions[0])
       return all_images_for_version[image_versions[0]][0], image_versions[0]
 
   raise RuntimeError(
