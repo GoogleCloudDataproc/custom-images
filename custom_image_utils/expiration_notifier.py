@@ -69,7 +69,7 @@ def notify(args):
     _LOG.info("Successfully built Dataproc custom image: %s", args.image_name)
     creation_date = _parse_date_time(
         _get_image_creation_timestamp(args.image_name, args.project_id))
-    expiration_date = creation_date + datetime.timedelta(days=60)
+    expiration_date = creation_date + datetime.timedelta(days=365)
     _LOG.info(
         _expiration_notification_text.format(args.image_name,
                                              str(expiration_date)))
