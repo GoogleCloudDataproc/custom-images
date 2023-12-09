@@ -84,6 +84,7 @@ function main() {{
       {network_flag} \
       {subnetwork_flag} \
       {no_external_ip_flag} \
+      {tags_flag} \
       --machine-type={machine_type} \
       --disk=auto-delete=yes,boot=yes,mode=rw,name={image_name}-install \
       {accelerator_flag} \
@@ -160,6 +161,8 @@ class Generator:
     elif self.args["network"]:
       self.args["network_flag"] = "--network={network}".format(**self.args)
       self.args["subnetwork_flag"] = ""
+    if self.args["tags"]:
+      self.args["tags_flag"] = "--tags={tags}".format(**self.args)
     if self.args["service_account"]:
       self.args[
         "service_account_flag"] = "--service-account={service_account}".format(
