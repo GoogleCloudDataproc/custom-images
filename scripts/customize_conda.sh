@@ -55,7 +55,7 @@ set -euxo pipefail
 #    --customization-script scripts/customize_conda.sh \
 #    --zone <zone> \
 #    --gcs-bucket gs://<bucket-directory-path> \
-#    --metadata 'conda-component=MINICONDA3,dataproc:conda.env.config.uri=gs://<file-path>/environment.yaml'
+#    --metadata 'conda-component=MINICONDA3,conda-env-config-uri=gs://<file-path>/environment.yaml'
 #
 #
 # The following example installs the specified conda and pip packages into the
