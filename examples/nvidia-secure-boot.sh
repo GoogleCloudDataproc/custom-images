@@ -5,9 +5,9 @@
 set -x
 set -e
 
+# Set the following variables to something that reflects a realistic environment:
 ZONE="us-central1-f"
 PROJECT_ID="${USER}-project-$(date +%F)"
-# https://web.mit.edu/kerberos/krb5-1.13/doc/admin/realm_config.html
 REALM="boston.engineering.example.com"
 
 # https://github.com/glevand/secure-boot-utils
@@ -121,6 +121,10 @@ else
        --guest-os-features="UEFI_COMPATIBLE"
 fi
 
+# Everything below here can be done with the custom image script.  I
+# will make that change in a future commit
+
+
 # boot a VM with this image
 MACHINE_TYPE=n1-standard-8
 INSTANCE_NAME="${USER}-secure-boot-$(date +%F)"
@@ -138,9 +142,6 @@ else
 
     sleep 45
 fi
-
-# Everything below here can be done with the custom image script.  I
-# will make that change in a future commit
 
 gcloud compute \
        scp --recurse "${TMPDIR}/tls" \
