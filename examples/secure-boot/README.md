@@ -11,19 +11,17 @@ kernel drivers on a Dataproc image, the following commands can be
 run from the root of the custom-images git repository:
 
 ```bash
-bash examples/secure-boot/create-key-pair.sh
-private_secret_name=$(cat tls/private-key-secret-name.txt)
-public_secret_name=$(cat tls/public-key-secret-name.txt)
-secret_project="$(gcloud config get project)"
-secret_version=1
+eval $(bash examples/secure-boot/create-key-pair.sh)
+PROJECT_ID=your-project-here
+gcloud config set project ${PROJECT_ID}
 custom_image_zone="$(gcloud config get compute/zone)"
+gcloud auth login
 my_bucket="$(gsutil ls | tail -1)"
 echo "$0: remove this line, modify the my_bucket line and remove the sleep."
 echo "default bucket is '${my_bucket}'.  Ctrl-C to select a better default"
 sleep 10s
 echo "you still have 20 seconds"
 sleep 20s
-gcloud auth login
 
 metadata="public_secret_name=${public_secret_name}"
 metadata="${metadata},private_secret_name=${private_secret_name}"
@@ -44,7 +42,7 @@ python generate_custom_image.py \
     --customization-script ${customization_script} \
     --metadata "${metadata}" \
     --zone "${custom_image_zone}" \
-    --shutdown-instance-timer-sec=900 \
+    --shutdown-instance-timer-sec=1000 \
     --gcs-bucket "${my_bucket}"
 ```
 

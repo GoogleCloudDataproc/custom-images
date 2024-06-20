@@ -48,8 +48,9 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-contai
 # add non-free components
 sed -i -e 's/ main$/ main contrib non-free/' /etc/apt/sources.list
 
-# install kernel headers
+# install nvidia-container-toolkit and kernel headers
 apt-get --no-install-recommends -qq -y install \
+     nvidia-container-toolkit \
      "linux-headers-$(uname -r)"
 
 # fetch .run file

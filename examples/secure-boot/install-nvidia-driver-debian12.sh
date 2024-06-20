@@ -1,6 +1,9 @@
 #!/bin/bash
 set -xeu
 
+nv_driver_ver="550.54.14"
+nv_cuda_ver="12.4.0"
+
 # read secret name, project, version
 sig_pub_secret_name="$(/usr/share/google/get_metadata_value attributes/public_secret_name)"
 sig_priv_secret_name="$(/usr/share/google/get_metadata_value attributes/private_secret_name)"
@@ -31,9 +34,6 @@ gcloud secrets versions access "${sig_secret_version}" \
     | base64 --decode \
     | dd of="${cacert_der}"
 
-DEBIAN_SOURCES="/etc/apt/sources.list.d/debian.sources"
-COMPONENTS="main contrib non-free non-free-firmware"
-
 mokutil --sb-state
 
 # configure the nvidia-container-toolkit package source
@@ -46,6 +46,8 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-contai
   | tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
 # enable non-free and non-free-firmware components, update cache
+DEBIAN_SOURCES="/etc/apt/sources.list.d/debian.sources"
+COMPONENTS="main contrib non-free non-free-firmware"
 sed -i -e "s/Components: .*$/Components: ${COMPONENTS}/" ${DEBIAN_SOURCES}
 apt-get -qq update
 
@@ -67,5 +69,9 @@ apt-get --no-install-recommends -qq -y install \
      libglvnd0 \
      libcuda1
 
-# Insert the symbols into the kernel's memory
-modprobe nvidia-current-open
+# Install CUDA
+cuda_runfile="cuda_${nv_cuda_ver}_${nv_driver_ver}_linux.run"
+curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
+     "https://developer.download.nvidia.com/compute/cuda/${nv_cuda_ver}/local_installers/${cuda_runfile}" \
+     -o cuda.run
+bash ./cuda.run --silent --toolkit --no-opengl-libs

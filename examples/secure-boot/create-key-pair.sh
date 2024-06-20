@@ -14,18 +14,19 @@ ITERATION=005
 
 CURRENT_PROJECT_ID="$(gcloud config get project)"
 if [[ -z "${CURRENT_PROJECT_ID}" ]]; then
-    echo 'project is not set.  please set with `gcloud config set project ${PROJECT_ID}`'
+    echo 'project is not set.  please set with `gcloud config set project ${PROJECT_ID}`' >&2
     exit -1
 fi
 PROJECT_ID="${CURRENT_PROJECT_ID}"
-
 
 function create_key () {
     local EFI_VAR_NAME="$1"
     local CN_VAL="$2"
 
     if [[ -f "tls/${EFI_VAR_NAME}.rsa" ]]; then
-        echo "key already exists.  Skipping generation."
+        echo "key already exists.  Skipping generation." >&2
+        CA_KEY_SECRET_NAME="$(cat tls/private-key-secret-name.txt)"
+        CA_CERT_SECRET_NAME="$(cat tls/public-key-secret-name.txt)"
         return
     fi
     mkdir -p tls
@@ -34,7 +35,7 @@ function create_key () {
     local CACERT="tls/${EFI_VAR_NAME}.pem"
     local CACERT_DER="tls/${EFI_VAR_NAME}.der"
 
-    echo "generating '${CN_VAL}' '${CACERT}', '${CACERT_DER}' and '${PRIVATE_KEY}'"
+    echo "generating '${CN_VAL}' '${CACERT}', '${CACERT_DER}' and '${PRIVATE_KEY}'" >&2
     # Generate new x.509 key and cert
     openssl req \
             -newkey rsa:3072 \
@@ -62,7 +63,7 @@ function create_key () {
            --replication-policy="automatic" \
            --data-file="${PRIVATE_KEY}"
 
-    echo "Private key secret name: '${CA_KEY_SECRET_NAME}'"
+    echo "Private key secret name: '${CA_KEY_SECRET_NAME}'" >&2
     echo "${CA_KEY_SECRET_NAME}" > tls/private-key-secret-name.txt
 
     # Create a new secret containing public key
@@ -73,7 +74,7 @@ function create_key () {
            --replication-policy="automatic" \
            --data-file="${CACERT_DER}.base64"
 
-    echo "Public key secret name: '${CA_CERT_SECRET_NAME}'"
+    echo "Public key secret name: '${CA_CERT_SECRET_NAME}'" >&2
     echo "${CA_CERT_SECRET_NAME}" > tls/public-key-secret-name.txt
 
 }
@@ -81,3 +82,8 @@ function create_key () {
 EFI_VAR_NAME=db
 
 create_key "${EFI_VAR_NAME}" "Cloud Dataproc Custom Image CA ${ITERATION}"
+
+echo "private_secret_name=${CA_KEY_SECRET_NAME}"
+echo "public_secret_name=${CA_CERT_SECRET_NAME}"
+echo "secret_project=${PROJECT_ID}"
+echo "secret_version=1"
