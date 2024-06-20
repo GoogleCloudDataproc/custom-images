@@ -6,9 +6,9 @@ Kernel drivers signed with the private side of this key pair can then
 be loaded into kernels on systems with secure boot enabled.
 
 To create a custom image with a self-signed, trusted certificate
-inserted into the boot sector and, and then run a script to install
-nvidia kernel drivers on a 2.2 Dataproc image, the following commands
-can be run from the root of the custom-images git repository:
+inserted into the boot sector, and then run a script to install nvidia
+kernel drivers on a Dataproc image, the following commands can be
+run from the root of the custom-images git repository:
 
 ```bash
 bash examples/secure-boot/create-key-pair.sh
@@ -30,14 +30,21 @@ metadata="${metadata},private_secret_name=${private_secret_name}"
 metadata="${metadata},secret_project=${secret_project}"
 metadata="${metadata},secret_version=${secret_version}"
 
+#dataproc_version=2.1-debian11
+dataproc_version=2.2-debian12
+customization_script=examples/secure-boot/install-nvidia-driver-debian11.sh
+#customization_script=examples/secure-boot/install-nvidia-driver-debian12.sh
+image_name="nvidia-open-kernel-bullseye"
+#image_name="nvidia-open-kernel-bookworm"
+
 python generate_custom_image.py \
-    --image-name nvidia-open-kernel-dkms-bookworm \
-    --dataproc-version 2.2-debian12 \
+    --image-name ${image_name} \
+    --dataproc-version ${dataproc_version} \
     --trusted-cert "tls/db.der" \
-    --customization-script examples/secure-boot/install-nvidia-driver-debian12.sh \
+    --customization-script ${customization_script} \
     --metadata "${metadata}" \
     --zone "${custom_image_zone}" \
-    --shutdown-instance-timer-sec=720 \
+    --shutdown-instance-timer-sec=900 \
     --gcs-bucket "${my_bucket}"
 ```
 
