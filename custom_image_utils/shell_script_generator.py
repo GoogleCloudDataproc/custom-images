@@ -70,13 +70,13 @@ function main() {{
         test -f "${{MS_UEFI_CA}}" || \
             curl -L -o ${{MS_UEFI_CA}} 'https://go.microsoft.com/fwlink/p/?linkid=321194'
 
-        gcloud compute images create {dataproc_base_image}-with-certs \
+        base_image_name="$(echo {dataproc_base_image} | sed -e 's:.*/::g')"
+        gcloud compute images create ${base_image_name}}-with-certs \
           --source-image "{dataproc_base_image}" \
-          --source-image-project "cloud-dataproc" \
           --signature-database-file="{trusted_cert},${{MS_UEFI_CA}}" \
           --guest-os-features="UEFI_COMPATIBLE"
 
-        IMAGE_SOURCE="--image={dataproc_base_image}-with-certs"
+        IMAGE_SOURCE="--image=${base_image_name}}-with-certs"
      else
         IMAGE_SOURCE="--image={dataproc_base_image}"
      fi

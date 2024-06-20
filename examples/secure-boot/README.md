@@ -23,17 +23,21 @@ echo "default bucket is '${my_bucket}'.  Ctrl-C to select a better default"
 sleep 10s
 echo "you still have 20 seconds"
 sleep 20s
+gcloud auth login
+
+metadata="public_secret_name=${public_secret_name}"
+metadata="${metadata},private_secret_name=${private_secret_name}"
+metadata="${metadata},secret_project=${secret_project}"
+metadata="${metadata},secret_version=${secret_version}"
 
 python generate_custom_image.py \
-    --image-name nvidia-open-kernel-dkms-bookworm-2.2 \
+    --image-name nvidia-open-kernel-dkms-bookworm \
     --dataproc-version 2.2-debian12 \
-	--trusted-cert "tls/db.der" \
+    --trusted-cert "tls/db.der" \
     --customization-script examples/secure-boot/install-nvidia-driver-debian12.sh \
-	--metadata "public_secret_name=${public_secret_name}" \
-	--metadata "private_secret_name=${private_secret_name}" \
-	--metadata "secret_project=${secret_project}" \
-	--metadata "secret_version=${secret_version}" \
+    --metadata "${metadata}" \
     --zone "${custom_image_zone}" \
+    --shutdown-instance-timer-sec=720 \
     --gcs-bucket "${my_bucket}"
 ```
 

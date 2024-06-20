@@ -186,7 +186,7 @@ def parse_args(args):
       "--disk-size",
       type=int,
       required=False,
-      default=20,
+      default=30,
       help=
       """(Optional) The size in GB of the disk attached to the VM instance
       that builds the custom image. If not specified, the default value of
@@ -225,7 +225,8 @@ def parse_args(args):
       help="""(Optional) Only generates script without creating image.""")
   parser.add_argument(
       "--trusted-cert",
-      action="store_true",
+      type=str,
+      required=False,
       help="""(Optional) Inserts the specified DER-format certificate into
       the custom image's EFI boot sector for use with secure boot.""")
 
