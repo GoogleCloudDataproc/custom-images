@@ -1,4 +1,4 @@
-# Copyright 2019 Google Inc. All Rights Reserved.
+# Copyright 2019,2020,2021,2024 Google LLC. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
@@ -223,5 +223,11 @@ def parse_args(args):
       "--dry-run",
       action="store_true",
       help="""(Optional) Only generates script without creating image.""")
+  parser.add_argument(
+      "--trusted-cert",
+      action="store_true",
+      help="""(Optional) Inserts the specified DER-format certificate into
+      the custom image's EFI bot sector for use with secure boot.""")
+
 
   return parser.parse_args(args)

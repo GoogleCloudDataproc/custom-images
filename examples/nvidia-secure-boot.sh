@@ -121,9 +121,33 @@ else
        --guest-os-features="UEFI_COMPATIBLE"
 fi
 
+cat > /tmp/custom-script.sh <<EOF
+#!/bin/bash
+set -xeu
+
+mokutil --sb-state
+sudo sed -i -e 's/Components: .*$/Components: ${COMPONENTS}/' ${DEBIAN_SOURCES}
+sudo apt-get -qq update
+sudo apt-get -qq -y install dkms linux-headers-\$(uname -r)
+sudo cp /tmp/tls/db.rsa /var/lib/dkms/mok.key
+sudo cp /tmp/tls/db.der /var/lib/dkms/mok.pub
+echo 'mok files created' &&
+sudo apt-get -qq -y install nvidia-open-kernel-dkms && echo 'nvidia open kernel package built' &&
+sudo modprobe nvidia-current-open &&
+echo 'kernel module loaded'
+EOF
+
 # Everything below here can be done with the custom image script.  I
 # will make that change in a future commit
 
+
+
+python generate_custom_image.py \
+    --image-name '<new_custom_image_name>' \
+    --dataproc-version '<dataproc_version>' \
+    --customization-script '<custom_script_to_install_custom_packages>' \
+    --zone '<zone_to_create_instance_to_build_custom_image>' \
+    --gcs-bucket '<gcs_bucket_to_write_logs>'
 
 # boot a VM with this image
 MACHINE_TYPE=n1-standard-8

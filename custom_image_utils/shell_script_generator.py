@@ -1,4 +1,4 @@
-# Copyright 2019 Google Inc. All Rights Reserved.
+# Copyright 2019,2020,2024 Google LLC. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
@@ -63,11 +63,27 @@ function main() {{
 
   echo 'Creating disk.'
   if [[ '{base_image_family}' = '' ||  '{base_image_family}' = 'None' ]]; then
-     IMAGE_SOURCE="--image={dataproc_base_image}"
+     if [[ -n '{trusted_cert}' ]] && [[ -f '{trusted_cert}' ]]; then
+
+        # The Microsoft Corporation UEFI CA 2011
+        MS_UEFI_CA="tls/MicCorUEFCA2011_2011-06-27.crt"
+        test -f "${{MS_UEFI_CA}}" || \
+            curl -L -o ${{MS_UEFI_CA}} 'https://go.microsoft.com/fwlink/p/?linkid=321194'
+
+        gcloud compute images create {dataproc_base_image}-with-certs \
+          --source-image "{dataproc_base_image}" \
+          --source-image-project "cloud-dataproc" \
+          --signature-database-file="{trusted_cert},${{MS_UEFI_CA}}" \
+          --guest-os-features="UEFI_COMPATIBLE"
+
+        IMAGE_SOURCE="--image={dataproc_base_image}-with-certs"
+     else
+        IMAGE_SOURCE="--image={dataproc_base_image}"
+     fi
   else
      IMAGE_SOURCE="--image-family={base_image_family}"
   fi
-  
+ 
   gcloud compute disks create {image_name}-install \
       --project={project_id} \
       --zone={zone} \
