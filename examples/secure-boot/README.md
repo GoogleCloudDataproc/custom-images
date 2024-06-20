@@ -11,18 +11,19 @@ kernel drivers on a Dataproc image, the following commands can be
 run from the root of the custom-images git repository:
 
 ```bash
-eval $(bash examples/secure-boot/create-key-pair.sh)
 PROJECT_ID=your-project-here
-gcloud config set project ${PROJECT_ID}
-custom_image_zone="$(gcloud config get compute/zone)"
-gcloud auth login
-my_bucket="$(gsutil ls | tail -1)"
-echo "$0: remove this line, modify the my_bucket line and remove the sleep."
-echo "default bucket is '${my_bucket}'.  Ctrl-C to select a better default"
-sleep 10s
-echo "you still have 20 seconds"
-sleep 20s
+PROJECT_NUMBER=your-project-nnnn-here
+my_bucket=your-bucket-here
+custom_image_zone=your-zone-here
 
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+	--member=serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
+	--role=roles/secretmanager.secretAccessor
+gcloud config set project ${PROJECT_ID}
+
+gcloud auth login
+
+eval $(bash examples/secure-boot/create-key-pair.sh)
 metadata="public_secret_name=${public_secret_name}"
 metadata="${metadata},private_secret_name=${private_secret_name}"
 metadata="${metadata},secret_project=${secret_project}"
@@ -34,6 +35,7 @@ customization_script=examples/secure-boot/install-nvidia-driver-debian11.sh
 #customization_script=examples/secure-boot/install-nvidia-driver-debian12.sh
 image_name="nvidia-open-kernel-bullseye"
 #image_name="nvidia-open-kernel-bookworm"
+disk_size_gb="50"
 
 python generate_custom_image.py \
     --image-name ${image_name} \
@@ -42,7 +44,7 @@ python generate_custom_image.py \
     --customization-script ${customization_script} \
     --metadata "${metadata}" \
     --zone "${custom_image_zone}" \
-    --shutdown-instance-timer-sec=1000 \
+    --disk-size "${disk_size_gb}" \
     --gcs-bucket "${my_bucket}"
 ```
 

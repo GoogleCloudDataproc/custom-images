@@ -1,6 +1,10 @@
 #!/bin/bash
 set -xeu
 
+WORKDIR=/opt/install-nvidia-driver
+mkdir -p ${WORKDIR}
+cd $_
+
 nv_driver_ver="550.54.14"
 nv_cuda_ver="12.4.0"
 
@@ -48,22 +52,31 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-contai
 # add non-free components
 sed -i -e 's/ main$/ main contrib non-free/' /etc/apt/sources.list
 
+# update package cache
+apt-get update
+
 # install nvidia-container-toolkit and kernel headers
 apt-get --no-install-recommends -qq -y install \
      nvidia-container-toolkit \
      "linux-headers-$(uname -r)"
+
+apt-get clean
+apt-get autoremove -y
 
 # fetch .run file
 curl -o driver.run \
   "https://download.nvidia.com/XFree86/Linux-x86_64/${nv_driver_ver}/NVIDIA-Linux-x86_64-${nv_driver_ver}.run"
 # Install all but kernel driver
 bash driver.run --no-kernel-modules --silent --install-libglvnd
+rm driver.run
 
 # Fetch open souce kernel module with corresponding tag
 git clone https://github.com/NVIDIA/open-gpu-kernel-modules.git --branch "${nv_driver_ver}" --single-branch
-cd open-gpu-kernel-modules
-# build
-make -j$(nproc) modules
+cd ${WORKDIR}/open-gpu-kernel-modules
+#
+# build kernel modules
+#
+make -j$(nproc) modules > /var/log/open-gpu-kernel-modules-build.log
 # sign
 for module in $(find kernel-open -name '*.ko'); do
     /lib/modules/$(uname -r)/build/scripts/sign-file sha256 \
@@ -72,13 +85,17 @@ for module in $(find kernel-open -name '*.ko'); do
       "${module}"
 done
 # install
-make modules_install
+make modules_install >> /var/log/open-gpu-kernel-modules-build.log
 # rebuilt module index
 depmod -a
+cd ${WORKDIR}
 
+#
 # Install CUDA
+#
 cuda_runfile="cuda_${nv_cuda_ver}_${nv_driver_ver}_linux.run"
 curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
      "https://developer.download.nvidia.com/compute/cuda/${nv_cuda_ver}/local_installers/${cuda_runfile}" \
      -o cuda.run
-bash ./cuda.run --silent --toolkit --no-opengl-libs
+bash cuda.run --silent --toolkit --no-opengl-libs
+rm cuda.run

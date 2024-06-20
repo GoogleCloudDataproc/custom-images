@@ -1,6 +1,9 @@
 #!/bin/bash
 set -xeu
 
+mkdir -p /opt/install-nvidia-driver
+cd $_
+
 nv_driver_ver="550.54.14"
 nv_cuda_ver="12.4.0"
 
@@ -68,6 +71,9 @@ apt-get --no-install-recommends -qq -y install \
      nvidia-smi \
      libglvnd0 \
      libcuda1
+
+apt-get clean
+apt-get autoremove -y
 
 # Install CUDA
 cuda_runfile="cuda_${nv_cuda_ver}_${nv_driver_ver}_linux.run"

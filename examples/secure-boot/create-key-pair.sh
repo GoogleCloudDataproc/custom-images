@@ -27,6 +27,7 @@ function create_key () {
         echo "key already exists.  Skipping generation." >&2
         CA_KEY_SECRET_NAME="$(cat tls/private-key-secret-name.txt)"
         CA_CERT_SECRET_NAME="$(cat tls/public-key-secret-name.txt)"
+        modulus_md5sum="$(cat tls/modulus-md5sum.txt)"
         return
     fi
     mkdir -p tls
@@ -74,6 +75,9 @@ function create_key () {
            --replication-policy="automatic" \
            --data-file="${CACERT_DER}.base64"
 
+    modulus_md5sum="$(openssl x509 -noout -modulus -in /var/lib/dkms/mok.pub | openssl md5 | awk '{print $2}')"
+    echo "modulus-md5sum: ${modulus_md5sum}" >&2
+    echo "${modulus_md5sum}" > tls/modulus-md5sum.txt
     echo "Public key secret name: '${CA_CERT_SECRET_NAME}'" >&2
     echo "${CA_CERT_SECRET_NAME}" > tls/public-key-secret-name.txt
 
@@ -83,6 +87,7 @@ EFI_VAR_NAME=db
 
 create_key "${EFI_VAR_NAME}" "Cloud Dataproc Custom Image CA ${ITERATION}"
 
+echo "modulus_md5sum=${modulus_md5sum}"
 echo "private_secret_name=${CA_KEY_SECRET_NAME}"
 echo "public_secret_name=${CA_CERT_SECRET_NAME}"
 echo "secret_project=${PROJECT_ID}"
