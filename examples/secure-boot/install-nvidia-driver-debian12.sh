@@ -81,3 +81,4 @@ curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
      "https://developer.download.nvidia.com/compute/cuda/${nv_cuda_ver}/local_installers/${cuda_runfile}" \
      -o cuda.run
 bash ./cuda.run --silent --toolkit --no-opengl-libs
+rm cuda.run

@@ -33,8 +33,8 @@ metadata="${metadata},secret_version=${secret_version}"
 dataproc_version=2.2-debian12
 customization_script=examples/secure-boot/install-nvidia-driver-debian11.sh
 #customization_script=examples/secure-boot/install-nvidia-driver-debian12.sh
-image_name="nvidia-open-kernel-bullseye"
-#image_name="nvidia-open-kernel-bookworm"
+image_name="nvidia-open-kernel-bullseye-$(date +%F)"
+#image_name="nvidia-open-kernel-bookworm-$(date +%F)"
 disk_size_gb="50"
 
 python generate_custom_image.py \
