@@ -61,16 +61,19 @@ apt-get --no-install-recommends -qq -y install dkms
 ln -sf "${ca_tmpdir}/db.rsa" /var/lib/dkms/mok.key
 cp "${ca_tmpdir}/db.der" /var/lib/dkms/mok.pub
 
-# install dkms and nvidia packages
+# install dkms and nvidia support packages
 apt-get --no-install-recommends -qq -y install \
      dkms \
      "linux-headers-$(uname -r)" \
      nvidia-container-toolkit \
-     nvidia-open-kernel-dkms \
      nvidia-open-kernel-support \
      nvidia-smi \
      libglvnd0 \
      libcuda1
+
+# install the driver itself
+apt-get --no-install-recommends -qq -y install \
+     nvidia-open-kernel-dkms
 
 apt-get clean
 apt-get autoremove -y
