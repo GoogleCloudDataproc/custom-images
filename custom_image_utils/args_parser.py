@@ -186,7 +186,7 @@ def parse_args(args):
       "--disk-size",
       type=int,
       required=False,
-      default=20,
+      default=40,
       help=
       """(Optional) The size in GB of the disk attached to the VM instance
       that builds the custom image. If not specified, the default value of
