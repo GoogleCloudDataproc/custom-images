@@ -53,7 +53,7 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-contai
 sed -i -e 's/ main$/ main contrib non-free/' /etc/apt/sources.list
 
 # update package cache
-apt-get update
+apt-get update -qq
 
 # install nvidia-container-toolkit and kernel headers
 apt-get --no-install-recommends -qq -y install \
