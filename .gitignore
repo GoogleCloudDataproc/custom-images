@@ -10,3 +10,11 @@ __pycache__
 
 # MacOS folder files
 .DS_Store
+
+# Emacs
+*~
+\#*#
+.\#*
+
+# secure-boot
+tls/

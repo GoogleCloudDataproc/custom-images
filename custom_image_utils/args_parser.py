@@ -1,4 +1,4 @@
-# Copyright 2019 Google Inc. All Rights Reserved.
+# Copyright 2019,2020,2021,2024 Google LLC. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
@@ -186,7 +186,7 @@ def parse_args(args):
       "--disk-size",
       type=int,
       required=False,
-      default=20,
+      default=30,
       help=
       """(Optional) The size in GB of the disk attached to the VM instance
       that builds the custom image. If not specified, the default value of
@@ -223,5 +223,12 @@ def parse_args(args):
       "--dry-run",
       action="store_true",
       help="""(Optional) Only generates script without creating image.""")
+  parser.add_argument(
+      "--trusted-cert",
+      type=str,
+      required=False,
+      help="""(Optional) Inserts the specified DER-format certificate into
+      the custom image's EFI boot sector for use with secure boot.""")
+
 
   return parser.parse_args(args)
