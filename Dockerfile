@@ -1,6 +1,23 @@
 # since this script depends on python 2.7, we need a stable base from which to run it
 FROM python:2.7-slim
 
+# To build: docker build -t dataproc-custom-images:latest .
+# To run: docker run -it dataproc-custom-images:latest /bin/bash
+
+# and then from the docker bash shell, run the
+# generate_custom_image.py as per examples/secure-boot/README.md
+
+# python generate_custom_image.py \
+#     --image-name ${image_name} \
+#     --dataproc-version ${dataproc_version} \
+#     --trusted-cert "tls/db.der" \
+#     --customization-script ${customization_script} \
+#     --metadata "${metadata}" \
+#     --zone "${custom_image_zone}" \
+#     --disk-size "${disk_size_gb}" \
+#     --no-smoke-test \
+#     --gcs-bucket "${my_bucket}"
+
 WORKDIR /custom-images
 
 RUN apt-get update && apt-get -y install apt-transport-https ca-certificates gnupg curl
