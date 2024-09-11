@@ -13,21 +13,16 @@ run from the root of the custom-images git repository:
 ```bash
 PROJECT_ID=your-project-here
 PROJECT_NUMBER=your-project-nnnn-here
-CLUSTER_NAME=your-cluster-name-here
 my_bucket=your-bucket-here
 custom_image_zone=your-zone-here
 
-export SA_NAME=sa-${CLUSTER_NAME}
-export GSA=${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com
-
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-	--member=serviceAccount:${GSA} \
+	--member=serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com \
 	--role=roles/secretmanager.secretAccessor
 gcloud config set project ${PROJECT_ID}
 
 gcloud auth login
 
-# variables *_secret_name_, secret_project, secret_version defined here:
 eval $(bash examples/secure-boot/create-key-pair.sh)
 metadata="public_secret_name=${public_secret_name}"
 metadata="${metadata},private_secret_name=${private_secret_name}"
@@ -41,8 +36,7 @@ dataproc_version=2.2-debian12
 customization_script=examples/secure-boot/install-nvidia-driver-debian12.sh
 #image_name="nvidia-open-kernel-2.2-ubuntu22-$(date +%F)"
 #image_name="nvidia-open-kernel-2.2-rocky9-$(date +%F)"
-#image_name="nvidia-open-kernel-2.2-debian12-$(date +%F)"
-image_name="nvidia-open-kernel-${dataproc_version}-$(date +%F)"
+image_name="nvidia-open-kernel-2.2-debian12-$(date +%F)"
 disk_size_gb="50"
 
 python generate_custom_image.py \
