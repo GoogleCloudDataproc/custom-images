@@ -48,7 +48,7 @@ customization_script=empty.sh
 #image_name="nvidia-open-kernel-2.2-rocky9-$(date +%F)"
 #image_name="nvidia-open-kernel-2.2-debian12-$(date +%F)"
 #image_name="nvidia-open-kernel-${dataproc_version}-$(date +%F)"
-image_name="custom-${dataproc_version}-$(date +%F)"
+image_name="custom-${dataproc_version/\./-}-$(date +%F)"
 disk_size_gb="50"
 
 python generate_custom_image.py \
