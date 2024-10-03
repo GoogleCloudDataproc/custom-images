@@ -12,7 +12,6 @@ run from the root of the custom-images git repository:
 
 ```bash
 PROJECT_ID=your-project-here
-PROJECT_NUMBER=your-project-nnnn-here
 CLUSTER_NAME=your-cluster-name-here
 my_bucket=your-bucket-here
 custom_image_zone=your-zone-here
@@ -20,6 +19,8 @@ custom_image_zone=your-zone-here
 export SA_NAME=sa-${CLUSTER_NAME}
 export GSA=${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com
 
+# Instructions for creating the service account can be found here:
+# https://github.com/LLC-Technologies-Collier/dataproc-repro/blob/78945b5954ab47aac56f55ac22b3c35569d154e0/shared-functions.sh#L759
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
 	--member=serviceAccount:${GSA} \
 	--role=roles/secretmanager.secretAccessor
@@ -27,12 +28,13 @@ gcloud config set project ${PROJECT_ID}
 
 gcloud auth login
 
-# variables *_secret_name_, secret_project, secret_version defined here:
+# variables *_secret_name_, secret_project, secret_version, modulus_md5sum defined here:
 eval $(bash examples/secure-boot/create-key-pair.sh)
 metadata="public_secret_name=${public_secret_name}"
 metadata="${metadata},private_secret_name=${private_secret_name}"
 metadata="${metadata},secret_project=${secret_project}"
 metadata="${metadata},secret_version=${secret_version}"
+metadata="${metadata},modulus_md5sum=${modulus_md5sum}"
 
 dataproc_version=2.2-debian12
 #dataproc_version=2.2-ubuntu22
