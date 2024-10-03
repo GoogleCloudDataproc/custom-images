@@ -34,15 +34,19 @@ metadata="${metadata},private_secret_name=${private_secret_name}"
 metadata="${metadata},secret_project=${secret_project}"
 metadata="${metadata},secret_version=${secret_version}"
 
-#dataproc_version=2.2-rocky9
-#dataproc_version=2.2-ubuntu22
 dataproc_version=2.2-debian12
+#dataproc_version=2.2-ubuntu22
+#dataproc_version=2.2-rocky9
 #customization_script=examples/secure-boot/install-nvidia-driver-debian11.sh
-customization_script=examples/secure-boot/install-nvidia-driver-debian12.sh
+#customization_script=examples/secure-boot/install-nvidia-driver-debian12.sh
+#customization_script="../initialization-actions/gpu/install_gpu_driver.sh"
+echo "#!/bin/bash\necho no op" > empty.sh
+customization_script=empty.sh
 #image_name="nvidia-open-kernel-2.2-ubuntu22-$(date +%F)"
 #image_name="nvidia-open-kernel-2.2-rocky9-$(date +%F)"
 #image_name="nvidia-open-kernel-2.2-debian12-$(date +%F)"
-image_name="nvidia-open-kernel-${dataproc_version}-$(date +%F)"
+#image_name="nvidia-open-kernel-${dataproc_version}-$(date +%F)"
+image_name="custom-${dataproc_version}-$(date +%F)"
 disk_size_gb="50"
 
 python generate_custom_image.py \
