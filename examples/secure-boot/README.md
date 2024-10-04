@@ -24,6 +24,9 @@ export GSA=${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com
 gcloud projects add-iam-policy-binding ${PROJECT_ID} \
 	--member=serviceAccount:${GSA} \
 	--role=roles/secretmanager.secretAccessor
+gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+	--member=serviceAccount:${GSA} \
+	--role=roles/secretmanager.viewer
 gcloud config set project ${PROJECT_ID}
 
 gcloud auth login
