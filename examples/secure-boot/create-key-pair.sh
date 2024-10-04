@@ -11,7 +11,7 @@ set -x
 
 # https://wiki.archlinux.org/title/Unified_Extensible_Firmware_Interface/Secure_Boot#Creating_keys
 
-ITERATION=042
+ITERATION=047
 
 CURRENT_PROJECT_ID="$(gcloud config get project)"
 if [[ -z "${CURRENT_PROJECT_ID}" ]]; then
@@ -49,6 +49,9 @@ function create_key () {
         -in "${CACERT_DER}" \
         -outform PEM \
         -out "${CACERT}"
+
+      MS_UEFI_CA="tls/MicCorUEFCA2011_2011-06-27.crt"
+      curl -L -o "${MS_UEFI_CA}" 'https://go.microsoft.com/fwlink/p/?linkid=321194'
 
       echo "${CA_KEY_SECRET_NAME}" > tls/private-key-secret-name.txt
       echo "${CA_CERT_SECRET_NAME}" > tls/public-key-secret-name.txt

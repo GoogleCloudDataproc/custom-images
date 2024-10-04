@@ -15,29 +15,40 @@ PROJECT_ID=your-project-here
 CLUSTER_NAME=your-cluster-name-here
 my_bucket=your-bucket-here
 custom_image_zone=your-zone-here
+disk_size_gb="50" # greater than or equal to 30
 
-export SA_NAME=sa-${CLUSTER_NAME}
-export GSA=${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com
-
-# Instructions for creating the service account can be found here:
-# https://github.com/LLC-Technologies-Collier/dataproc-repro/blob/78945b5954ab47aac56f55ac22b3c35569d154e0/shared-functions.sh#L759
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-	--member=serviceAccount:${GSA} \
-	--role=roles/secretmanager.secretAccessor
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-	--member=serviceAccount:${GSA} \
-	--role=roles/secretmanager.viewer
 gcloud config set project ${PROJECT_ID}
 
 gcloud auth login
 
-# variables *_secret_name_, secret_project, secret_version, modulus_md5sum defined here:
-eval $(bash examples/secure-boot/create-key-pair.sh)
+if [[ -d tls ]] ; then mv tls "tls-$(date +%s)" ; fi
+eval "$(bash examples/secure-boot/create-key-pair.sh)"
+
 metadata="public_secret_name=${public_secret_name}"
 metadata="${metadata},private_secret_name=${private_secret_name}"
 metadata="${metadata},secret_project=${secret_project}"
 metadata="${metadata},secret_version=${secret_version}"
-metadata="${metadata},modulus_md5sum=${modulus_md5sum}"
+
+SA_NAME=sa-${CLUSTER_NAME}
+GSA=${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com
+
+# Instructions for creating the service account can be found here:
+# https://github.com/LLC-Technologies-Collier/dataproc-repro/blob/78945b5954ab47aac56f55ac22b3c35569d154e0/shared-functions.sh#L759
+
+# Grant the service account access to list secrets for the project
+gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/secretmanager.viewer"
+
+# grant service account permission to access the private secret
+gcloud secrets add-iam-policy-binding "${private_secret_name}" \
+    --member="serviceAccount:${GSA}" \
+    --role="roles/secretmanager.secretAccessor"
+
+# grant service account permission to access the public secret
+gcloud secrets add-iam-policy-binding "${public_secret_name}" \
+    --member="serviceAccount:${GSA}" \
+    --role="roles/secretmanager.secretAccessor"
 
 dataproc_version=2.2-debian12
 #dataproc_version=2.2-ubuntu22
@@ -45,20 +56,20 @@ dataproc_version=2.2-debian12
 #customization_script=examples/secure-boot/install-nvidia-driver-debian11.sh
 #customization_script=examples/secure-boot/install-nvidia-driver-debian12.sh
 #customization_script="../initialization-actions/gpu/install_gpu_driver.sh"
-echo "#!/bin/bash\necho no op" > empty.sh
+echo "#!/bin/bash\necho no op" | dd of=empty.sh
 customization_script=empty.sh
 #image_name="nvidia-open-kernel-2.2-ubuntu22-$(date +%F)"
 #image_name="nvidia-open-kernel-2.2-rocky9-$(date +%F)"
 #image_name="nvidia-open-kernel-2.2-debian12-$(date +%F)"
 #image_name="nvidia-open-kernel-${dataproc_version}-$(date +%F)"
-image_name="custom-${dataproc_version/\./-}-$(date +%F)"
-disk_size_gb="50"
+image_name="custom-${dataproc_version/\./-}-$(date +%F-%H-%M)"
 
 python generate_custom_image.py \
-    --image-name ${image_name} \
-    --dataproc-version ${dataproc_version} \
+    --image-name "${image_name}" \
+    --dataproc-version "${dataproc_version}" \
     --trusted-cert "tls/db.der" \
-    --customization-script ${customization_script} \
+    --customization-script "${customization_script}" \
+    --service-account "${GSA}" \
     --metadata "${metadata}" \
     --zone "${custom_image_zone}" \
     --disk-size "${disk_size_gb}" \
