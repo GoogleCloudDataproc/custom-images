@@ -53,9 +53,9 @@ gcloud secrets add-iam-policy-binding "${public_secret_name}" \
 dataproc_version=2.2-debian12
 #dataproc_version=2.2-ubuntu22
 #dataproc_version=2.2-rocky9
-#customization_script=examples/secure-boot/install-nvidia-driver-debian11.sh
-#customization_script=examples/secure-boot/install-nvidia-driver-debian12.sh
-#customization_script="../initialization-actions/gpu/install_gpu_driver.sh"
+#customization_script="examples/secure-boot/install-nvidia-driver-debian11.sh"
+#customization_script="examples/secure-boot/install-nvidia-driver-debian12.sh"
+#customization_script="examples/secure-boot/install_gpu_driver.sh"
 echo "#!/bin/bash\necho no op" | dd of=empty.sh
 customization_script=empty.sh
 #image_name="nvidia-open-kernel-2.2-ubuntu22-$(date +%F)"
