@@ -65,6 +65,7 @@ customization_script=empty.sh
 image_name="custom-${dataproc_version/\./-}-$(date +%F-%H-%M)"
 
 python generate_custom_image.py \
+    --accelerator "type=nvidia-tesla-t4" \
     --image-name "${image_name}" \
     --dataproc-version "${dataproc_version}" \
     --trusted-cert "tls/db.der" \

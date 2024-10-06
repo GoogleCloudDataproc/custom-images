@@ -230,13 +230,6 @@ def parse_args(args):
       default="tls/db.der",
       help="""(Optional) Inserts the specified DER-format certificate into
       the custom image's EFI boot sector for use with secure boot.""")
-  parser.add_argument(
-      "--with-gpu",
-      type=str,
-      required=False,
-      default="False",
-      help="""(Optional) When set to a true value, attach GPUs to the instance
-      on which the customization script is executed.""")
 
 
   return parser.parse_args(args)
