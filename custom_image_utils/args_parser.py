@@ -227,6 +227,7 @@ def parse_args(args):
       "--trusted-cert",
       type=str,
       required=False,
+      default="tls/db.der",
       help="""(Optional) Inserts the specified DER-format certificate into
       the custom image's EFI boot sector for use with secure boot.""")
 

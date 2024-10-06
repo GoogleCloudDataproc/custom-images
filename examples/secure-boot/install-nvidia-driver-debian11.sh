@@ -13,8 +13,8 @@ sig_pub_secret_name="$(/usr/share/google/get_metadata_value attributes/public_se
 sig_priv_secret_name="$(/usr/share/google/get_metadata_value attributes/private_secret_name)"
 sig_secret_project="$(/usr/share/google/get_metadata_value attributes/secret_project)"
 sig_secret_version="$(/usr/share/google/get_metadata_value attributes/secret_version)"
-
-readonly expected_modulus_md5sum="bd40cf5905c7bba4225d330136fdbfd3"
+expected_modulus_md5sum="$(/usr/share/google/get_metadata_value attributes/modulus_md5sum)"
+readonly expected_modulus_md5sum
 
 ca_tmpdir="$(mktemp -u -d -p /run/tmp -t ca_dir-XXXX)"
 mkdir -p "${ca_tmpdir}"
