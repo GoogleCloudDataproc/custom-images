@@ -11,7 +11,7 @@ set -x
 
 # https://wiki.archlinux.org/title/Unified_Extensible_Firmware_Interface/Secure_Boot#Creating_keys
 
-ITERATION=047
+ITERATION=042
 
 CURRENT_PROJECT_ID="$(gcloud config get project)"
 if [[ -z "${CURRENT_PROJECT_ID}" ]]; then
