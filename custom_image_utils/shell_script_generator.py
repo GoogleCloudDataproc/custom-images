@@ -126,6 +126,7 @@ function main() {{
       --zone={zone} \
       --port=1 2>&1 \
       | grep 'startup-script' \
+      | sed -e 's/ {image_name}-install.*startup-script://g' \
       | tee {log_dir}/startup-script.log \
       || true
 
