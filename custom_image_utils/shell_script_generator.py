@@ -38,7 +38,7 @@ function exit_handler() {{
         --project={project_id} --zone={zone} -q
   elif [[ -f /tmp/{run_id}/disk_created ]]; then
     echo 'Deleting disk.'
-    gcloud compute disks delete {image_name}-install --project={project_id} --zone={zone} -q
+    gcloud compute images delete {image_name}-install --project={project_id} --zone={zone} -q
   fi
 
   echo 'Uploading local logs to GCS bucket.'
