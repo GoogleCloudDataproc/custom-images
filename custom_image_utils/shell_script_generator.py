@@ -121,9 +121,7 @@ function main() {{
   touch /tmp/{run_id}/vm_created
 
   # clean up intermediate install image
-  gcloud compute images delete {image_name}-install \
-    --project={project_id} \
-    --zone={zone} -q
+  gcloud compute images delete -q {image_name}-install --project={project_id}
 
   echo 'Waiting for customization script to finish and VM shutdown.'
   gcloud compute instances tail-serial-port-output {image_name}-install \
