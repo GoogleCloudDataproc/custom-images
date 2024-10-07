@@ -17,7 +17,7 @@
 set -ex
 
 export PROJECT_ID="$(jq    -r .PROJECT_ID    env.json)"
-export CLUSTER_NAME="$(jq  -r .CLUSTER_NAME  env.json)"
+export PURPOSE="$(jq       -r .PURPOSE       env.json)"
 export BUCKET="$(jq        -r .BUCKET        env.json)"
 export IMAGE_VERSION="$(jq -r .IMAGE_VERSION env.json)"
 export ZONE="$(jq          -r .ZONE          env.json)"
@@ -25,7 +25,7 @@ export ZONE="$(jq          -r .ZONE          env.json)"
 custom_image_zone="${ZONE}"
 disk_size_gb="50" # greater than or equal to 30
 
-SA_NAME="sa-${CLUSTER_NAME}"
+SA_NAME="sa-${PURPOSE}"
 GSA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 gcloud config set project ${PROJECT_ID}
