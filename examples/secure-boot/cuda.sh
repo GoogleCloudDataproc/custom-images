@@ -58,7 +58,17 @@ gcloud secrets add-iam-policy-binding "${public_secret_name}" \
     --member="serviceAccount:${GSA}" \
     --role="roles/secretmanager.secretAccessor"
 
-dataproc_version="${IMAGE_VERSION}-debian12"
+# If no OS family specified, default to debian
+if [[ "${IMAGE_VERSION}" != *-* ]] ; then
+  case "${IMAGE_VERSION}" in
+    "2.2" ) dataproc_version="${IMAGE_VERSION}-debian12" ;;
+    "2.1" ) dataproc_version="${IMAGE_VERSION}-debian11" ;;
+    "2.0" ) dataproc_version="${IMAGE_VERSION}-debian10" ;;
+  esac
+else
+  dataproc_version="${IMAGE_VERSION}"
+fi
+
 #dataproc_version="${IMAGE_VERSION}-ubuntu22"
 #dataproc_version="${IMAGE_VERSION}-rocky9"
 #customization_script="examples/secure-boot/install-nvidia-driver-debian11.sh"

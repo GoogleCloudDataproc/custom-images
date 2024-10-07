@@ -30,9 +30,10 @@ function is_debian()   { [[ "$(os_id)" == 'debian' ]] ; }
 function is_debian10() { is_debian && [[ "$(os_version)" == '10'* ]] ; }
 function is_debian11() { is_debian && [[ "$(os_version)" == '11'* ]] ; }
 function is_debian12() { is_debian && [[ "$(os_version)" == '12'* ]] ; }
-function os_vercat() { if   is_ubuntu ; then os_version | sed -e 's/[^0-9]//g'
-                       elif is_rocky  ; then os_version | sed -e 's/[^0-9].*$//g'
-                                        else os_version ; fi ; }
+function os_vercat()   { set +x
+  if   is_ubuntu ; then os_version | sed -e 's/[^0-9]//g'
+  elif is_rocky  ; then os_version | sed -e 's/[^0-9].*$//g'
+                   else os_version ; fi ; set -x ; }
 
 function remove_old_backports {
   if is_debian12 ; then return ; fi
@@ -258,11 +259,13 @@ MIG_MAJOR_CAPS=0
 IS_MIG_ENABLED=0
 
 function execute_with_retries() {
+  set +x
   local -r cmd="$*"
   for ((i = 0; i < 3; i++)); do
-    if eval "$cmd"; then return 0 ; fi
+    if eval "$cmd"; then set -x ; return 0 ; fi
     sleep 5
   done
+  set -x
   return 1
 }
 
@@ -376,8 +379,8 @@ function install_nvidia_nccl() {
 
   if is_rocky ; then
     time execute_with_retries \
-      "dnf -y -q install" \
-        "libnccl-${nccl_version} libnccl-devel-${nccl_version} libnccl-static-${nccl_version}"
+      dnf -y -q install \
+        "libnccl-${nccl_version}" "libnccl-devel-${nccl_version}" "libnccl-static-${nccl_version}"
   elif is_ubuntu ; then
     install_cuda_keyring_pkg
 
@@ -385,12 +388,12 @@ function install_nvidia_nccl() {
 
     if is_ubuntu18 ; then
       time execute_with_retries \
-        "apt-get install -q -y " \
-          "libnccl2 libnccl-dev"
+        apt-get install -q -y \
+          libnccl2 libnccl-dev
     else
       time execute_with_retries \
-        "apt-get install -q -y " \
-          "libnccl2=${nccl_version} libnccl-dev=${nccl_version}"
+        apt-get install -q -y \
+          "libnccl2=${nccl_version}" "libnccl-dev=${nccl_version}"
     fi
   else
     echo "Unsupported OS: '${OS_NAME}'"
@@ -674,7 +677,11 @@ function build_driver_from_packages() {
 
   elif is_rocky ; then
     #configure_dkms_certs
-    time execute_with_retries "dnf -y -q module install nvidia-driver:${DRIVER}-open"
+    if execute_with_retries dnf -y -q module install "nvidia-driver:${DRIVER}-dkms" ; then
+      echo "nvidia-driver:${DRIVER}-dkms installed successfully"
+    else
+      time execute_with_retries dnf -y -q module install 'nvidia-driver:latest'
+    fi
   fi
   #clear_dkms_key
 }
@@ -716,6 +723,7 @@ function install_cuda_toolkit() {
 }
 
 function install_drivers_aliases() {
+  if is_rocky ; then return ; fi
   if ! (is_debian12 || is_debian11) ; then return ; fi
   if (is_debian12 && is_cuda11) && is_src_nvidia ; then return ; fi # don't install on debian 12 / cuda11 with drivers from nvidia
   # Add a modprobe alias to prefer the open kernel modules
@@ -732,7 +740,6 @@ function install_drivers_aliases() {
 }
 
 function load_kernel_module() {
-  modprobe -r nvidia || echo "unable to unload the nvidia module"
   # for some use cases, the kernel module needs to be removed before first use of nvidia-smi
   for module in nvidia_uvm nvidia_drm nvidia_modeset nvidia ; do
     rmmod ${module} > /dev/null 2>&1 || echo "unable to rmmod ${module}"
@@ -1118,8 +1125,6 @@ function main() {
 }
 
 function clean_up_sources_lists() {
-  local OS_CODENAME="$(. /etc/os-release; echo "${VERSION_CODENAME}")"
-
   #
   # bigtop (primary)
   #
@@ -1159,7 +1164,7 @@ function clean_up_sources_lists() {
   rm -f "${adoptium_kr_path}"
   curl -fsS --retry-connrefused --retry 10 --retry-max-time 30 "${key_url}" \
    | gpg --dearmor -o "${adoptium_kr_path}"
-  echo "deb [signed-by=${adoptium_kr_path}] https://packages.adoptium.net/artifactory/deb/ ${OS_CODENAME} main" \
+  echo "deb [signed-by=${adoptium_kr_path}] https://packages.adoptium.net/artifactory/deb/ $(os_codename) main" \
    > /etc/apt/sources.list.d/adoptium.list
 
 
@@ -1173,7 +1178,7 @@ function clean_up_sources_lists() {
   rm -f "${docker_kr_path}"
   curl -fsS --retry-connrefused --retry 10 --retry-max-time 30 "${docker_key_url}" \
     | gpg --dearmor -o "${docker_kr_path}"
-  echo "deb [signed-by=${docker_kr_path}] https://download.docker.com/linux/$(os_id) ${OS_CODENAME} stable" \
+  echo "deb [signed-by=${docker_kr_path}] https://download.docker.com/linux/$(os_id) $(os_codename) stable" \
     > ${docker_repo_file}
 
   #
