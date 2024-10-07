@@ -17,7 +17,7 @@
 set -ex
 
 export PROJECT_ID="$(jq    -r .PROJECT_ID    env.json)"
-export CLUSTER_NAME="$(jq  -r .CLUSTER_NAME  env.json)"
+export PURPOSE="$(jq       -r .PURPOSE       env.json)"
 export BUCKET="$(jq        -r .BUCKET        env.json)"
 export IMAGE_VERSION="$(jq -r .IMAGE_VERSION env.json)"
 export ZONE="$(jq          -r .ZONE          env.json)"
@@ -25,7 +25,7 @@ export ZONE="$(jq          -r .ZONE          env.json)"
 custom_image_zone="${ZONE}"
 disk_size_gb="50" # greater than or equal to 30
 
-SA_NAME="sa-${CLUSTER_NAME}"
+SA_NAME="sa-${PURPOSE}"
 GSA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 gcloud config set project ${PROJECT_ID}
@@ -40,23 +40,33 @@ metadata="${metadata},private_secret_name=${private_secret_name}"
 metadata="${metadata},secret_project=${secret_project}"
 metadata="${metadata},secret_version=${secret_version}"
 
-# Instructions for creating the service account can be found here:
-# https://github.com/LLC-Technologies-Collier/dataproc-repro/blob/78945b5954ab47aac56f55ac22b3c35569d154e0/shared-functions.sh#L759
+if gcloud iam service-accounts list --filter email="${GSA}" 2>&1 | grep 'Listed 0 items.' ; then
+  # Create service account for this purpose
+  echo "creating pre-init customization service account ${GSA}"
+  gcloud iam service-accounts create "${SA_NAME}" \
+    --description="Service account for pre-init customization" \
+    --display-name="${SA_NAME}"
+fi
+
+# Grant service account access to bucket
+gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/storage.objectViewer"
 
 # Grant the service account access to list secrets for the project
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${GSA}" \
   --role="roles/secretmanager.viewer"
 
-# grant service account permission to access the private secret
+# Grant service account permission to access the private secret
 gcloud secrets add-iam-policy-binding "${private_secret_name}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.secretAccessor"
+  --member="serviceAccount:${GSA}" \
+  --role="roles/secretmanager.secretAccessor"
 
-# grant service account permission to access the public secret
+# Grant service account permission to access the public secret
 gcloud secrets add-iam-policy-binding "${public_secret_name}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.secretAccessor"
+  --member="serviceAccount:${GSA}" \
+  --role="roles/secretmanager.secretAccessor"
 
 # If no OS family specified, default to debian
 if [[ "${IMAGE_VERSION}" != *-* ]] ; then
@@ -95,5 +105,18 @@ python generate_custom_image.py \
     --no-smoke-test \
     --gcs-bucket "${BUCKET}" \
     --shutdown-instance-timer-sec=30
-
 set +x
+# Revoke permission to access the private secret
+gcloud secrets remove-iam-policy-binding "${private_secret_name}" \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/secretmanager.secretAccessor" > /dev/null 2>&1
+
+# Revoke access to bucket
+gcloud storage buckets remove-iam-policy-binding "gs://${BUCKET}" \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/storage.objectViewer" > /dev/null 2>&1
+
+# Revoke access to list secrets for the project
+gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+  --member="serviceAccount:${GSA}" \
+  --role="roles/secretmanager.viewer" > /dev/null 2>&1
