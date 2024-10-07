@@ -68,26 +68,26 @@ function main() {{
      src_image="--source-image-family={base_image_family}"
   fi
 
-  # build tls/ directory from variables defined near the header of
-  # the examples/secure-boot/create-key-pair.sh file
-
-  # by default, a gcloud secret with the name of efi-db-pub-key-042 is
-  # created in the current project to store the certificate installed
-  # as the signature database file for this disk image
-
-  eval "$(bash examples/secure-boot/create-key-pair.sh)"
-
-  # The MS UEFI CA is a reasonable base from which to build trust.  We
-  # will trust code signed by this CA as well as code signed by
-  # trusted_cert (tls/db.der)
-
-  # The Microsoft Corporation UEFI CA 2011
-  local -r MS_UEFI_CA="tls/MicCorUEFCA2011_2011-06-27.crt"
-  test -f "${{MS_UEFI_CA}}" || \
-    curl -L -o ${{MS_UEFI_CA}} 'https://go.microsoft.com/fwlink/p/?linkid=321194'
-
   local cert_args=""
   if [[ -n '{trusted_cert}' ]] && [[ -f '{trusted_cert}' ]]; then
+    # build tls/ directory from variables defined near the header of
+    # the examples/secure-boot/create-key-pair.sh file
+
+    eval "$(bash examples/secure-boot/create-key-pair.sh)"
+
+    # by default, a gcloud secret with the name of efi-db-pub-key-042 is
+    # created in the current project to store the certificate installed
+    # as the signature database file for this disk image
+
+    # The MS UEFI CA is a reasonable base from which to build trust.  We
+    # will trust code signed by this CA as well as code signed by
+    # trusted_cert (tls/db.der)
+
+    # The Microsoft Corporation UEFI CA 2011
+    local -r MS_UEFI_CA="tls/MicCorUEFCA2011_2011-06-27.crt"
+    test -f "${{MS_UEFI_CA}}" || \
+      curl -L -o ${{MS_UEFI_CA}} 'https://go.microsoft.com/fwlink/p/?linkid=321194'
+
     cert_args="--signature-database-file={trusted_cert},${{MS_UEFI_CA}} --guest-os-features=UEFI_COMPATIBLE"
   fi
 
