@@ -105,21 +105,18 @@ python generate_custom_image.py \
     --no-smoke-test \
     --gcs-bucket "${BUCKET}" \
     --shutdown-instance-timer-sec=30
-
+set +x
 # Revoke permission to access the private secret
 gcloud secrets remove-iam-policy-binding "${private_secret_name}" \
   --member="serviceAccount:${GSA}" \
-  --role="roles/secretmanager.secretAccessor"
+  --role="roles/secretmanager.secretAccessor" > /dev/null 2>&1
 
 # Revoke access to bucket
 gcloud storage buckets remove-iam-policy-binding "gs://${BUCKET}" \
   --member="serviceAccount:${GSA}" \
-  --role="roles/storage.objectViewer"
+  --role="roles/storage.objectViewer" > /dev/null 2>&1
 
 # Revoke access to list secrets for the project
 gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${GSA}" \
-  --role="roles/secretmanager.viewer"
-
-
-set +x
+  --role="roles/secretmanager.viewer" > /dev/null 2>&1
