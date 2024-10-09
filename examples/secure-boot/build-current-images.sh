@@ -88,7 +88,7 @@ session_name="build-current-images"
 screen -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
 
 # tail -n 3 /tmp/custom-image-cuda-pre-init-2-*/logs/workflow.log
-# grep -A6 'Filesystem.*Avail' /tmp/custom-image-cuda-pre-init-2-*/logs/startup-script.log | perl -ne 'print $1,$/ if( m:( Filesystem.* Avail.*| /dev/.*/\s*$|^--): )'
+# grep -A6 'Filesystem.*Avail' /tmp/custom-image-cuda-pre-init-2-*/logs/startup-script.log | perl -ne 'print if( /Avail/ or m:/\s*$: or /^-/ )'
 
 revoke_bindings
 
