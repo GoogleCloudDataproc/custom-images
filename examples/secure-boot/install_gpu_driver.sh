@@ -56,9 +56,7 @@ function remove_old_backports {
   done
 }
 
-function compare_versions_lte {
-  [ "$1" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ]
-}
+function compare_versions_lte { [ "$1" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ] ; }
 
 function compare_versions_lt() {
   [ "$1" = "$2" ] && return 1 || compare_versions_lte $1 $2
@@ -1230,3 +1228,5 @@ configure_dkms_certs
 main
 
 clear_dkms_key
+
+df -h

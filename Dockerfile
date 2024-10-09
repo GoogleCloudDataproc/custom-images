@@ -9,7 +9,7 @@ WORKDIR /custom-images
 
 RUN apt-get -qq update \
   && apt-get -y -qq install \
-     apt-transport-https ca-certificates gnupg curl jq less
+     apt-transport-https ca-certificates gnupg curl jq less screen
 RUN curl https://packages.cloud.google.com/apt/doc/apt-key.gpg \
     | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
 RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
