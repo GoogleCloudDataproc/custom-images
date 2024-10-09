@@ -31,7 +31,7 @@ _IMAGE_FAMILY_URI = re.compile(
 )
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
-_LOG.setLevel(logging.INFO)
+_LOG.setLevel(logging.WARN)
 
 
 def _get_project_id():
