@@ -1,4 +1,8 @@
-screen -L -t monitor 0 /bin/bash
+#
+# For debugging, uncomment the following line
+#
+
+# screen -L -t monitor 0 /bin/bash
 
 screen -L -t 2.2-debian12 1 /bin/bash -x examples/secure-boot/pre-init.sh 2.2-debian12 examples/secure-boot/install_gpu_driver.sh
 screen -L -t 2.1-debian11 2 /bin/bash -x examples/secure-boot/pre-init.sh 2.1-debian11 examples/secure-boot/install_gpu_driver.sh
