@@ -23,7 +23,7 @@ from custom_image_utils import shell_script_generator
 
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
-_LOG.setLevel(logging.INFO)
+_LOG.setLevel(logging.WARN)
 
 
 def create(args):

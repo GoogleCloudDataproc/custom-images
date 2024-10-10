@@ -23,7 +23,7 @@ _template = """
 
 # Script for creating Dataproc custom image.
 
-set -euxo pipefail
+set -euo pipefail
 
 RED='\\e[0;31m'
 GREEN='\\e[0;32m'
@@ -58,10 +58,9 @@ function main() {{
   declare -a sources_k=({sources_map_k})
   declare -a sources_v=({sources_map_v})
   for i in "${{!sources_k[@]}}"; do
-    gsutil cp "${{sources_v[i]}}" "{custom_sources_path}/${{sources_k[i]}}"
+    gsutil cp "${{sources_v[i]}}" "{custom_sources_path}/${{sources_k[i]}}" > /dev/null 2>&1
   done
 
-  echo 'Creating disk.'
   if [[ '{base_image_family}' = '' ||  '{base_image_family}' = 'None' ]]; then
      src_image="--source-image={dataproc_base_image}"
   else
@@ -89,18 +88,26 @@ function main() {{
       curl -L -o ${{MS_UEFI_CA}} 'https://go.microsoft.com/fwlink/p/?linkid=321194'
 
     cert_args="--signature-database-file={trusted_cert},${{MS_UEFI_CA}} --guest-os-features=UEFI_COMPATIBLE"
+
+    # TODO: if db certs exist on source image, append them to new image
+    # gcloud compute images describe cuda-pre-init-2-2-debian12-2024-10-09-16-15 --format json | jq '.shieldedInstanceInitialState'
   fi
 
-  gcloud compute images create {image_name}-install \
+  date
+  echo 'Creating disk.'
+  set -x
+  time gcloud compute images create {image_name}-install \
        --project={project_id} \
        ${{src_image}} \
        ${{cert_args}} \
        {storage_location_flag} \
        --family={family}
-
+  set +x
   touch "/tmp/{run_id}/disk_created"
 
+  date
   echo 'Creating VM instance to run customization script.'
+  set -x
   time gcloud compute instances create {image_name}-install \
       --project={project_id} \
       --zone={zone} \
@@ -117,6 +124,7 @@ function main() {{
       --scopes=cloud-platform \
       {metadata_flag} \
       --metadata-from-file startup-script=startup_script/run.sh
+  set +x
 
   touch /tmp/{run_id}/vm_created
 
@@ -130,27 +138,31 @@ function main() {{
       --port=1 2>&1 \
       | grep 'startup-script' \
       | sed -e 's/ {image_name}-install.*startup-script://g' \
-      | tee {log_dir}/startup-script.log \
+      | dd bs=64 of={log_dir}/startup-script.log \
       || true
-
   echo 'Checking customization script result.'
-  if grep 'BuildFailed:' {log_dir}/startup-script.log; then
+  date
+  if grep -q 'BuildFailed:' {log_dir}/startup-script.log; then
     echo -e "${{RED}}Customization script failed.${{NC}}"
+    echo "See {log_dir}/startup-script.log for details"
     exit 1
-  elif grep 'BuildSucceeded:' {log_dir}/startup-script.log; then
+  elif grep -q 'BuildSucceeded:' {log_dir}/startup-script.log; then
     echo -e "${{GREEN}}Customization script succeeded.${{NC}}"
   else
     echo 'Unable to determine the customization script result.'
     exit 1
   fi
 
+  date
   echo 'Creating custom image.'
-  gcloud compute images create {image_name} \
+  set -x
+  time gcloud compute images create {image_name} \
     --project={project_id} \
     --source-disk-zone={zone} \
     --source-disk={image_name}-install \
     {storage_location_flag} \
     --family={family}
+  set +x
 
   touch /tmp/{run_id}/image_created
 }}

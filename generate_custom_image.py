@@ -46,7 +46,7 @@ from custom_image_utils import smoke_test_runner
 
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
-_LOG.setLevel(logging.INFO)
+_LOG.setLevel(logging.WARN)
 
 
 def parse_args(raw_args):

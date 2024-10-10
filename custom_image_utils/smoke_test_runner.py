@@ -21,7 +21,7 @@ import uuid
 
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
-_LOG.setLevel(logging.INFO)
+_LOG.setLevel(logging.WARN)
 
 def _create_workflow_template(workflow_name, image_name, project_id, zone, region,
                               network, subnet, no_external_ip):

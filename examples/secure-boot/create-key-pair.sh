@@ -15,7 +15,7 @@
 # This script creates a key pair and publishes to cloud secrets or
 # fetches an already published key pair from cloud secrets
 
-set -ex
+set -e
 
 # https://github.com/glevand/secure-boot-utils
 
@@ -49,13 +49,13 @@ function create_key () {
       gcloud secrets versions access "1" \
         --project="${PROJECT_ID}" \
         --secret="${CA_KEY_SECRET_NAME}" \
-        | dd of="${PRIVATE_KEY}"
+        | dd of="${PRIVATE_KEY}" status=none
 
       gcloud secrets versions access "1" \
         --project="${PROJECT_ID}" \
         --secret="${CA_CERT_SECRET_NAME}" \
         | base64 --decode \
-        | dd of="${CACERT_DER}"
+        | dd of="${CACERT_DER}" status=none
 
       # Create a PEM-format version of the cert
       openssl x509 \
@@ -65,7 +65,7 @@ function create_key () {
         -out "${CACERT}"
 
       MS_UEFI_CA="tls/MicCorUEFCA2011_2011-06-27.crt"
-      curl -L -o "${MS_UEFI_CA}" 'https://go.microsoft.com/fwlink/p/?linkid=321194'
+      curl -s -L -o "${MS_UEFI_CA}" 'https://go.microsoft.com/fwlink/p/?linkid=321194'
 
       echo "${CA_KEY_SECRET_NAME}" > tls/private-key-secret-name.txt
       echo "${CA_CERT_SECRET_NAME}" > tls/public-key-secret-name.txt
@@ -134,5 +134,3 @@ echo "private_secret_name=${CA_KEY_SECRET_NAME}"
 echo "public_secret_name=${CA_CERT_SECRET_NAME}"
 echo "secret_project=${PROJECT_ID}"
 echo "secret_version=1"
-
-set +x
