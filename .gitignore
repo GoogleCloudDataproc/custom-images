@@ -22,3 +22,6 @@ tls-*/
 
 # Screen session logs
 screenlog.*
+
+# environment configuration file
+env.json
