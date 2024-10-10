@@ -16,5 +16,9 @@ __pycache__
 \#*#
 .\#*
 
-# secure-boot
+# secure-boot certificate store
 tls/
+tls-*/
+
+# Screen session logs
+screenlog.*
