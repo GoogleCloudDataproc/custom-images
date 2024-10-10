@@ -65,9 +65,9 @@ case "${dataproc_version}" in
   "2.0-debian10" ) disk_size_gb="40" ;;
 esac
 
+echo "#!/bin/bash\necho no op" | dd of=empty.sh status=none
 customization_script="${2:-empty.sh}"
-echo "#!/bin/bash\necho no op" | dd of=empty.sh
-#customization_script=empty.sh
+
 image_name="${PURPOSE}-${dataproc_version/\./-}-$(date +%F-%H-%M)"
 
 set -x +e
