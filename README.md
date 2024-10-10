@@ -21,7 +21,7 @@ clusters.
 2.  gcloud
 3.  Bash 3.0.
 4.  A GCE project with billing, Google Cloud Dataproc API, Google Compute Engine
-    API, Google Secret Manager, and Google Cloud Storage APIs enabled.
+    API, Google Secret Manager API, and Google Cloud Storage APIs enabled.
 5.  Use `gcloud config set project <your-project>` to specify which project to
     use to create and save your custom image.
 
