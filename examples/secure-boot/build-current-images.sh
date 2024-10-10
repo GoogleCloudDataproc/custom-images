@@ -88,6 +88,21 @@ session_name="build-current-images"
 screen -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
 
 # tail -n 3 /tmp/custom-image-cuda-pre-init-2-*/logs/workflow.log
-# grep -A6 'Filesystem.*Avail' /tmp/custom-image-cuda-pre-init-2-*/logs/startup-script.log | perl -ne 'print if( /Avail/ or m:/\s*$: or /^-/ )'
+# grep -A6 'Filesystem.*Avail' /tmp/custom-image-cuda-pre-init-2-*/logs/startup-script.log | perl -ne 'print $1,$/ if( m:( Filesystem.* Avail.*| /dev/.*/\s*$|^--): )'
 
 revoke_bindings
+
+#
+# disk size - 20241009
+#
+#  Filesystem      Size  Used Avail Use% Mounted on
+
+#  /dev/sda1        40G   29G  9.1G  76% / # 2.0-debian10
+#  /dev/sda2        33G   30G  3.4G  90% / # 2.0-rocky8
+#  /dev/sda1        36G   29G  7.0G  81% / # 2.0-ubuntu18
+#  /dev/sda1        40G   35G  2.7G  93% / # 2.1-debian11
+#  /dev/sda2        36G   33G  3.4G  91% / # 2.1-rocky8
+#  /dev/root        36G   34G  2.1G  95% / # 2.1-ubuntu20
+#  /dev/sda1        40G   37G  1.1G  98% / # 2.2-debian12
+#  /dev/sda2        54G   34G   21G  63% / # 2.2-rocky9
+#  /dev/root        39G   37G  2.4G  94% / # 2.2-ubuntu22
