@@ -17,11 +17,11 @@ clusters.
 
 ## Requirements
 
-1.  Python 2.7+.
-2.  gcloud 181.0.0 (2017-11-30).
+1.  Python
+2.  gcloud
 3.  Bash 3.0.
 4.  A GCE project with billing, Google Cloud Dataproc API, Google Compute Engine
-    API, and Google Cloud Storage APIs enabled.
+    API, Google Secret Manager, and Google Cloud Storage APIs enabled.
 5.  Use `gcloud config set project <your-project>` to specify which project to
     use to create and save your custom image.
 
@@ -41,13 +41,14 @@ python generate_custom_image.py \
 ### Arguments
 
 *   **--image-name**: The name for custom image.
-*   **--dataproc-version**: The Dataproc version for this custom image to build
-    on. Examples: `1.5.9-debian10`, `1.5.0-RC10-debian10`, `1.5.9-ubuntu18`. If
-    the sub-minor version is unspecified, the latest available one will be used.
-    Examples: `1.5-centos8`, `2.0-debian10`. For a complete list of Dataproc
-    image versions, please refer to Dataproc
-    [release notes](https://cloud.google.com/dataproc/docs/release-notes). To
-    understand Dataproc versioning, please refer to
+*   **--dataproc-version**: The Dataproc version for this custom image
+    to build on. Examples: `2.2.32-debian12`, `2.2.31-debian12`,
+    `2.2.31-ubuntu22`. If the sub-minor version is unspecified, the
+    latest available one will be used.  Examples: `2.2-rocky9`,
+    `2.2-debian12`. For a complete list of Dataproc image versions,
+    please review the output of `gcloud compute images list --project
+    cloud-dataproc`. To understand Dataproc versioning, please refer
+    to
     [documentation](https://cloud.google.com/dataproc/docs/concepts/versioning/overview).
     **This argument is mutually exclusive with `--base-image-uri` and
     `--source-image-family`**.
