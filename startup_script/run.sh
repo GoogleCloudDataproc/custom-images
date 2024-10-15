@@ -32,6 +32,8 @@ CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sou
 # get time to wait for stdout to flush
 SHUTDOWN_TIMER_IN_SEC=$(/usr/share/google/get_metadata_value attributes/shutdown-timer-in-sec)
 
+OPTIONAL_COMPONENTS=$(/usr/share/google/get_metadata_value attributes/optional-components)
+
 ready=""
 
 function wait_until_ready() {
@@ -87,12 +89,17 @@ function cleanup() {
   rm ./init_actions.sh ./run.sh
 }
 
+function run_startup_custom_script() {
+  if [[ -n "$OPTIONAL_COMPONENTS" ]]; then
+    source "${BDUTIL_DIR}/startup_custom_script.sh"
+  fi
+}
+
 function main() {
-  local -r optional_components="$1"
-  echo "${optional_components}"
   wait_until_ready
 
   if [[ "${ready}" == "true" ]]; then
+    run_startup_custom_script
     run_custom_script
     cleanup
   fi
