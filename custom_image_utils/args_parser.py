@@ -54,7 +54,7 @@ def _validate_components(s):
     components = s.split(',')
     for component in components:
         if component not in _VALID_COMPONENTS:
-            raise argparse.ArgumentTypeError(f"Invalid component: {component}. Valid options are: {', '.join(_VALID_COMPONENTS)}")
+            raise argparse.ArgumentTypeError("Invalid component selected.")
     return components
 
 def parse_args(args):
