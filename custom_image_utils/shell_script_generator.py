@@ -123,7 +123,7 @@ function main() {{
       {service_account_flag} \
       --scopes=cloud-platform \
       {metadata_flag} \
-      --metadata-from-file startup-script=startup_script/run.sh
+      --metadata-from-file startup-script="startup_script/run.sh {optional_components_flag}"
   set +x
 
   touch /tmp/{run_id}/vm_created
@@ -222,6 +222,9 @@ class Generator:
     if self.args["metadata"]:
       metadata_flag_template += ",{metadata}"
     self.args["metadata_flag"] = metadata_flag_template.format(**self.args)
+    self.args[
+      "optional_components_flag"] = "{optional_components}".format(
+      **self.args) if self.args["optional_components"] else ""
 
   def generate(self, args):
     self._init_args(args)

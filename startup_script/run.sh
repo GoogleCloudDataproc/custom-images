@@ -88,6 +88,8 @@ function cleanup() {
 }
 
 function main() {
+  local -r optional_components="$1"
+  echo "${optional_components}"
   wait_until_ready
 
   if [[ "${ready}" == "true" ]]; then
