@@ -218,9 +218,9 @@ class Generator:
         **self.args) if self.args["storage_location"] else ""
     metadata_flag_template = (
         "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},"
-        "custom-sources-path={custom_sources_path}")
-    if self.args["optional_components"]:
-      metadata_flag_template += ",optional-components={optional_components}"
+        "custom-sources-path={custom_sources_path},"
+        "optional-components={optional_components}"
+    )
     if self.args["metadata"]:
       metadata_flag_template += ",{metadata}"
     self.args["metadata_flag"] = metadata_flag_template.format(**self.args)

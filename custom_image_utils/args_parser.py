@@ -48,14 +48,14 @@ def _full_image_family_uri_regex_type(s):
   """Check if the partial image family uri string matches regex."""
   if not _FULL_IMAGE_FAMILY_URI.match(s):
     raise argparse.ArgumentTypeError("Invalid image family URI: {}.".format(s))
-  return s  
+  return s
 
 def _validate_components(s):
     components = s.split(',')
     for component in components:
         if component not in _VALID_COMPONENTS:
             raise argparse.ArgumentTypeError("Invalid component selected.")
-    return components
+    return ','.join(components)
 
 def parse_args(args):
   """Parses command-line arguments."""
@@ -83,7 +83,7 @@ def parse_args(args):
       "--base-image-family",
       type=_full_image_family_uri_regex_type,
       help="""The source image family URI. The latest non-depracated image associated with the family will be used.
-      """)      
+      """)
   required_args.add_argument(
       "--customization-script",
       type=str,
