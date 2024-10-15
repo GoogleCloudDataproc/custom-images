@@ -123,7 +123,7 @@ function main() {{
       {service_account_flag} \
       --scopes=cloud-platform \
       {metadata_flag} \
-      --metadata-from-file startup-script=startup_script/run.sh"
+      --metadata-from-file startup-script=startup_script/run.sh
   set +x
 
   touch /tmp/{run_id}/vm_created
