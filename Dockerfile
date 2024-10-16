@@ -17,7 +17,7 @@ RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.
 
 RUN apt-get -y -qq update && apt-get -y -qq install google-cloud-cli && apt-get clean
 
-RUN apt-get -y -qq install emacs-nox vim && apt-get clean
+RUN apt-get -y -qq install emacs-nox vim libmime-base64-perl && apt-get clean
 
 COPY . ${WORKDIR}
 

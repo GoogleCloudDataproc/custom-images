@@ -18,8 +18,7 @@ Shell script based image creation workflow generator.
 from datetime import datetime
 
 
-_template = """
-#!/usr/bin/env bash
+_template = """#!/usr/bin/env bash
 
 # Script for creating Dataproc custom image.
 
@@ -28,6 +27,8 @@ set -euo pipefail
 RED='\\e[0;31m'
 GREEN='\\e[0;32m'
 NC='\\e[0m'
+
+base_obj_type="images"
 
 function exit_handler() {{
   echo 'Cleaning up before exiting.'
@@ -38,7 +39,7 @@ function exit_handler() {{
         --project={project_id} --zone={zone} -q
   elif [[ -f /tmp/{run_id}/disk_created ]]; then
     echo 'Deleting disk.'
-    gcloud compute images delete {image_name}-install --project={project_id} --zone={zone} -q
+    gcloud compute ${{base_obj_type}} delete {image_name}-install --project={project_id} --zone={zone} -q
   fi
 
   echo 'Uploading local logs to GCS bucket.'
@@ -53,6 +54,42 @@ function exit_handler() {{
   fi
 }}
 
+function test_element_in_array {{
+  local test_element="$1" ; shift
+  local -a test_array=("$@")
+
+  for item in "${{test_array[@]}}"; do
+    if [[ "${{item}}" == "${{test_element}}" ]]; then return 0 ; fi
+  done
+  return 1
+}}
+
+function print_modulus_md5sum {{
+  local derfile="$1"
+  openssl x509 -noout -modulus -in "${{derfile}}" | openssl md5 | awk '{{print $2}}'
+}}
+
+function print_img_dbs_modulus_md5sums() {{
+  local long_img_name="$1"
+  local img_name="$(echo ${{long_img_name}} | sed -e 's:^.*/::')"
+  local json_tmpfile="/tmp/{run_id}/${{img_name}}.json"
+  gcloud compute images describe ${{long_img_name}} --format json > "${{json_tmpfile}}"
+
+  local -a db_certs=()
+  mapfile -t db_certs < <( cat ${{json_tmpfile}} | jq -r 'try .shieldedInstanceInitialState.dbs[].content' )
+
+  local -a modulus_md5sums=()
+  for key in "${{!db_certs[@]}}" ; do
+    local derfile="/tmp/{run_id}/${{img_name}}.${{key}}.der"
+    echo "${{db_certs[${{key}}]}}" | \
+      perl -M'MIME::Base64(decode_base64url)' -ne 'chomp; print( decode_base64url($_) )' \
+      > "${{derfile}}"
+    modulus_md5sums+=( $(print_modulus_md5sum "${{derfile}}") )
+  done
+
+  echo "${{modulus_md5sums[@]}}"
+}}
+
 function main() {{
   echo 'Uploading files to GCS bucket.'
   declare -a sources_k=({sources_map_k})
@@ -60,12 +97,6 @@ function main() {{
   for i in "${{!sources_k[@]}}"; do
     gsutil cp "${{sources_v[i]}}" "{custom_sources_path}/${{sources_k[i]}}" > /dev/null 2>&1
   done
-
-  if [[ '{base_image_family}' = '' ||  '{base_image_family}' = 'None' ]]; then
-     src_image="--source-image={dataproc_base_image}"
-  else
-     src_image="--source-image-family={base_image_family}"
-  fi
 
   local cert_args=""
   if [[ -n '{trusted_cert}' ]] && [[ -f '{trusted_cert}' ]]; then
@@ -87,23 +118,71 @@ function main() {{
     test -f "${{MS_UEFI_CA}}" || \
       curl -L -o ${{MS_UEFI_CA}} 'https://go.microsoft.com/fwlink/p/?linkid=321194'
 
-    cert_args="--signature-database-file={trusted_cert},${{MS_UEFI_CA}} --guest-os-features=UEFI_COMPATIBLE"
+    local -a cert_list=()
 
-    # TODO: if db certs exist on source image, append them to new image
-    # gcloud compute images describe cuda-pre-init-2-2-debian12-2024-10-09-16-15 --format json | jq '.shieldedInstanceInitialState'
+    local -a default_cert_list=("{trusted_cert}" "${{MS_UEFI_CA}}")
+    local -a src_img_modulus_md5sums=()
+
+    mapfile -t src_img_modulus_md5sums < <(print_img_dbs_modulus_md5sums {dataproc_base_image})
+    local num_src_certs="${{#src_img_modulus_md5sums[@]}}"
+    echo "${{num_src_certs}} db certificates attached to source image"
+    if [[ ${{num_src_certs}} -eq 0 ]]; then
+      echo "no db certificates in source image"
+      cert_list=default_cert_list
+    else
+      echo "db certs exist in source image"
+      for cert in ${{default_cert_list[*]}}; do
+        if test_element_in_array "$(print_modulus_md5sum ${{cert}})" ${{src_img_modulus_md5sums[@]}} ; then
+          echo "cert ${{cert}} is already in source image's db list"
+        else
+          cert_list+=("${{cert}}")
+        fi
+      done
+      # append source image's cert list
+      local img_name="$(echo {dataproc_base_image} | sed -e 's:^.*/::')"
+      if [[ ${{#cert_list[@]}} -ne 0 ]] && compgen -G "/tmp/{run_id}/${{img_name}}.*.der" > /dev/null ; then
+        cert_list+=(/tmp/{run_id}/${{img_name}}.*.der)
+      fi
+    fi
+
+    if [[ ${{#cert_list[@]}} -eq 0 ]]; then
+      echo "all certificates already included in source image's db list"
+    else
+      cert_args="--signature-database-file=$(IFS=, ; echo "${{cert_list[*]}}") --guest-os-features=UEFI_COMPATIBLE"
+    fi
   fi
 
   date
-  echo 'Creating disk.'
   set -x
-  time gcloud compute images create {image_name}-install \
-       --project={project_id} \
-       ${{src_image}} \
-       ${{cert_args}} \
-       {storage_location_flag} \
-       --family={family}
+  if [[ -z "${{cert_args}}" && "${{num_src_certs}}" -ne "0" ]] then
+    echo 'Re-using base image'
+    base_obj_type="reuse"
+    instance_disk_args='--image-project={project_id} --image={dataproc_base_image} --boot-disk-size={disk_size}G --boot-disk-type=pd-ssd'
+
+  elif [[ -n "${{cert_args}}" ]] ; then
+    echo 'Creating image.'
+    base_obj_type="images"
+    instance_disk_args='--image-project={project_id} --image={image_name}-install --boot-disk-size={disk_size}G --boot-disk-type=pd-ssd'
+    time gcloud compute images create {image_name}-install \
+      --project={project_id} \
+      --source-image={dataproc_base_image} \
+      ${{cert_args}} \
+      {storage_location_flag} \
+      --family={family}
+    touch "/tmp/{run_id}/disk_created"
+  else
+    echo 'Creating disk.'
+    base_obj_type="disks"
+    instance_disk_args='--disk=auto-delete=yes,boot=yes,mode=rw,name={image_name}-install'
+    time gcloud compute disks create {image_name}-install \
+      --project={project_id} \
+      --zone={zone} \
+      --image={dataproc_base_image} \
+      --type=pd-ssd \
+      --size={disk_size}GB
+    touch "/tmp/{run_id}/disk_created"
+  fi
   set +x
-  touch "/tmp/{run_id}/disk_created"
 
   date
   echo 'Creating VM instance to run customization script.'
@@ -115,10 +194,7 @@ function main() {{
       {subnetwork_flag} \
       {no_external_ip_flag} \
       --machine-type={machine_type} \
-      --image-project {project_id} \
-      --image="{image_name}-install" \
-      --boot-disk-size={disk_size}G \
-      --boot-disk-type=pd-ssd \
+      ${{instance_disk_args}} \
       {accelerator_flag} \
       {service_account_flag} \
       --scopes=cloud-platform \
@@ -129,7 +205,9 @@ function main() {{
   touch /tmp/{run_id}/vm_created
 
   # clean up intermediate install image
-  gcloud compute images delete -q {image_name}-install --project={project_id}
+  if [[ "${{base_obj_type}}" == "images" ]] ; then
+    gcloud compute images delete -q {image_name}-install --project={project_id}
+  fi
 
   echo 'Waiting for customization script to finish and VM shutdown.'
   gcloud compute instances tail-serial-port-output {image_name}-install \
