@@ -234,9 +234,11 @@ function configure_knox_for_dask() {
   fi
 
   local DASK_UI_PORT=8787
-  sed -i \
-    "/<\/topology>/i <service><role>DASK<\/role><url>http://localhost:${DASK_UI_PORT}<\/url><\/service> <service><role>DASKWS<\/role><url>ws:\/\/${MASTER}:${DASK_UI_PORT}<\/url><\/service>" \
-    /etc/knox/conf/topologies/default.xml
+  if [[ -f /etc/knox/conf/topologies/default.xml ]]; then
+    sed -i \
+      "/<\/topology>/i <service><role>DASK<\/role><url>http://localhost:${DASK_UI_PORT}<\/url><\/service> <service><role>DASKWS<\/role><url>ws:\/\/${MASTER}:${DASK_UI_PORT}<\/url><\/service>" \
+      /etc/knox/conf/topologies/default.xml
+  fi
 
   mkdir -p "${KNOX_DASK_DIR}"
 
@@ -378,7 +380,10 @@ EOF
 
   chown -R knox:knox "${KNOX_DASK_DIR}" "${KNOX_DASKWS_DIR}"
 
-  restart_knox
+  # Do not restart knox during pre-init script run
+  if [[ -n "${ROLE}" ]]; then
+    restart_knox
+  fi
 }
 
 
@@ -480,13 +485,13 @@ function install_dask() {
       -c 'conda-forge' -c 'nvidia'  \
       ${CONDA_PACKAGES[*]} \
       "${python_spec}"
+    local retval=$?
     set -e
-    if [[ "$?" == "0" ]] ; then
+    if [[ "$retval" == "0" ]] ; then
       is_installed="1"
       break
-    else
-      "${conda}" config --set channel_priority flexible
     fi
+    "${conda}" config --set channel_priority flexible
   done
   if [[ "${is_installed}" == "0" ]]; then
     echo "failed to install dask"

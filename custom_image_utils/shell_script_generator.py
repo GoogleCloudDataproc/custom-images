@@ -216,7 +216,7 @@ function main() {{
       --port=1 2>&1 \
       | grep 'startup-script' \
       | sed -e 's/ {image_name}-install.*startup-script://g' \
-      | dd bs=64 of={log_dir}/startup-script.log \
+      | dd bs=1 of={log_dir}/startup-script.log \
       || true
   echo 'Checking customization script result.'
   date

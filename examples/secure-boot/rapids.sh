@@ -99,7 +99,7 @@ function install_dask_rapids() {
   if is_cuda12 ; then
     local python_spec="python>=3.11"
     local cuda_spec="cuda-version>=12,<13"
-    local dask_spec="dask>=2024.8"
+    local dask_spec="dask>=2024.5"
     local numba_spec="numba"
   elif is_cuda11 ; then
     local python_spec="python>=3.9"
@@ -121,8 +121,8 @@ function install_dask_rapids() {
 
   # Install cuda, rapids, dask
   local is_installed="0"
-  mamba="/opt/conda/default/bin/mamba"
-  conda="/opt/conda/default/bin/conda"
+  mamba="/opt/conda/miniconda3/bin/mamba"
+  conda="/opt/conda/miniconda3/bin/conda"
 
   for installer in "${mamba}" "${conda}" ; do
     set +e
@@ -252,6 +252,7 @@ EOF
 
 function configure_dask_yarn() {
   # Replace config file on cluster.
+  mkdir -p "$(dirname "${DASK_YARN_CONFIG_FILE}")"
   cat <<EOF >"${DASK_YARN_CONFIG_FILE}"
 # Config file for Dask Yarn.
 #
@@ -302,3 +303,5 @@ function main() {
 }
 
 main
+
+df -h
