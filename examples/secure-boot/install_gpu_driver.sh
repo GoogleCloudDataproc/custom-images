@@ -268,7 +268,7 @@ function execute_with_retries() (
     cmd="apt-get -y clean && $cmd"
   fi
   for ((i = 0; i < 3; i++)); do
-    if eval "$cmd"; then set -x ; return 0 ; fi
+    if eval "$cmd" ; then return 0 ; fi
     sleep 5
   done
   return 1
@@ -386,7 +386,7 @@ function install_nvidia_nccl() {
   if is_rocky ; then
     time execute_with_retries \
       dnf -y -q install \
-        "libnccl-${nccl_version}" "libnccl-devel-${nccl_version}" "libnccl-static-${nccl_version}"
+        "libnccl-${nccl_version}" "libnccl-devel-${nccl_version}" "libnccl-static-${nccl_version}" > /dev/null 2>&1
     sync
   elif is_ubuntu ; then
     install_cuda_keyring_pkg
@@ -396,12 +396,12 @@ function install_nvidia_nccl() {
     if is_ubuntu18 ; then
       time execute_with_retries \
         apt-get install -q -y \
-          libnccl2 libnccl-dev
+          libnccl2 libnccl-dev > /dev/null 2>&1
       sync
     else
       time execute_with_retries \
         apt-get install -q -y \
-          "libnccl2=${nccl_version}" "libnccl-dev=${nccl_version}"
+          "libnccl2=${nccl_version}" "libnccl-dev=${nccl_version}" > /dev/null 2>&1
       sync
     fi
   else
@@ -425,13 +425,15 @@ function install_nvidia_cudnn() {
 
   if is_rocky ; then
     if is_cudnn8 ; then
-      execute_with_retries "dnf -y -q install" \
+      time execute_with_retries dnf -y -q install \
         "libcudnn${major_version}" \
-        "libcudnn${major_version}-devel"
+        "libcudnn${major_version}-devel" > /dev/null 2>&1
+      sync
     elif is_cudnn9 ; then
-      execute_with_retries "dnf -y -q install" \
+      time execute_with_retries dnf -y -q install \
         "libcudnn9-static-cuda-${CUDA_VERSION%%.*}" \
-        "libcudnn9-devel-cuda-${CUDA_VERSION%%.*}"
+        "libcudnn9-devel-cuda-${CUDA_VERSION%%.*}" > /dev/null 2>&1
+      sync
     else
       echo "Unsupported cudnn version: '${major_version}'"
     fi
@@ -445,20 +447,22 @@ function install_nvidia_cudnn() {
 
         apt-get update -qq
 
-        execute_with_retries \
+        time execute_with_retries \
           apt-get -y install --no-install-recommends \
             "libcudnn8=${cudnn_pkg_version}" \
-            "libcudnn8-dev=${cudnn_pkg_version}"
+            "libcudnn8-dev=${cudnn_pkg_version}" > /dev/null 2>&1
+	sync
       elif is_cudnn9 ; then
 	install_cuda_keyring_pkg
 
         apt-get update -qq
 
-        execute_with_retries \
+        time execute_with_retries \
           apt-get -y install --no-install-recommends \
           "libcudnn9-cuda-${CUDA_VERSION%%.*}" \
           "libcudnn9-dev-cuda-${CUDA_VERSION%%.*}" \
-          "libcudnn9-static-cuda-${CUDA_VERSION%%.*}"
+          "libcudnn9-static-cuda-${CUDA_VERSION%%.*}" > /dev/null 2>&1
+	sync
       else
         echo "Unsupported cudnn version: [${CUDNN_VERSION}]"
       fi
@@ -468,8 +472,9 @@ function install_nvidia_cudnn() {
     packages=(
       "libcudnn${major_version}=${cudnn_pkg_version}"
       "libcudnn${major_version}-dev=${cudnn_pkg_version}")
-    execute_with_retries \
-      "apt-get install -q -y --no-install-recommends ${packages[*]}"
+    time execute_with_retries \
+      apt-get install -q -y --no-install-recommends "${packages[*]}" > /dev/null 2>&1
+    sync
   else
     echo "Unsupported OS: '${OS_NAME}'"
     exit 1
@@ -680,19 +685,19 @@ function build_driver_from_packages() {
     fi
     add_contrib_component
     apt-get update -qq
-    execute_with_retries "apt-get install -y -qq --no-install-recommends dkms"
+    execute_with_retries apt-get install -y -qq --no-install-recommends dkms  > /dev/null 2>&1
     #configure_dkms_certs
-    time execute_with_retries "apt-get install -y -qq --no-install-recommends ${pkglist[@]}"
+    time execute_with_retries apt-get install -y -qq --no-install-recommends "${pkglist[@]}" > /dev/null 2>&1
     sync
 
   elif is_rocky ; then
     #configure_dkms_certs
-    if execute_with_retries dnf -y -q module install "nvidia-driver:${DRIVER}-dkms" ; then
+    if time execute_with_retries dnf -y -q module install "nvidia-driver:${DRIVER}-dkms" > /dev/null 2>&1 ; then
       echo "nvidia-driver:${DRIVER}-dkms installed successfully"
     else
-      time execute_with_retries dnf -y -q module install 'nvidia-driver:latest'
-      sync
+      time execute_with_retries dnf -y -q module install 'nvidia-driver:latest' > /dev/null 2>&1
     fi
+    sync
   fi
   #clear_dkms_key
 }
@@ -712,7 +717,7 @@ function install_cuda_runfile() {
   if test -f "${download_dir}/cuda-complete" ; then return ; fi
   curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
     "${NVIDIA_CUDA_URL}" -o "${download_dir}/cuda.run"
-  time bash "${download_dir}/cuda.run" --silent --toolkit --no-opengl-libs
+  time bash "${download_dir}/cuda.run" --silent --toolkit --no-opengl-libs > /dev/null 2>&1
   rm -f "${download_dir}/cuda.run"
   touch "${download_dir}/cuda-complete"
   sync
@@ -729,10 +734,10 @@ function install_cuda_toolkit() {
   readonly cudatk_package
   if is_ubuntu || is_debian ; then
 #    if is_ubuntu ; then execute_with_retries "apt-get install -y -qq --no-install-recommends cuda-drivers-${DRIVER}=${DRIVER_VERSION}-1" ; fi
-    time execute_with_retries "apt-get install -y -qq --no-install-recommends ${cuda_package} ${cudatk_package}"
+    time execute_with_retries apt-get install -y -qq --no-install-recommends ${cuda_package} ${cudatk_package} > /dev/null 2>&1
     sync
   elif is_rocky ; then
-    time execute_with_retries "dnf -y -q install ${cudatk_package}"
+    time execute_with_retries dnf -y -q install "${cudatk_package}" > /dev/null 2>&1
     sync
   fi
 }
@@ -833,7 +838,8 @@ function install_gpu_agent() {
     "${GPU_AGENT_REPO_URL}/report_gpu_metrics.py" \
     | sed -e 's/-u --format=/--format=/' \
     | dd status=none of="${install_dir}/report_gpu_metrics.py"
-  pip install -r "${install_dir}/requirements.txt"
+  time execute_with_retries pip install -r "${install_dir}/requirements.txt" > /dev/null 2>&1
+  sync
 
   # Generate GPU service.
   cat <<EOF >/lib/systemd/system/gpu-utilization-agent.service
@@ -1039,22 +1045,23 @@ function main() {
 
   if is_debuntu ; then
     export DEBIAN_FRONTEND=noninteractive
-    execute_with_retries "apt-get install -y -qq pciutils linux-headers-${uname_r}"
+    execute_with_retries apt-get install -y -qq pciutils "linux-headers-${uname_r}" > /dev/null 2>&1
   elif is_rocky ; then
-    execute_with_retries "dnf -y -q update --exclude=systemd*,kernel*"
-    execute_with_retries "dnf -y -q install pciutils gcc"
+    execute_with_retries dnf -y -q update --exclude=systemd*,kernel* > /dev/null 2>&1
+    execute_with_retries dnf -y -q install pciutils gcc > /dev/null 2>&1
 
     local dnf_cmd="dnf -y -q install kernel-devel-${uname_r}"
     local kernel_devel_pkg_out="$(eval "${dnf_cmd} 2>&1")"
     if [[ "${kernel_devel_pkg_out}" =~ 'Unable to find a match: kernel-devel-' ]] ; then
       # this kernel-devel may have been migrated to the vault
       local vault="https://download.rockylinux.org/vault/rocky/$(os_version)"
-      execute_with_retries dnf -y -q --setopt=localpkg_gpgcheck=1 install \
+      time execute_with_retries dnf -y -q --setopt=localpkg_gpgcheck=1 install \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-${uname_r}.rpm" \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-core-${uname_r}.rpm" \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-modules-${uname_r}.rpm" \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-modules-core-${uname_r}.rpm" \
-        "${vault}/AppStream/x86_64/os/Packages/k/kernel-devel-${uname_r}.rpm"
+        "${vault}/AppStream/x86_64/os/Packages/k/kernel-devel-${uname_r}.rpm" > /dev/null 2>&1
+      sync
     else
       execute_with_retries "${dnf_cmd}"
     fi
@@ -1355,9 +1362,9 @@ function prepare_to_install(){
 
   # Monitor disk usage in a screen session
   if is_debuntu ; then
-      apt-get install -y -qq screen
+      apt-get install -y -qq screen > /dev/null 2>&1
   elif is_rocky ; then
-      dnf -y -q install screen
+      dnf -y -q install screen > /dev/null 2>&1
   fi
   touch /tmp/keep-running-df
   screen -d -m -US keep-running-df \
