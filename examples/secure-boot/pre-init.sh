@@ -107,7 +107,7 @@ case "${dataproc_version}" in
   "2.1-rocky8"   ) disk_size_gb="38" ;; # 41G   35G  6.1G  86% / # cuda-pre-init-2-1-rocky8
   "2.1-ubuntu20" ) disk_size_gb="35" ;; # 37G   32G  4.4G  88% / # cuda-pre-init-2-1-ubuntu20
   "2.2-debian12" ) disk_size_gb="38" ;; # 40G   35G  3.3G  92% / # cuda-pre-init-2-2-debian12
-  "2.2-rocky9"   ) disk_size_gb="39" ;; # 42G   36G  5.9G  86% / # cuda-pre-init-2-2-rocky9
+  "2.2-rocky9"   ) disk_size_gb="40" ;; # 42G   36G  5.9G  86% / # cuda-pre-init-2-2-rocky9
   "2.2-ubuntu22" ) disk_size_gb="38" ;; # 40G   35G  4.8G  88% / # cuda-pre-init-2-2-ubuntu22
 esac
 
@@ -121,17 +121,22 @@ case "${dataproc_version}" in
   "2.0-debian10" ) disk_size_gb="44" ;; # 47G   41G  4.0G  91% / # rapids-pre-init-2-0-debian10
   "2.0-rocky8"   ) disk_size_gb="45" ;; # 49G   42G  7.0G  86% / # rapids-pre-init-2-0-rocky8
   "2.0-ubuntu18" ) disk_size_gb="43" ;; # 45G   40G  4.9G  90% / # rapids-pre-init-2-0-ubuntu18
-  "2.1-debian11" ) disk_size_gb="46" ;; # 53G   43G  7.7G  85% / # rapids-pre-init-2-1-debian11
+  "2.1-debian11" ) disk_size_gb="46" ;; # 49G   43G  3.6G  93% / # rapids-pre-init-2-1-debian11
   "2.1-rocky8"   ) disk_size_gb="48" ;; # 52G   45G  7.2G  87% / # rapids-pre-init-2-1-rocky8
   "2.1-ubuntu20" ) disk_size_gb="45" ;; # 47G   42G  5.2G  89% / # rapids-pre-init-2-1-ubuntu20
   "2.2-debian12" ) disk_size_gb="48" ;; # 51G   45G  3.8G  93% / # rapids-pre-init-2-2-debian12
-  "2.2-rocky9"   ) disk_size_gb="49" ;; # 54G   46G  8.2G  85% / # rapids-pre-init-2-2-rocky9
-  "2.2-ubuntu22" ) disk_size_gb="48" ;; # 52G   45G  7.7G  86% / # rapids-pre-init-2-2-ubuntu22
+  "2.2-rocky9"   ) disk_size_gb="49" ;; # 53G   46G  7.2G  87% / # rapids-pre-init-2-2-rocky9
+  "2.2-ubuntu22" ) disk_size_gb="48" ;; # 50G   45G  5.6G  89% / # rapids-pre-init-2-2-ubuntu22
 esac
 
 #disk_size_gb="50"
 
-# Install rapids on dask base image
+# Install dask with rapids on base image
 PURPOSE="rapids-pre-init"
 customization_script="examples/secure-boot/rapids.sh"
+time generate_from_base_purpose "cuda-pre-init"
+
+# Install dask without rapids on base image
+PURPOSE="dask-pre-init"
+customization_script="examples/secure-boot/dask.sh"
 time generate_from_base_purpose "cuda-pre-init"
