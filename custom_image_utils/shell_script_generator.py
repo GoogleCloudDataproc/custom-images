@@ -154,7 +154,7 @@ function main() {{
 
   date
   set -x
-  if [[ -z "${{cert_args}}" && "${{num_src_certs}}" -ne "0" ]] then
+  if [[ -z "${{cert_args}}" && "${{num_src_certs}}" -ne "0" ]]; then
     echo 'Re-using base image'
     base_obj_type="reuse"
     instance_disk_args='--image-project={project_id} --image={dataproc_base_image} --boot-disk-size={disk_size}G --boot-disk-type=pd-ssd'
