@@ -19,6 +19,11 @@
 
 set -euxo pipefail
 
+function os_id()       { grep '^ID=' /etc/os-release | cut -d= -f2 | xargs ; }
+function is_ubuntu()   { [[ "$(os_id)" == 'ubuntu' ]] ; }
+function is_debian()   { [[ "$(os_id)" == 'debian' ]] ; }
+function is_debuntu()  { is_debian || is_ubuntu ; }
+
 # Detect dataproc image version from its various names
 if (! test -v DATAPROC_IMAGE_VERSION) && test -v DATAPROC_VERSION; then
   DATAPROC_IMAGE_VERSION="${DATAPROC_VERSION}"
@@ -30,24 +35,10 @@ function get_metadata_attribute() {
   /usr/share/google/get_metadata_value "attributes/${attribute_name}" || echo -n "${default_value}"
 }
 
-readonly SPARK_VERSION_ENV=$(spark-submit --version 2>&1 | sed -n 's/.*version[[:blank:]]\+\([0-9]\+\.[0-9]\).*/\1/p' | head -n1)
-if [[ "${SPARK_VERSION_ENV%%.*}" == "3" ]]; then
-  DEFAULT_CUDA_VERSION="12.4"
-  readonly DEFAULT_XGBOOST_VERSION="2.0.3"
-  readonly SPARK_VERSION="${SPARK_VERSION_ENV}"
-  readonly DEFAULT_XGBOOST_GPU_SUB_VERSION=""
-else
-  DEFAULT_CUDA_VERSION="10.1"
-  readonly DEFAULT_XGBOOST_VERSION="1.0.0"
-  readonly DEFAULT_XGBOOST_GPU_SUB_VERSION="Beta5"
-  readonly SPARK_VERSION="2.x"
-fi
+DEFAULT_CUDA_VERSION="12.4"
 
 # RAPIDS config
-readonly RAPIDS_RUNTIME=$(get_metadata_attribute 'rapids-runtime' 'SPARK')
-if [[ "${RAPIDS_RUNTIME}" != "SPARK" ]]; then # to match install_gpu_driver.sh ; they should both probably be removed
-  DEFAULT_CUDA_VERSION='11.8'
-fi
+readonly RAPIDS_RUNTIME=$(get_metadata_attribute 'rapids-runtime' 'DASK')
 readonly DEFAULT_CUDA_VERSION
 CUDA_VERSION=$(get_metadata_attribute 'cuda-version' ${DEFAULT_CUDA_VERSION})
 
@@ -63,12 +54,6 @@ readonly MASTER=$(/usr/share/google/get_metadata_value attributes/dataproc-maste
 
 readonly RUN_WORKER_ON_MASTER=$(get_metadata_attribute 'dask-cuda-worker-on-master' 'true')
 
-# SPARK config
-readonly DEFAULT_SPARK_RAPIDS_VERSION="24.08.0"
-readonly SPARK_RAPIDS_VERSION=$(get_metadata_attribute 'spark-rapids-version' ${DEFAULT_SPARK_RAPIDS_VERSION})
-readonly XGBOOST_VERSION=$(get_metadata_attribute 'xgboost-version' ${DEFAULT_XGBOOST_VERSION})
-readonly XGBOOST_GPU_SUB_VERSION=$(get_metadata_attribute 'spark-gpu-sub-version' ${DEFAULT_XGBOOST_GPU_SUB_VERSION})
-
 # Scala config
 readonly SCALA_VER="2.12"
 
@@ -79,9 +64,6 @@ readonly DASK_SERVICE=dask-cluster
 readonly DASK_WORKER_SERVICE=dask-worker
 readonly DASK_SCHEDULER_SERVICE=dask-scheduler
 readonly DASK_YARN_CONFIG_FILE=/etc/dask/config.yaml
-
-# Dataproc configurations
-readonly SPARK_CONF_DIR='/etc/spark/conf'
 
 function execute_with_retries() {
   local -r cmd="$*"
@@ -124,6 +106,8 @@ function install_dask_rapids() {
   mamba="/opt/conda/miniconda3/bin/mamba"
   conda="/opt/conda/miniconda3/bin/conda"
 
+  "${conda}" remove -n dask --all || echo "unable to remove conda environment [dask]"
+
   for installer in "${mamba}" "${conda}" ; do
     set +e
     test -d "${conda_env}" || \
@@ -131,6 +115,7 @@ function install_dask_rapids() {
       -c 'conda-forge' -c 'nvidia' -c 'rapidsai'  \
       ${CONDA_PACKAGES[*]} \
       "${python_spec}"
+    sync
     if [[ "$?" == "0" ]] ; then
       is_installed="1"
       break
@@ -144,59 +129,6 @@ function install_dask_rapids() {
     return 1
   fi
   set -e
-}
-
-function install_spark_rapids() {
-  local -r rapids_repo_url='https://repo1.maven.org/maven2/ai/rapids'
-  local -r nvidia_repo_url='https://repo1.maven.org/maven2/com/nvidia'
-  local -r dmlc_repo_url='https://repo.maven.apache.org/maven2/ml/dmlc'
-
-  if [[ "${SPARK_VERSION}" == "3"* ]]; then
-    execute_with_retries wget -nv --timeout=30 --tries=5 --retry-connrefused \
-      "${dmlc_repo_url}/xgboost4j-spark-gpu_${SCALA_VER}/${XGBOOST_VERSION}/xgboost4j-spark-gpu_${SCALA_VER}-${XGBOOST_VERSION}.jar" \
-      -P /usr/lib/spark/jars/
-    execute_with_retries wget -nv --timeout=30 --tries=5 --retry-connrefused \
-      "${dmlc_repo_url}/xgboost4j-gpu_${SCALA_VER}/${XGBOOST_VERSION}/xgboost4j-gpu_${SCALA_VER}-${XGBOOST_VERSION}.jar" \
-      -P /usr/lib/spark/jars/
-    execute_with_retries wget -nv --timeout=30 --tries=5 --retry-connrefused \
-      "${nvidia_repo_url}/rapids-4-spark_${SCALA_VER}/${SPARK_RAPIDS_VERSION}/rapids-4-spark_${SCALA_VER}-${SPARK_RAPIDS_VERSION}.jar" \
-      -P /usr/lib/spark/jars/
-  else
-    execute_with_retries wget -nv --timeout=30 --tries=5 --retry-connrefused \
-      "${rapids_repo_url}/xgboost4j-spark_${SPARK_VERSION}/${XGBOOST_VERSION}-${XGBOOST_GPU_SUB_VERSION}/xgboost4j-spark_${SPARK_VERSION}-${XGBOOST_VERSION}-${XGBOOST_GPU_SUB_VERSION}.jar" \
-      -P /usr/lib/spark/jars/
-    execute_with_retries wget -nv --timeout=30 --tries=5 --retry-connrefused \
-      "${rapids_repo_url}/xgboost4j_${SPARK_VERSION}/${XGBOOST_VERSION}-${XGBOOST_GPU_SUB_VERSION}/xgboost4j_${SPARK_VERSION}-${XGBOOST_VERSION}-${XGBOOST_GPU_SUB_VERSION}.jar" \
-      -P /usr/lib/spark/jars/
-  fi
-}
-
-function configure_spark() {
-  if [[ "${SPARK_VERSION}" == "3"* ]]; then
-    cat >>${SPARK_CONF_DIR}/spark-defaults.conf <<EOF
-
-###### BEGIN : RAPIDS properties for Spark ${SPARK_VERSION} ######
-# Rapids Accelerator for Spark can utilize AQE, but when the plan is
-# not finalized, query explain output won't show GPU operator, if user
-# have doubt they can uncomment the following line before seeing the GPU plan
-# explain, but AQE on gives user the best performance.
-# spark.sql.adaptive.enabled=false
-spark.executor.resource.gpu.amount=1
-spark.plugins=com.nvidia.spark.SQLPlugin
-spark.executor.resource.gpu.discoveryScript=/usr/lib/spark/scripts/gpu/getGpusResources.sh
-spark.dynamicAllocation.enabled=false
-spark.sql.autoBroadcastJoinThreshold=10m
-spark.sql.files.maxPartitionBytes=512m
-###### END   : RAPIDS properties for Spark ${SPARK_VERSION} ######
-EOF
-  else
-    cat >>${SPARK_CONF_DIR}/spark-defaults.conf <<EOF
-
-###### BEGIN : RAPIDS properties for Spark ${SPARK_VERSION} ######
-spark.submit.pyFiles=/usr/lib/spark/jars/xgboost4j-spark_${SPARK_VERSION}-${XGBOOST_VERSION}-${XGBOOST_GPU_SUB_VERSION}.jar
-###### END   : RAPIDS properties for Spark ${SPARK_VERSION} ######
-EOF
-  fi
 }
 
 enable_worker_service="0"
@@ -282,10 +214,6 @@ function main() {
       configure_dask_yarn
     fi
     echo "RAPIDS installed with Dask runtime"
-  elif [[ "${RAPIDS_RUNTIME}" == "SPARK" ]]; then
-    install_spark_rapids
-    configure_spark
-    echo "RAPIDS initialized with Spark runtime"
   else
     echo "Unsupported RAPIDS Runtime: ${RAPIDS_RUNTIME}"
     exit 1
@@ -302,6 +230,98 @@ function main() {
   fi
 }
 
-main
+function exit_handler() {
+  set +e
+  # Free conda cache
+  /opt/conda/miniconda3/bin/conda clean -a > /dev/null 2>&1
 
-df -h
+  # Clear pip cache
+  pip cache purge || echo "unable to purge pip cache"
+
+  # remove the tmpfs conda pkgs_dirs
+  if [[ -d /mnt/shm ]] ; then /opt/conda/miniconda3/bin/conda config --remove pkgs_dirs /mnt/shm ; fi
+
+  # Clean up shared memory mounts
+  for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm ; do
+    if grep -q "^tmpfs ${shmdir}" /proc/mounts ; then
+      rm -rf ${shmdir}/*
+      umount -f ${shmdir}
+    fi
+  done
+
+  # Clean up OS package cache ; re-hold systemd package
+  if is_debuntu ; then
+    apt-get -y -qq clean
+    apt-get -y -qq autoremove
+  else
+    dnf clean all
+  fi
+
+  # print disk usage statistics
+  if is_debuntu ; then
+    # Rocky doesn't have sort -h and fails when the argument is passed
+    du --max-depth 3 -hx / | sort -h | tail -10
+  fi
+
+  # Process disk usage logs from installation period
+  rm -f /tmp/keep-running-df
+  sleep 6s
+  # compute maximum size of disk during installation
+  # Log file contains logs like the following (minus the preceeding #):
+#Filesystem      Size  Used Avail Use% Mounted on
+#/dev/vda2       6.8G  2.5G  4.0G  39% /
+  df --si
+  perl -e '$max=( sort
+                   map { (split)[2] =~ /^(\d+)/ }
+                  grep { m:^/: } <STDIN> )[-1];
+print( "maximum-disk-used: $max", $/ );' < /tmp/disk-usage.log
+
+  echo "exit_handler has completed"
+
+  # zero free disk space
+  if [[ -n "$(get_metadata_attribute 'creating-image')" ]]; then
+    dd if=/dev/zero of=/zero ; sync ; rm -f /zero
+  fi
+
+  return 0
+}
+
+trap exit_handler EXIT
+
+function prepare_to_install(){
+  free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
+  # Write to a ramdisk instead of churning the persistent disk
+  if [[ ${free_mem} -ge 5250000 ]]; then
+    mkdir -p /mnt/shm
+    mount -t tmpfs tmpfs /mnt/shm
+
+    # Download conda packages to tmpfs
+    /opt/conda/miniconda3/bin/conda config --add pkgs_dirs /mnt/shm
+    mount -t tmpfs tmpfs /mnt/shm
+
+    # Download pip packages to tmpfs
+    pip config set global.cache-dir /mnt/shm || echo "unable to set global.cache-dir"
+
+    # Download OS packages to tmpfs
+    if is_debuntu ; then
+      mount -t tmpfs tmpfs /var/cache/apt/archives
+    else
+      mount -t tmpfs tmpfs /var/cache/dnf
+    fi
+  fi
+
+  # Monitor disk usage in a screen session
+  if is_debuntu ; then
+      apt-get install -y -qq screen
+  elif is_rocky ; then
+      dnf -y -q install screen
+  fi
+  rm -f /tmp/disk-usage.log
+  touch /tmp/keep-running-df
+  screen -d -m -US keep-running-df \
+    bash -c 'while [[ -f /tmp/keep-running-df ]] ; do df --si / | tee -a /tmp/disk-usage.log ; sleep 5s ; done'
+}
+
+prepare_to_install
+
+main

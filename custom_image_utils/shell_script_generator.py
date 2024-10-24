@@ -30,16 +30,27 @@ NC='\\e[0m'
 
 base_obj_type="images"
 
+function execute_with_retries() (
+  set +x
+  local -r cmd="$*"
+
+  for ((i = 0; i < 3; i++)); do
+    if eval "$cmd"; then return 0 ; fi
+    sleep 5
+  done
+  return 1
+)
+
 function exit_handler() {{
   echo 'Cleaning up before exiting.'
 
   if [[ -f /tmp/{run_id}/vm_created ]]; then
     echo 'Deleting VM instance.'
-    gcloud compute instances delete {image_name}-install \
+    execute_with_retries gcloud compute instances delete {image_name}-install \
         --project={project_id} --zone={zone} -q
   elif [[ -f /tmp/{run_id}/disk_created ]]; then
     echo 'Deleting disk.'
-    gcloud compute ${{base_obj_type}} delete {image_name}-install --project={project_id} --zone={zone} -q
+    execute_with_retries gcloud compute ${{base_obj_type}} delete {image_name}-install --project={project_id} --zone={zone} -q
   fi
 
   echo 'Uploading local logs to GCS bucket.'
@@ -153,7 +164,7 @@ function main() {{
   fi
 
   date
-  set -x
+
   if [[ -z "${{cert_args}}" && "${{num_src_certs}}" -ne "0" ]]; then
     echo 'Re-using base image'
     base_obj_type="reuse"
@@ -163,7 +174,7 @@ function main() {{
     echo 'Creating image.'
     base_obj_type="images"
     instance_disk_args='--image-project={project_id} --image={image_name}-install --boot-disk-size={disk_size}G --boot-disk-type=pd-ssd'
-    time gcloud compute images create {image_name}-install \
+    time execute_with_retries gcloud compute images create {image_name}-install \
       --project={project_id} \
       --source-image={dataproc_base_image} \
       ${{cert_args}} \
@@ -174,7 +185,7 @@ function main() {{
     echo 'Creating disk.'
     base_obj_type="disks"
     instance_disk_args='--disk=auto-delete=yes,boot=yes,mode=rw,name={image_name}-install'
-    time gcloud compute disks create {image_name}-install \
+    time execute_with_retries gcloud compute disks create {image_name}-install \
       --project={project_id} \
       --zone={zone} \
       --image={dataproc_base_image} \
@@ -182,12 +193,11 @@ function main() {{
       --size={disk_size}GB
     touch "/tmp/{run_id}/disk_created"
   fi
-  set +x
 
   date
   echo 'Creating VM instance to run customization script.'
-  set -x
-  time gcloud compute instances create {image_name}-install \
+  ( set -x
+  time execute_with_retries gcloud compute instances create {image_name}-install \
       --project={project_id} \
       --zone={zone} \
       {network_flag} \
@@ -199,18 +209,17 @@ function main() {{
       {service_account_flag} \
       --scopes=cloud-platform \
       {metadata_flag} \
-      --metadata-from-file startup-script=startup_script/run.sh
-  set +x
+      --metadata-from-file startup-script=startup_script/run.sh )
 
   touch /tmp/{run_id}/vm_created
 
   # clean up intermediate install image
   if [[ "${{base_obj_type}}" == "images" ]] ; then
-    gcloud compute images delete -q {image_name}-install --project={project_id}
+    execute_with_retries gcloud compute images delete -q {image_name}-install --project={project_id}
   fi
 
   echo 'Waiting for customization script to finish and VM shutdown.'
-  gcloud compute instances tail-serial-port-output {image_name}-install \
+  execute_with_retries gcloud compute instances tail-serial-port-output {image_name}-install \
       --project={project_id} \
       --zone={zone} \
       --port=1 2>&1 \
@@ -233,14 +242,13 @@ function main() {{
 
   date
   echo 'Creating custom image.'
-  set -x
-  time gcloud compute images create {image_name} \
+  ( set -x
+  time execute_with_retries gcloud compute images create {image_name} \
     --project={project_id} \
     --source-disk-zone={zone} \
     --source-disk={image_name}-install \
     {storage_location_flag} \
-    --family={family}
-  set +x
+    --family={family} )
 
   touch /tmp/{run_id}/image_created
 }}

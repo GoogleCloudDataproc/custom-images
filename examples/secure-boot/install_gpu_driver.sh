@@ -30,10 +30,12 @@ function is_debian()   { [[ "$(os_id)" == 'debian' ]] ; }
 function is_debian10() { is_debian && [[ "$(os_version)" == '10'* ]] ; }
 function is_debian11() { is_debian && [[ "$(os_version)" == '11'* ]] ; }
 function is_debian12() { is_debian && [[ "$(os_version)" == '12'* ]] ; }
-function os_vercat()   { set +x
+function is_debuntu()  { is_debian || is_ubuntu ; }
+
+function os_vercat()   ( set +x
   if   is_ubuntu ; then os_version | sed -e 's/[^0-9]//g'
   elif is_rocky  ; then os_version | sed -e 's/[^0-9].*$//g'
-                   else os_version ; fi ; set -x ; }
+                   else os_version ; fi ; )
 
 function remove_old_backports {
   if is_debian12 ; then return ; fi
@@ -258,16 +260,19 @@ NVIDIA_SMI_PATH='/usr/bin'
 MIG_MAJOR_CAPS=0
 IS_MIG_ENABLED=0
 
-function execute_with_retries() {
+function execute_with_retries() (
   set +x
   local -r cmd="$*"
+
+  if [[ "$cmd" =~ "^apt-get install" ]] ; then
+    cmd="apt-get -y clean && $cmd"
+  fi
   for ((i = 0; i < 3; i++)); do
     if eval "$cmd"; then set -x ; return 0 ; fi
     sleep 5
   done
-  set -x
   return 1
-}
+)
 
 CUDA_KEYRING_PKG_INSTALLED="0"
 function install_cuda_keyring_pkg() {
@@ -275,9 +280,9 @@ function install_cuda_keyring_pkg() {
   local kr_ver=1.1
   curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
     "${NVIDIA_REPO_URL}/cuda-keyring_${kr_ver}-1_all.deb" \
-    -o /tmp/cuda-keyring.deb
-  dpkg -i "/tmp/cuda-keyring.deb"
-  rm -f "/tmp/cuda-keyring.deb"
+    -o "${download_dir}/cuda-keyring.deb"
+  dpkg -i "${download_dir}/cuda-keyring.deb"
+  rm -f "${download_dir}/cuda-keyring.deb"
   CUDA_KEYRING_PKG_INSTALLED="1"
 }
 
@@ -297,10 +302,10 @@ function install_local_cuda_repo() {
   readonly DIST_KEYRING_DIR="/var/${pkgname}"
 
   curl -fsSL --retry-connrefused --retry 3 --retry-max-time 5 \
-    "${LOCAL_DEB_URL}" -o "/tmp/${LOCAL_INSTALLER_DEB}"
+    "${LOCAL_DEB_URL}" -o "${download_dir}/${LOCAL_INSTALLER_DEB}"
 
-  dpkg -i "/tmp/${LOCAL_INSTALLER_DEB}"
-  rm "/tmp/${LOCAL_INSTALLER_DEB}"
+  dpkg -i "${download_dir}/${LOCAL_INSTALLER_DEB}"
+  rm "${download_dir}/${LOCAL_INSTALLER_DEB}"
   cp ${DIST_KEYRING_DIR}/cuda-*-keyring.gpg /usr/share/keyrings/
 
   if is_ubuntu ; then
@@ -325,11 +330,11 @@ function install_local_cudnn_repo() {
 
   # ${NVIDIA_BASE_DL_URL}/redist/cudnn/v8.6.0/local_installers/11.8/cudnn-linux-x86_64-8.6.0.163_cuda11-archive.tar.xz
   curl -fsSL --retry-connrefused --retry 3 --retry-max-time 5 \
-    "${local_deb_url}" -o /tmp/local-installer.deb
+    "${local_deb_url}" -o "${download_dir}/local-installer.deb"
 
-  dpkg -i /tmp/local-installer.deb
+  dpkg -i "${download_dir}/local-installer.deb"
 
-  rm -f /tmp/local-installer.deb
+  rm -f "${download_dir}/local-installer.deb"
 
   cp /var/cudnn-local-repo-*-${CUDNN}*/cudnn-local-*-keyring.gpg /usr/share/keyrings
 
@@ -356,8 +361,9 @@ function install_local_cudnn8_repo() {
   pkgname="cudnn-local-repo-${cudnn8_shortname}-${CUDNN_VERSION}"
   CUDNN8_PKG_NAME="${pkgname}"
 
-  local_deb_fn="${pkgname}_1.0-1_amd64.deb"
-  local_deb_url="${NVIDIA_BASE_DL_URL}/redist/cudnn/v${CUDNN}/local_installers/${CUDNN8_CUDA_VER}/${local_deb_fn}"
+  deb_fn="${pkgname}_1.0-1_amd64.deb"
+  local_deb_fn="${download_dir}/${deb_fn}"
+  local_deb_url="${NVIDIA_BASE_DL_URL}/redist/cudnn/v${CUDNN}/local_installers/${CUDNN8_CUDA_VER}/${deb_fn}"
   curl -fsSL --retry-connrefused --retry 3 --retry-max-time 5 \
       "${local_deb_url}" -o "${local_deb_fn}"
 
@@ -381,6 +387,7 @@ function install_nvidia_nccl() {
     time execute_with_retries \
       dnf -y -q install \
         "libnccl-${nccl_version}" "libnccl-devel-${nccl_version}" "libnccl-static-${nccl_version}"
+    sync
   elif is_ubuntu ; then
     install_cuda_keyring_pkg
 
@@ -390,10 +397,12 @@ function install_nvidia_nccl() {
       time execute_with_retries \
         apt-get install -q -y \
           libnccl2 libnccl-dev
+      sync
     else
       time execute_with_retries \
         apt-get install -q -y \
           "libnccl2=${nccl_version}" "libnccl-dev=${nccl_version}"
+      sync
     fi
   else
     echo "Unsupported OS: '${OS_NAME}'"
@@ -426,7 +435,7 @@ function install_nvidia_cudnn() {
     else
       echo "Unsupported cudnn version: '${major_version}'"
     fi
-  elif is_debian || is_ubuntu; then
+  elif is_debuntu; then
     if is_debian12 && is_src_os ; then
       apt-get -y install nvidia-cudnn
     else
@@ -581,7 +590,7 @@ function add_nonfree_components() {
 }
 
 function add_repo_nvidia_container_toolkit() {
-  if is_debian || is_ubuntu ; then
+  if is_debuntu ; then
       local kr_path=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
       local sources_list_path=/etc/apt/sources.list.d/nvidia-container-toolkit.list
       # https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
@@ -597,7 +606,7 @@ function add_repo_nvidia_container_toolkit() {
 }
 
 function add_repo_cuda() {
-  if is_debian || is_ubuntu ; then
+  if is_debuntu ; then
     local kr_path=/usr/share/keyrings/cuda-archive-keyring.gpg
     local sources_list_path="/etc/apt/sources.list.d/cuda-${shortname}-x86_64.list"
 echo "deb [signed-by=${kr_path}] https://developer.download.nvidia.com/compute/cuda/repos/${shortname}/x86_64/ /" \
@@ -626,8 +635,7 @@ function build_driver_from_github() {
     tarball_fn="${DRIVER_VERSION}.tar.gz"
     curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
       "https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${tarball_fn}" \
-      -o "${tarball_fn}"
-    tar xzf "${tarball_fn}"
+      | tar xz
     mv "open-gpu-kernel-modules-${DRIVER_VERSION}" open-gpu-kernel-modules
   }
   cd open-gpu-kernel-modules
@@ -635,6 +643,7 @@ function build_driver_from_github() {
   time make -j$(nproc) modules \
     >  /var/log/open-gpu-kernel-modules-build.log \
     2> /var/log/open-gpu-kernel-modules-build_error.log
+  sync
 
   if [[ -n "${PSN}" ]]; then
     #configure_dkms_certs
@@ -674,6 +683,7 @@ function build_driver_from_packages() {
     execute_with_retries "apt-get install -y -qq --no-install-recommends dkms"
     #configure_dkms_certs
     time execute_with_retries "apt-get install -y -qq --no-install-recommends ${pkglist[@]}"
+    sync
 
   elif is_rocky ; then
     #configure_dkms_certs
@@ -681,28 +691,31 @@ function build_driver_from_packages() {
       echo "nvidia-driver:${DRIVER}-dkms installed successfully"
     else
       time execute_with_retries dnf -y -q module install 'nvidia-driver:latest'
+      sync
     fi
   fi
   #clear_dkms_key
 }
 
 function install_nvidia_userspace_runfile() {
-  if test -d /run/nvidia-userspace ; then return ; fi
+  if test -f "${download_dir}/userspace-complete" ; then return ; fi
   curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
-    "${USERSPACE_URL}" -o userspace.run
-  time bash "./userspace.run" --no-kernel-modules --silent --install-libglvnd \
+    "${USERSPACE_URL}" -o "${download_dir}/userspace.run"
+  time bash "${download_dir}/userspace.run" --no-kernel-modules --silent --install-libglvnd \
     > /dev/null 2>&1
-  rm -f userspace.run
-  mkdir -p /run/nvidia-userspace
+  rm -f "${download_dir}/userspace.run"
+  touch "${download_dir}/userspace-complete"
+  sync
 }
 
 function install_cuda_runfile() {
-  if test -d /run/nvidia-cuda ; then return ; fi
+  if test -f "${download_dir}/cuda-complete" ; then return ; fi
   curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
-    "${NVIDIA_CUDA_URL}" -o cuda.run
-  time bash "./cuda.run" --silent --toolkit --no-opengl-libs
-  rm -f cuda.run
-  mkdir -p /run/nvidia-cuda
+    "${NVIDIA_CUDA_URL}" -o "${download_dir}/cuda.run"
+  time bash "${download_dir}/cuda.run" --silent --toolkit --no-opengl-libs
+  rm -f "${download_dir}/cuda.run"
+  touch "${download_dir}/cuda-complete"
+  sync
 }
 
 function install_cuda_toolkit() {
@@ -717,8 +730,10 @@ function install_cuda_toolkit() {
   if is_ubuntu || is_debian ; then
 #    if is_ubuntu ; then execute_with_retries "apt-get install -y -qq --no-install-recommends cuda-drivers-${DRIVER}=${DRIVER_VERSION}-1" ; fi
     time execute_with_retries "apt-get install -y -qq --no-install-recommends ${cuda_package} ${cudatk_package}"
+    sync
   elif is_rocky ; then
     time execute_with_retries "dnf -y -q install ${cudatk_package}"
+    sync
   fi
 }
 
@@ -776,7 +791,7 @@ function install_nvidia_gpu_driver() {
     load_kernel_module
 
     install_cuda_runfile
-  elif is_debian || is_ubuntu ; then
+  elif is_debuntu ; then
     install_cuda_keyring_pkg
 
     build_driver_from_packages
@@ -798,7 +813,11 @@ function install_nvidia_gpu_driver() {
     exit 1
   fi
   ldconfig
-  echo "NVIDIA GPU driver provided by NVIDIA was installed successfully"
+  if is_src_os ; then
+    echo "NVIDIA GPU driver provided by ${OS_NAME} was installed successfully"
+  else
+    echo "NVIDIA GPU driver provided by NVIDIA was installed successfully"
+  fi
 }
 
 # Collects 'gpu_utilization' and 'gpu_memory_utilization' metrics
@@ -839,7 +858,6 @@ EOF
   systemctl --no-reload --now enable gpu-utilization-agent.service
 }
 
-readonly bdcfg="/usr/local/bin/bdconfig"
 function set_hadoop_property() {
   local -r config_file=$1
   local -r property=$2
@@ -993,7 +1011,6 @@ EOF
   systemctl start dataproc-cgroup-device-permissions
 }
 
-nvsmi_works="0"
 function nvsmi() {
   local nvsmi="/usr/bin/nvidia-smi"
   if   [[ "${nvsmi_works}" == "1" ]] ; then echo "nvidia-smi is working" >&2
@@ -1020,7 +1037,7 @@ function main() {
 
   remove_old_backports
 
-  if is_debian || is_ubuntu ; then
+  if is_debuntu ; then
     export DEBIAN_FRONTEND=noninteractive
     execute_with_retries "apt-get install -y -qq pciutils linux-headers-${uname_r}"
   elif is_rocky ; then
@@ -1215,21 +1232,137 @@ function clean_up_sources_lists() {
     sed -i -e 's:deb https:deb [signed-by=/usr/share/keyrings/mysql.gpg] https:g' /etc/apt/sources.list.d/mysql.list
   fi
 
-  if -f /etc/apt/trusted.gpg ; then mv /etc/apt/trusted.gpg /etc/apt/old-trusted.gpg ; fi
+  if [[ -f /etc/apt/trusted.gpg ]] ; then mv /etc/apt/trusted.gpg /etc/apt/old-trusted.gpg ; fi
 
 }
 
-if is_debian ; then
-  clean_up_sources_lists
-  apt-get update
-  if is_debian12 ; then
-  apt-mark unhold systemd libsystemd0 ; fi
-fi
+function exit_handler() {
+  echo "Exit handler invoked"
+  set +ex
+  # Purge private key material until next grant
+  clear_dkms_key
 
-configure_dkms_certs
+  # Free conda cache
+  /opt/conda/miniconda3/bin/conda clean -a
+
+  # Clear pip cache
+  pip cache purge || echo "unable to purge pip cache"
+
+  # remove the tmpfs conda pkgs_dirs
+  if [[ -d /mnt/nvidia-cuda ]] ; then /opt/conda/miniconda3/bin/conda config --remove pkgs_dirs /mnt/nvidia-cuda ; fi
+
+  # remove the tmpfs pip cache-dir
+  pip config unset global.cache-dir || echo "unable to set global pip cache"
+
+  # Clean up shared memory mounts
+  for shmdir in /mnt/shm /var/cache/apt/archives /var/cache/dnf ; do
+    if grep -q "^tmpfs ${shmdir}" /proc/mounts ; then
+      rm -rf ${shmdir}/*
+      sync
+
+      execute_with_retries umount -f ${shmdir}
+    fi
+  done
+
+  # Clean up OS package cache ; re-hold systemd package
+  if is_debuntu ; then
+    apt-get -y -qq clean
+    apt-get -y -qq autoremove
+    if is_debian12 ; then
+    apt-mark hold systemd libsystemd0 ; fi
+  else
+    dnf clean all
+  fi
+
+  # print disk usage statistics
+  if is_debuntu ; then
+    # Rocky doesn't have sort -h and fails when the argument is passed
+    du --max-depth 3 -hx / | sort -h | tail -10
+  fi
+
+  # Process disk usage logs from installation period
+  rm -f /tmp/keep-running-df
+  sleep 6s
+  # compute maximum size of disk during installation
+  # Log file contains logs like the following (minus the preceeding #):
+#Filesystem      Size  Used Avail Use% Mounted on
+#/dev/vda2       6.8G  2.5G  4.0G  39% /
+  df --si
+  perl -e '$max=( sort
+                   map { (split)[2] =~ /^(\d+)/ }
+                  grep { m:^/: } <STDIN> )[-1];
+print( "maximum-disk-used: $max", $/ );' < /tmp/disk-usage.log
+
+  echo "exit_handler has completed"
+
+  # zero free disk space
+  if [[ -n "$(get_metadata_attribute creating-image)" ]]; then
+    dd if=/dev/zero of=/zero ; sync ; rm -f /zero
+  fi
+
+  return 0
+}
+
+trap exit_handler EXIT
+
+function prepare_to_install(){
+  nvsmi_works="0"
+  readonly bdcfg="/usr/local/bin/bdconfig"
+  download_dir=/tmp/
+  # Write to a ramdisk instead of churning the persistent disk
+  if [[ ${free_mem} -ge 5250000 ]]; then
+    download_dir="/mnt/shm"
+    mkdir -p "${download_dir}"
+    mount -t tmpfs tmpfs "${download_dir}"
+
+    # Download conda packages to tmpfs
+    /opt/conda/miniconda3/bin/conda config --add pkgs_dirs "${download_dir}"
+
+    # Download pip packages to tmpfs
+    pip config set global.cache-dir "${download_dir}" || echo "unable to set global.cache-dir"
+
+    # Download OS packages to tmpfs
+    if is_debuntu ; then
+      mount -t tmpfs tmpfs /var/cache/apt/archives
+    else
+      mount -t tmpfs tmpfs /var/cache/dnf
+    fi
+  fi
+
+  if is_debuntu ; then
+    clean_up_sources_lists
+    apt-get update -qq
+    apt-get -y clean
+    apt-get -y -qq autoremove
+    if is_debian12 ; then
+    apt-mark unhold systemd libsystemd0 ; fi
+  else
+    dnf clean all
+  fi
+
+  # Clean conda cache
+  /opt/conda/miniconda3/bin/conda clean -a
+
+  # zero free disk space
+  if [[ -n "$(get_metadata_attribute creating-image)" ]]; then
+    set +e
+    time dd if=/dev/zero of=/zero ; sync ; rm -f /zero
+    set -e
+  fi
+
+  configure_dkms_certs
+
+  # Monitor disk usage in a screen session
+  if is_debuntu ; then
+      apt-get install -y -qq screen
+  elif is_rocky ; then
+      dnf -y -q install screen
+  fi
+  touch /tmp/keep-running-df
+  screen -d -m -US keep-running-df \
+    bash -c 'while [[ -f /tmp/keep-running-df ]] ; do df --si / | tee -a /tmp/disk-usage.log ; sleep 5s ; done'
+}
+
+prepare_to_install
 
 main
-
-clear_dkms_key
-
-df -h
