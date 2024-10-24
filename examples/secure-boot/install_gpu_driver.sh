@@ -1249,7 +1249,7 @@ function exit_handler() {
   pip cache purge || echo "unable to purge pip cache"
 
   # remove the tmpfs conda pkgs_dirs
-  if [[ -d /mnt/nvidia-cuda ]] ; then /opt/conda/miniconda3/bin/conda config --remove pkgs_dirs /mnt/nvidia-cuda ; fi
+  if [[ -d /mnt/shm ]] ; then /opt/conda/miniconda3/bin/conda config --remove pkgs_dirs /mnt/shm ; fi
 
   # remove the tmpfs pip cache-dir
   pip config unset global.cache-dir || echo "unable to set global pip cache"
@@ -1309,6 +1309,7 @@ function prepare_to_install(){
   nvsmi_works="0"
   readonly bdcfg="/usr/local/bin/bdconfig"
   download_dir=/tmp/
+  free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
   # Write to a ramdisk instead of churning the persistent disk
   if [[ ${free_mem} -ge 5250000 ]]; then
     download_dir="/mnt/shm"
