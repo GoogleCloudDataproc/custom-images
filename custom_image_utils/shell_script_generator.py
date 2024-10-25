@@ -110,6 +110,7 @@ function main() {{
   done
 
   local cert_args=""
+  local num_src_certs="0"
   if [[ -n '{trusted_cert}' ]] && [[ -f '{trusted_cert}' ]]; then
     # build tls/ directory from variables defined near the header of
     # the examples/secure-boot/create-key-pair.sh file
@@ -135,9 +136,9 @@ function main() {{
     local -a src_img_modulus_md5sums=()
 
     mapfile -t src_img_modulus_md5sums < <(print_img_dbs_modulus_md5sums {dataproc_base_image})
-    local num_src_certs="${{#src_img_modulus_md5sums[@]}}"
+    num_src_certs="${{#src_img_modulus_md5sums[@]}}"
     echo "${{num_src_certs}} db certificates attached to source image"
-    if [[ ${{num_src_certs}} -eq 0 ]]; then
+    if [[ "${{num_src_certs}}" -eq "0" ]]; then
       echo "no db certificates in source image"
       cert_list=default_cert_list
     else
