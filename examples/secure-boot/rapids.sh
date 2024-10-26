@@ -422,7 +422,7 @@ function install_dask_rapids() {
   if is_cuda12 ; then
     local python_spec="python>=3.11"
     local cuda_spec="cuda-version>=12,<13"
-    local dask_spec="dask>=2024.5"
+    local dask_spec="dask>=2024.7"
     local numba_spec="numba"
   elif is_cuda11 ; then
     local python_spec="python>=3.9"
