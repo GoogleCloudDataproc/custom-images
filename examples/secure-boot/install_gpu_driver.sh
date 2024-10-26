@@ -16,21 +16,21 @@
 
 set -euxo pipefail
 
-function os_id()       { grep '^ID=' /etc/os-release | cut -d= -f2 | xargs ; }
-function os_version()  { grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | xargs ; }
-function os_codename() { grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | xargs ; }
-function is_rocky()    { [[ "$(os_id)" == 'rocky' ]] ; }
-function is_rocky8()   { is_rocky && [[ "$(os_version)" == '8'* ]] ; }
-function is_rocky9()   { is_rocky && [[ "$(os_version)" == '9'* ]] ; }
-function is_ubuntu()   { [[ "$(os_id)" == 'ubuntu' ]] ; }
-function is_ubuntu18() { is_ubuntu && [[ "$(os_version)" == '18.04'* ]] ; }
-function is_ubuntu20() { is_ubuntu && [[ "$(os_version)" == '20.04'* ]] ; }
-function is_ubuntu22() { is_ubuntu && [[ "$(os_version)" == '22.04'* ]] ; }
-function is_debian()   { [[ "$(os_id)" == 'debian' ]] ; }
-function is_debian10() { is_debian && [[ "$(os_version)" == '10'* ]] ; }
-function is_debian11() { is_debian && [[ "$(os_version)" == '11'* ]] ; }
-function is_debian12() { is_debian && [[ "$(os_version)" == '12'* ]] ; }
-function is_debuntu()  { is_debian || is_ubuntu ; }
+function os_id()       ( set +x ; grep '^ID=' /etc/os-release | cut -d= -f2 | xargs ; )
+function os_version()  ( set +x ;  grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | xargs ; )
+function os_codename() ( set +x ;  grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | xargs ; )
+function is_rocky()    ( set +x ;  [[ "$(os_id)" == 'rocky' ]] ; )
+function is_rocky8()   ( set +x ;  is_rocky && [[ "$(os_version)" == '8'* ]] ; )
+function is_rocky9()   ( set +x ;  is_rocky && [[ "$(os_version)" == '9'* ]] ; )
+function is_ubuntu()   ( set +x ;  [[ "$(os_id)" == 'ubuntu' ]] ; )
+function is_ubuntu18() ( set +x ;  is_ubuntu && [[ "$(os_version)" == '18.04'* ]] ; )
+function is_ubuntu20() ( set +x ;  is_ubuntu && [[ "$(os_version)" == '20.04'* ]] ; )
+function is_ubuntu22() ( set +x ;  is_ubuntu && [[ "$(os_version)" == '22.04'* ]] ; )
+function is_debian()   ( set +x ;  [[ "$(os_id)" == 'debian' ]] ; )
+function is_debian10() ( set +x ;  is_debian && [[ "$(os_version)" == '10'* ]] ; )
+function is_debian11() ( set +x ;  is_debian && [[ "$(os_version)" == '11'* ]] ; )
+function is_debian12() ( set +x ;  is_debian && [[ "$(os_version)" == '12'* ]] ; )
+function is_debuntu()  ( set +x ;  is_debian || is_ubuntu ; )
 
 function os_vercat()   ( set +x
   if   is_ubuntu ; then os_version | sed -e 's/[^0-9]//g'
@@ -62,9 +62,9 @@ function remove_old_backports {
 function compare_versions_lte { [ "$1" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ] ; }
 
 # Return true if the first argument is less than the second argument
-function compare_versions_lt() {
+function compare_versions_lt() ( set +x
   [ "$1" = "$2" ] && return 1 || compare_versions_lte $1 $2
-}
+)
 
 function print_metadata_value() {
   local readonly tmpfile=$(mktemp)
@@ -87,7 +87,7 @@ function print_metadata_value_if_exists() {
   return ${return_code}
 }
 
-function get_metadata_value() {
+function get_metadata_value() (
   set +x
   local readonly varname=$1
   local -r MDS_PREFIX=http://metadata.google.internal/computeMetadata/v1
@@ -99,17 +99,16 @@ function get_metadata_value() {
     print_metadata_value_if_exists ${MDS_PREFIX}/project/${varname}
     return_code=$?
   fi
-  set -x
-  return ${return_code}
-}
 
-function get_metadata_attribute() {
+  return ${return_code}
+)
+
+function get_metadata_attribute() (
   set +x
   local -r attribute_name="$1"
   local -r default_value="${2:-}"
   get_metadata_value "attributes/${attribute_name}" || echo -n "${default_value}"
-  set -x
-}
+)
 
 OS_NAME=$(lsb_release -is | tr '[:upper:]' '[:lower:]')
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
@@ -144,8 +143,8 @@ CUDA_VERSION=$(get_metadata_attribute 'cuda-version' "${DEFAULT_CUDA_VERSION}")
 readonly CUDA_VERSION
 readonly CUDA_FULL_VERSION="${CUDA_SUBVER["${CUDA_VERSION}"]}"
 
-function is_cuda12() { [[ "${CUDA_VERSION%%.*}" == "12" ]] ; }
-function is_cuda11() { [[ "${CUDA_VERSION%%.*}" == "11" ]] ; }
+function is_cuda12() ( set +x ; [[ "${CUDA_VERSION%%.*}" == "12" ]] ; )
+function is_cuda11() ( set +x ; [[ "${CUDA_VERSION%%.*}" == "11" ]] ; )
 readonly DEFAULT_DRIVER=${DRIVER_FOR_CUDA["${CUDA_VERSION}"]}
 DRIVER_VERSION=$(get_metadata_attribute 'gpu-driver-version' "${DEFAULT_DRIVER}")
 if is_debian11 || is_ubuntu22 || is_ubuntu20 ; then DRIVER_VERSION="560.28.03" ; fi
@@ -157,8 +156,8 @@ readonly DRIVER=${DRIVER_VERSION%%.*}
 # Parameters for NVIDIA-provided CUDNN library
 readonly DEFAULT_CUDNN_VERSION=${CUDNN_FOR_CUDA["${CUDA_VERSION}"]}
 CUDNN_VERSION=$(get_metadata_attribute 'cudnn-version' "${DEFAULT_CUDNN_VERSION}")
-function is_cudnn8() { [[ "${CUDNN_VERSION%%.*}" == "8" ]] ; }
-function is_cudnn9() { [[ "${CUDNN_VERSION%%.*}" == "9" ]] ; }
+function is_cudnn8() ( set +x ; [[ "${CUDNN_VERSION%%.*}" == "8" ]] ; )
+function is_cudnn9() ( set +x ; [[ "${CUDNN_VERSION%%.*}" == "9" ]] ; )
 if is_rocky \
    && (compare_versions_lte "${CUDNN_VERSION}" "8.0.5.39") ; then
   CUDNN_VERSION="8.0.5.39"
@@ -386,7 +385,8 @@ function install_nvidia_nccl() {
   if is_rocky ; then
     time execute_with_retries \
       dnf -y -q install \
-        "libnccl-${nccl_version}" "libnccl-devel-${nccl_version}" "libnccl-static-${nccl_version}" > /dev/null 2>&1
+        "libnccl-${nccl_version}" "libnccl-devel-${nccl_version}" "libnccl-static-${nccl_version}" \
+        > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
     sync
   elif is_ubuntu ; then
     install_cuda_keyring_pkg
@@ -396,12 +396,14 @@ function install_nvidia_nccl() {
     if is_ubuntu18 ; then
       time execute_with_retries \
         apt-get install -q -y \
-          libnccl2 libnccl-dev > /dev/null 2>&1
+          libnccl2 libnccl-dev \
+          > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
       sync
     else
       time execute_with_retries \
         apt-get install -q -y \
-          "libnccl2=${nccl_version}" "libnccl-dev=${nccl_version}" > /dev/null 2>&1
+          "libnccl2=${nccl_version}" "libnccl-dev=${nccl_version}" \
+          > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
       sync
     fi
   else
@@ -414,8 +416,8 @@ function install_nvidia_nccl() {
   fi
 }
 
-function is_src_nvidia() { [[ "${GPU_DRIVER_PROVIDER}" == "NVIDIA" ]] ; }
-function is_src_os()     { [[ "${GPU_DRIVER_PROVIDER}" == "OS" ]] ; }
+function is_src_nvidia() ( set +x ; [[ "${GPU_DRIVER_PROVIDER}" == "NVIDIA" ]] ; )
+function is_src_os()     ( set +x ; [[ "${GPU_DRIVER_PROVIDER}" == "OS" ]] ; )
 
 function install_nvidia_cudnn() {
   local major_version
@@ -427,12 +429,14 @@ function install_nvidia_cudnn() {
     if is_cudnn8 ; then
       time execute_with_retries dnf -y -q install \
         "libcudnn${major_version}" \
-        "libcudnn${major_version}-devel" > /dev/null 2>&1
+        "libcudnn${major_version}-devel" \
+        > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
       sync
     elif is_cudnn9 ; then
       time execute_with_retries dnf -y -q install \
         "libcudnn9-static-cuda-${CUDA_VERSION%%.*}" \
-        "libcudnn9-devel-cuda-${CUDA_VERSION%%.*}" > /dev/null 2>&1
+        "libcudnn9-devel-cuda-${CUDA_VERSION%%.*}" \
+        > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
       sync
     else
       echo "Unsupported cudnn version: '${major_version}'"
@@ -450,7 +454,8 @@ function install_nvidia_cudnn() {
         time execute_with_retries \
           apt-get -y install --no-install-recommends \
             "libcudnn8=${cudnn_pkg_version}" \
-            "libcudnn8-dev=${cudnn_pkg_version}" > /dev/null 2>&1
+            "libcudnn8-dev=${cudnn_pkg_version}" \
+            > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
 	sync
       elif is_cudnn9 ; then
 	install_cuda_keyring_pkg
@@ -461,7 +466,8 @@ function install_nvidia_cudnn() {
           apt-get -y install --no-install-recommends \
           "libcudnn9-cuda-${CUDA_VERSION%%.*}" \
           "libcudnn9-dev-cuda-${CUDA_VERSION%%.*}" \
-          "libcudnn9-static-cuda-${CUDA_VERSION%%.*}" > /dev/null 2>&1
+          "libcudnn9-static-cuda-${CUDA_VERSION%%.*}" \
+          > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
 	sync
       else
         echo "Unsupported cudnn version: [${CUDNN_VERSION}]"
@@ -473,7 +479,8 @@ function install_nvidia_cudnn() {
       "libcudnn${major_version}=${cudnn_pkg_version}"
       "libcudnn${major_version}-dev=${cudnn_pkg_version}")
     time execute_with_retries \
-      apt-get install -q -y --no-install-recommends "${packages[*]}" > /dev/null 2>&1
+      apt-get install -q -y --no-install-recommends "${packages[*]}" \
+      > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
     sync
   else
     echo "Unsupported OS: '${OS_NAME}'"
@@ -685,17 +692,21 @@ function build_driver_from_packages() {
     fi
     add_contrib_component
     apt-get update -qq
-    execute_with_retries apt-get install -y -qq --no-install-recommends dkms  > /dev/null 2>&1
+    execute_with_retries apt-get install -y -qq --no-install-recommends dkms  \
+    > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
     #configure_dkms_certs
-    time execute_with_retries apt-get install -y -qq --no-install-recommends "${pkglist[@]}" > /dev/null 2>&1
+    time execute_with_retries apt-get install -y -qq --no-install-recommends "${pkglist[@]}" \
+     > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
     sync
 
   elif is_rocky ; then
     #configure_dkms_certs
-    if time execute_with_retries dnf -y -q module install "nvidia-driver:${DRIVER}-dkms" > /dev/null 2>&1 ; then
+    if time execute_with_retries dnf -y -q module install "nvidia-driver:${DRIVER}-dkms" \
+       > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; } ; then
       echo "nvidia-driver:${DRIVER}-dkms installed successfully"
     else
-      time execute_with_retries dnf -y -q module install 'nvidia-driver:latest' > /dev/null 2>&1
+      time execute_with_retries dnf -y -q module install 'nvidia-driver:latest' \
+      > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
     fi
     sync
   fi
@@ -707,7 +718,7 @@ function install_nvidia_userspace_runfile() {
   curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
     "${USERSPACE_URL}" -o "${download_dir}/userspace.run"
   time bash "${download_dir}/userspace.run" --no-kernel-modules --silent --install-libglvnd \
-    > /dev/null 2>&1
+  > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
   rm -f "${download_dir}/userspace.run"
   touch "${download_dir}/userspace-complete"
   sync
@@ -715,9 +726,10 @@ function install_nvidia_userspace_runfile() {
 
 function install_cuda_runfile() {
   if test -f "${download_dir}/cuda-complete" ; then return ; fi
-  curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
+  time curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
     "${NVIDIA_CUDA_URL}" -o "${download_dir}/cuda.run"
-  time bash "${download_dir}/cuda.run" --silent --toolkit --no-opengl-libs > /dev/null 2>&1
+  time bash "${download_dir}/cuda.run" --silent --toolkit --no-opengl-libs \
+  > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
   rm -f "${download_dir}/cuda.run"
   touch "${download_dir}/cuda-complete"
   sync
@@ -732,12 +744,14 @@ function install_cuda_toolkit() {
   fi
   cuda_package="cuda=${CUDA_FULL_VERSION}-1"
   readonly cudatk_package
-  if is_ubuntu || is_debian ; then
+  if is_debuntu ; then
 #    if is_ubuntu ; then execute_with_retries "apt-get install -y -qq --no-install-recommends cuda-drivers-${DRIVER}=${DRIVER_VERSION}-1" ; fi
-    time execute_with_retries apt-get install -y -qq --no-install-recommends ${cuda_package} ${cudatk_package} > /dev/null 2>&1
-    sync
+    time execute_with_retries apt-get install -y -qq --no-install-recommends ${cuda_package} ${cudatk_package} \
+    > "${install_log}" 2>&1 || { cat "${install_log}" ; exit -4 ; }
+     sync
   elif is_rocky ; then
-    time execute_with_retries dnf -y -q install "${cudatk_package}" > /dev/null 2>&1
+    time execute_with_retries dnf -y -q install "${cudatk_package}" \
+    > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
     sync
   fi
 }
@@ -838,7 +852,8 @@ function install_gpu_agent() {
     "${GPU_AGENT_REPO_URL}/report_gpu_metrics.py" \
     | sed -e 's/-u --format=/--format=/' \
     | dd status=none of="${install_dir}/report_gpu_metrics.py"
-  time execute_with_retries pip install -r "${install_dir}/requirements.txt" > /dev/null 2>&1
+  time execute_with_retries pip install -r "${install_dir}/requirements.txt" \
+  > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
   sync
 
   # Generate GPU service.
@@ -1045,10 +1060,12 @@ function main() {
 
   if is_debuntu ; then
     export DEBIAN_FRONTEND=noninteractive
-    execute_with_retries apt-get install -y -qq pciutils "linux-headers-${uname_r}" > /dev/null 2>&1
+    time execute_with_retries apt-get install -y -qq pciutils "linux-headers-${uname_r}" > /dev/null 2>&1
   elif is_rocky ; then
-    execute_with_retries dnf -y -q update --exclude=systemd*,kernel* > /dev/null 2>&1
-    execute_with_retries dnf -y -q install pciutils gcc > /dev/null 2>&1
+    time execute_with_retries dnf -y -q update --exclude=systemd*,kernel* \
+    > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+    time execute_with_retries dnf -y -q install pciutils gcc \
+    > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
 
     local dnf_cmd="dnf -y -q install kernel-devel-${uname_r}"
     local kernel_devel_pkg_out="$(eval "${dnf_cmd} 2>&1")"
@@ -1060,7 +1077,8 @@ function main() {
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-core-${uname_r}.rpm" \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-modules-${uname_r}.rpm" \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-modules-core-${uname_r}.rpm" \
-        "${vault}/AppStream/x86_64/os/Packages/k/kernel-devel-${uname_r}.rpm" > /dev/null 2>&1
+        "${vault}/AppStream/x86_64/os/Packages/k/kernel-devel-${uname_r}.rpm" \
+	> "${install_log}" 2>&1 || { cat "${install_log}" ; exit -4 ; }
       sync
     else
       execute_with_retries "${dnf_cmd}"
@@ -1336,6 +1354,7 @@ function prepare_to_install(){
       mount -t tmpfs tmpfs /var/cache/dnf
     fi
   fi
+  install_log="${download_dir}/install.log"
 
   if is_debuntu ; then
     clean_up_sources_lists

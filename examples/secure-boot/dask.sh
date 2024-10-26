@@ -463,7 +463,7 @@ function install_dask() {
       time "${installer}" "create" -m -n "dask" -y --no-channel-priority \
       -c 'conda-forge' -c 'nvidia'  \
       ${CONDA_PACKAGES[*]} \
-      "${python_spec}"
+      "${python_spec}" > /dev/null 2>&1
     local retval=$?
     sync
     if [[ "$retval" == "0" ]] ; then
