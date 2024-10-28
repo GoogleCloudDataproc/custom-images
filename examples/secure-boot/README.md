@@ -52,8 +52,8 @@ in the file examples/secure-boot/env.json.sample.
 ```bash
 cp examples/secure-boot/env.json.sample env.json
 vi env.json
-docker build -t dataproc-custom-images:latest .
-docker run -it dataproc-custom-images:latest /bin/bash examples/secure-boot/cuda.sh
+docker build -t dataproc-cuda-pre-init:latest .
+docker run -it dataproc-cuda-pre-init:latest /bin/bash examples/secure-boot/cuda.sh
 ```
 
 To do the same, but for all dataproc variants including supported
@@ -64,6 +64,6 @@ script can be run in docker:
 ```bash
 cp examples/secure-boot/env.json.sample env.json
 vi env.json
-docker build -t dataproc-custom-images:latest .
-docker run -it dataproc-custom-images:latest /bin/bash examples/secure-boot/build-current-images.sh
+docker build -t dataproc-dask-rapids-pre-init:latest .
+docker run -it dataproc-dask-rapids-pre-init:latest /bin/bash examples/secure-boot/build-current-images.sh
 ```

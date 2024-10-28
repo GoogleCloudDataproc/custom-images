@@ -15,7 +15,7 @@
 #
 # This script creates a custom image pre-loaded with cuda
 
-set -e
+set -ex
 
 function configure_service_account() {
   # Create service account
@@ -84,25 +84,50 @@ configure_service_account
 # screen session name
 session_name="build-current-images"
 
-# Run all image generation scripts simultaneously
+readonly timestamp="$(date +%F-%H-%M)"
+#readonly timestamp="2024-10-24-04-21"
+export timestamp
+
+export tmpdir=/tmp/${timestamp};
+mkdir ${tmpdir}
+export ZONE="$(jq -r .ZONE env.json)"
+gcloud compute instances list --zones "${ZONE}" --format json > ${tmpdir}/instances.json
+gcloud compute images    list                   --format json > ${tmpdir}/images.json
+
+# Run generation scripts simultaneously for each dataproc image version
 screen -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
 
-# tail -n 3 /tmp/custom-image-cuda-pre-init-2-*/logs/workflow.log
-# grep -A6 'Filesystem.*Avail' /tmp/custom-image-cuda-pre-init-2-*/logs/startup-script.log | perl -ne 'print $1,$/ if( m:( Filesystem.* Avail.*| /dev/.*/\s*$|^--): )'
+# tail -n 3 /tmp/custom-image-*/logs/workflow.log
+# tail -n 3 /tmp/custom-image-*/logs/startup-script.log
+# tail -n 3 /tmp/custom-image-${PURPOSE}-2-*/logs/workflow.log
+function find_disk_usage() {
+  test -f /tmp/genline.pl || cat > /tmp/genline.pl<<'EOF'
+#!/usr/bin/perl -w
+use strict;
+
+my $fn = $ARGV[0];
+my( $config ) = ( $fn =~ /custom-image-(.*-(debian|rocky|ubuntu)\d+)-\d+/ );
+
+my @raw_lines = <STDIN>;
+my( $l ) = grep { m: /dev/.*/\s*$: } @raw_lines;
+my( $stats ) = ( $l =~ m:\s*/dev/\S+\s+(.*?)\s*$: );
+
+my( $dp_version ) = ($config =~ /-pre-init-(.+)/);
+$dp_version =~ s/-/./;
+
+my($max) = map { / maximum-disk-used: (\d+)/ } @raw_lines;
+$max+=3;
+my $i_dp_version = sprintf(q{%-15s}, qq{"$dp_version"});
+
+print( qq{  $i_dp_version) disk_size_gb="$max" ;; # $stats # $config}, $/ );
+EOF
+  for f in $(grep -l 'Customization script suc' /tmp/custom-image-*/logs/workflow.log|sed -e 's/workflow.log/startup-script.log/')
+  do
+    grep -A20 'Filesystem.*Avail' $f | perl /tmp/genline.pl $f
+  done
+}
+
+# sleep 8m ; grep 'Customization script' /tmp/custom-image-*/logs/workflow.log
+# grep maximum-disk-used /tmp/custom-image-*/logs/startup-script.log
 
 revoke_bindings
-
-#
-# disk size - 20241009
-#
-#  Filesystem      Size  Used Avail Use% Mounted on
-
-#  /dev/sda1        40G   29G  9.1G  76% / # 2.0-debian10
-#  /dev/sda2        33G   30G  3.4G  90% / # 2.0-rocky8
-#  /dev/sda1        36G   29G  7.0G  81% / # 2.0-ubuntu18
-#  /dev/sda1        40G   35G  2.7G  93% / # 2.1-debian11
-#  /dev/sda2        36G   33G  3.4G  91% / # 2.1-rocky8
-#  /dev/root        36G   34G  2.1G  95% / # 2.1-ubuntu20
-#  /dev/sda1        40G   37G  1.1G  98% / # 2.2-debian12
-#  /dev/sda2        54G   34G   21G  63% / # 2.2-rocky9
-#  /dev/root        39G   37G  2.4G  94% / # 2.2-ubuntu22

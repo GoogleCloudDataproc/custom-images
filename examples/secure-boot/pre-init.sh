@@ -17,7 +17,6 @@
 # pre-init.sh <dataproc version>
 
 set -e
-readonly timestamp="$(date +%F-%H-%M)"
 
 IMAGE_VERSION="$1"
 if [[ -z "${IMAGE_VERSION}" ]] ; then
@@ -42,8 +41,8 @@ metadata="public_secret_name=${public_secret_name}"
 metadata="${metadata},private_secret_name=${private_secret_name}"
 metadata="${metadata},secret_project=${secret_project}"
 metadata="${metadata},secret_version=${secret_version}"
-metadata="${metadata},dask-runtime=yarn"
-metadata="${metadata},rapids-runtime=SPARK"
+metadata="${metadata},dask-runtime=standalone"
+metadata="${metadata},rapids-runtime=DASK"
 metadata="${metadata},cuda-version=12.4"
 
 # If no OS family specified, default to debian
@@ -57,53 +56,30 @@ else
   dataproc_version="${IMAGE_VERSION}"
 fi
 
-# base image -> cuda
-# case "${dataproc_version}" in
-#   "2.2-rocky9"   ) disk_size_gb="54" ;;
-#   "2.1-rocky8"   ) disk_size_gb="36" ;;
-#   "2.0-rocky8"   ) disk_size_gb="33" ;;
-#   "2.2-ubuntu22" ) disk_size_gb="40" ;;
-#   "2.1-ubuntu20" ) disk_size_gb="37" ;;
-#   "2.0-ubuntu18" ) disk_size_gb="37" ;;
-#   "2.2-debian12" ) disk_size_gb="40" ;;
-#   "2.1-debian11" ) disk_size_gb="40" ;;
-#   "2.0-debian10" ) disk_size_gb="40" ;;
-# esac
-
-# cuda image -> dask
-# case "${dataproc_version}" in
-#   "2.2-rocky9"   ) disk_size_gb="54" ;;
-#   "2.1-rocky8"   ) disk_size_gb="37" ;;
-#   "2.0-rocky8"   ) disk_size_gb="40" ;;
-#   "2.2-ubuntu22" ) disk_size_gb="45" ;;
-#   "2.1-ubuntu20" ) disk_size_gb="42" ;;
-#   "2.0-ubuntu18" ) disk_size_gb="37" ;;
-#   "2.2-debian12" ) disk_size_gb="46" ;;
-#   "2.1-debian11" ) disk_size_gb="40" ;;
-#   "2.0-debian10" ) disk_size_gb="40" ;;
-# esac
-
-# dask image -> rapids
-case "${dataproc_version}" in
-  "2.2-rocky9"   ) disk_size_gb="54" ;;
-  "2.1-rocky8"   ) disk_size_gb="37" ;;
-  "2.0-rocky8"   ) disk_size_gb="40" ;;
-  "2.2-ubuntu22" ) disk_size_gb="45" ;;
-  "2.1-ubuntu20" ) disk_size_gb="42" ;;
-  "2.0-ubuntu18" ) disk_size_gb="37" ;;
-  "2.2-debian12" ) disk_size_gb="46" ;;
-  "2.1-debian11" ) disk_size_gb="40" ;;
-  "2.0-debian10" ) disk_size_gb="40" ;;
-esac
-
-
 function generate() {
   local extra_args="$*"
-  set -x
+  local image_name="${PURPOSE}-${dataproc_version/\./-}-${timestamp}"
+
+  local image="$(jq -r ".[] | select(.name == \"${image_name}\").name" "${tmpdir}/images.json")"
+
+  if [[ -n "${image}" ]] ; then
+    echo "Image already exists"
+    return
+  fi
+
+  local instance="$(jq -r ".[] | select(.name == \"${image_name}-install\").name" "${tmpdir}/instances.json")"
+
+  if [[ -n "${instance}" ]]; then
+    # if previous run ended without cleanup...
+    echo "cleaning up instance from previous run"
+    gcloud -q compute instances delete "${image_name}-install" \
+      --zone "${custom_image_zone}"
+  fi
+  set -xe
   python generate_custom_image.py \
-    --machine-type         "n1-standard-4" \
+    --machine-type         "n1-standard-8" \
     --accelerator          "type=nvidia-tesla-t4" \
-    --image-name           "${PURPOSE}-${dataproc_version/\./-}-${timestamp}" \
+    --image-name           "${image_name}" \
     --customization-script "${customization_script}" \
     --service-account      "${GSA}" \
     --metadata             "${metadata}" \
@@ -116,32 +92,51 @@ function generate() {
   set +x
 }
 
-function generate_from_dataproc_version() {
-  local dataproc_version="$1"
-  generate --dataproc-version "${dataproc_version}"
-}
+function generate_from_dataproc_version() { generate --dataproc-version "$1" ; }
 
 function generate_from_base_purpose() {
-  local base_purpose="$1"
-  generate --base-image-uri "https://www.googleapis.com/compute/v1/projects/${PROJECT_ID}/global/images/${base_purpose}-${dataproc_version/\./-}-${timestamp}"
+  generate --base-image-uri "https://www.googleapis.com/compute/v1/projects/${PROJECT_ID}/global/images/${1}-${dataproc_version/\./-}-${timestamp}"
 }
+
+# base image -> cuda
+case "${dataproc_version}" in
+  "2.0-debian10" ) disk_size_gb="38" ;; # 40G   31G  7.8G  80% / # cuda-pre-init-2-0-debian10
+  "2.0-rocky8"   ) disk_size_gb="35" ;; # 38G   32G  6.2G  84% / # cuda-pre-init-2-0-rocky8
+  "2.0-ubuntu18" ) disk_size_gb="37" ;; # 39G   30G  8.5G  79% / # cuda-pre-init-2-0-ubuntu18
+  "2.1-debian11" ) disk_size_gb="37" ;; # 39G   34G  4.1G  90% / # cuda-pre-init-2-1-debian11
+  "2.1-rocky8"   ) disk_size_gb="38" ;; # 41G   35G  6.1G  86% / # cuda-pre-init-2-1-rocky8
+  "2.1-ubuntu20" ) disk_size_gb="35" ;; # 37G   32G  4.4G  88% / # cuda-pre-init-2-1-ubuntu20
+  "2.2-debian12" ) disk_size_gb="38" ;; # 40G   35G  3.3G  92% / # cuda-pre-init-2-2-debian12
+  "2.2-rocky9"   ) disk_size_gb="40" ;; # 42G   36G  5.9G  86% / # cuda-pre-init-2-2-rocky9
+  "2.2-ubuntu22" ) disk_size_gb="38" ;; # 40G   35G  4.8G  88% / # cuda-pre-init-2-2-ubuntu22
+esac
 
 # Install GPU drivers + cuda on dataproc base image
 PURPOSE="cuda-pre-init"
 customization_script="examples/secure-boot/install_gpu_driver.sh"
-
 time generate_from_dataproc_version "${dataproc_version}"
 
-# Install dask on cuda base image
-base_purpose="${PURPOSE}"
-PURPOSE="dask-pre-init"
-customization_script="examples/secure-boot/dask.sh"
+# cuda image -> rapids
+case "${dataproc_version}" in
+  "2.0-debian10" ) disk_size_gb="44" ;; # 47G   41G  4.0G  91% / # rapids-pre-init-2-0-debian10
+  "2.0-rocky8"   ) disk_size_gb="45" ;; # 49G   42G  7.0G  86% / # rapids-pre-init-2-0-rocky8
+  "2.0-ubuntu18" ) disk_size_gb="43" ;; # 45G   40G  4.9G  90% / # rapids-pre-init-2-0-ubuntu18
+  "2.1-debian11" ) disk_size_gb="46" ;; # 49G   43G  3.6G  93% / # rapids-pre-init-2-1-debian11
+  "2.1-rocky8"   ) disk_size_gb="48" ;; # 52G   45G  7.2G  87% / # rapids-pre-init-2-1-rocky8
+  "2.1-ubuntu20" ) disk_size_gb="45" ;; # 47G   42G  5.2G  89% / # rapids-pre-init-2-1-ubuntu20
+  "2.2-debian12" ) disk_size_gb="48" ;; # 51G   45G  3.8G  93% / # rapids-pre-init-2-2-debian12
+  "2.2-rocky9"   ) disk_size_gb="49" ;; # 53G   46G  7.2G  87% / # rapids-pre-init-2-2-rocky9
+  "2.2-ubuntu22" ) disk_size_gb="48" ;; # 50G   45G  5.6G  89% / # rapids-pre-init-2-2-ubuntu22
+esac
 
-time generate_from_base_purpose "${base_purpose}"
+#disk_size_gb="50"
 
-# Install rapids on dask base image
-base_purpose="${PURPOSE}"
+# Install dask with rapids on base image
 PURPOSE="rapids-pre-init"
 customization_script="examples/secure-boot/rapids.sh"
+time generate_from_base_purpose "cuda-pre-init"
 
-time generate_from_base_purpose "${base_purpose}"
+# Install dask without rapids on base image
+PURPOSE="dask-pre-init"
+customization_script="examples/secure-boot/dask.sh"
+time generate_from_base_purpose "cuda-pre-init"
