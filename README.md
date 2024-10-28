@@ -111,7 +111,7 @@ python generate_custom_image.py \
 *   **--extra-sources**: Additional files/directories uploaded along with
     customization script. This argument is evaluated to a json dictionary.
 *   **--disk-size**: The size in GB of the disk attached to the VM instance used
-    to build custom image. The default is `20` GB.
+    to build custom image. The default is `40` GB.
 *   **--accelerator**: The accelerators (e.g. GPUs) attached to the VM instance
     used to build custom image. This flag supports the same
     [values](https://cloud.google.com/sdk/gcloud/reference/compute/instances/create#--accelerator)
