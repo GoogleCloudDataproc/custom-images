@@ -101,14 +101,14 @@ function generate_from_base_purpose() {
 # base image -> cuda
 case "${dataproc_version}" in
   "2.0-debian10" ) disk_size_gb="38" ;; # 40G   31G  7.8G  80% / # cuda-pre-init-2-0-debian10
-  "2.0-rocky8"   ) disk_size_gb="35" ;; # 38G   32G  6.2G  84% / # cuda-pre-init-2-0-rocky8
-  "2.0-ubuntu18" ) disk_size_gb="37" ;; # 39G   30G  8.5G  79% / # cuda-pre-init-2-0-ubuntu18
-  "2.1-debian11" ) disk_size_gb="37" ;; # 39G   34G  4.1G  90% / # cuda-pre-init-2-1-debian11
-  "2.1-rocky8"   ) disk_size_gb="38" ;; # 41G   35G  6.1G  86% / # cuda-pre-init-2-1-rocky8
-  "2.1-ubuntu20" ) disk_size_gb="35" ;; # 37G   32G  4.4G  88% / # cuda-pre-init-2-1-ubuntu20
+  "2.0-rocky8"   ) disk_size_gb="35" ;; # 38G   32G  6.3G  84% / # cuda-pre-init-2-0-rocky8
+  "2.0-ubuntu18" ) disk_size_gb="37" ;; # 39G   30G  8.5G  78% / # cuda-pre-init-2-0-ubuntu18
+  "2.1-debian11" ) disk_size_gb="37" ;; # 39G   34G  4.2G  89% / # cuda-pre-init-2-1-debian11
+  "2.1-rocky8"   ) disk_size_gb="38" ;; # 41G   35G  6.3G  85% / # cuda-pre-init-2-1-rocky8
+  "2.1-ubuntu20" ) disk_size_gb="36" ;; # 37G   33G  4.0G  90% / # cuda-pre-init-2-1-ubuntu20
   "2.2-debian12" ) disk_size_gb="38" ;; # 40G   35G  3.3G  92% / # cuda-pre-init-2-2-debian12
-  "2.2-rocky9"   ) disk_size_gb="40" ;; # 42G   36G  5.9G  86% / # cuda-pre-init-2-2-rocky9
-  "2.2-ubuntu22" ) disk_size_gb="38" ;; # 40G   35G  4.8G  88% / # cuda-pre-init-2-2-ubuntu22
+  "2.2-rocky9"   ) disk_size_gb="39" ;; # 43G   36G  7.2G  84% / # cuda-pre-init-2-2-rocky9
+  "2.2-ubuntu22" ) disk_size_gb="39" ;; # 40G   36G  4.4G  90% / # cuda-pre-init-2-2-ubuntu22
 esac
 
 # Install GPU drivers + cuda on dataproc base image
@@ -136,7 +136,7 @@ PURPOSE="rapids-pre-init"
 customization_script="examples/secure-boot/rapids.sh"
 time generate_from_base_purpose "cuda-pre-init"
 
-# Install dask without rapids on base image
-PURPOSE="dask-pre-init"
-customization_script="examples/secure-boot/dask.sh"
-time generate_from_base_purpose "cuda-pre-init"
+## Install dask without rapids on base image
+#PURPOSE="dask-pre-init"
+#customization_script="examples/secure-boot/dask.sh"
+#time generate_from_base_purpose "cuda-pre-init"

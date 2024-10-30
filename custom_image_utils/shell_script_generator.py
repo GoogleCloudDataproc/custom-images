@@ -44,11 +44,11 @@ function execute_with_retries() (
 function exit_handler() {{
   echo 'Cleaning up before exiting.'
 
-  if [[ -f /tmp/{run_id}/vm_created ]]; then
+  if [[ -f /tmp/{run_id}/vm_created ]]; then ( set +e
     echo 'Deleting VM instance.'
     execute_with_retries gcloud compute instances delete {image_name}-install \
         --project={project_id} --zone={zone} -q
-  elif [[ -f /tmp/{run_id}/disk_created ]]; then
+  ) elif [[ -f /tmp/{run_id}/disk_created ]]; then
     echo 'Deleting disk.'
     execute_with_retries gcloud compute ${{base_obj_type}} delete {image_name}-install --project={project_id} --zone={zone} -q
   fi
@@ -111,11 +111,13 @@ function main() {{
 
   local cert_args=""
   local num_src_certs="0"
+  metadata_arg="{metadata_flag}"
   if [[ -n '{trusted_cert}' ]] && [[ -f '{trusted_cert}' ]]; then
     # build tls/ directory from variables defined near the header of
     # the examples/secure-boot/create-key-pair.sh file
 
     eval "$(bash examples/secure-boot/create-key-pair.sh)"
+    metadata_arg="${{metadata_arg}},public_secret_name=${{public_secret_name}},private_secret_name=${{private_secret_name}},secret_project=${{secret_project}},secret_version=${{secret_version}}"
 
     # by default, a gcloud secret with the name of efi-db-pub-key-042 is
     # created in the current project to store the certificate installed
@@ -137,10 +139,12 @@ function main() {{
 
     mapfile -t src_img_modulus_md5sums < <(print_img_dbs_modulus_md5sums {dataproc_base_image})
     num_src_certs="${{#src_img_modulus_md5sums[@]}}"
+    echo "debug - num_src_certs: [${{#src_img_modulus_md5sums[*]}}]"
+    echo "value of src_img_modulus_md5sums: [${{src_img_modulus_md5sums}}]"
     echo "${{num_src_certs}} db certificates attached to source image"
-    if [[ "${{num_src_certs}}" -eq "0" ]]; then
+    if [[ -z "${{src_img_modulus_md5sums}}" ]]; then
       echo "no db certificates in source image"
-      cert_list=default_cert_list
+      cert_list="${{default_cert_list}}"
     else
       echo "db certs exist in source image"
       for cert in ${{default_cert_list[*]}}; do
@@ -209,7 +213,7 @@ function main() {{
       {accelerator_flag} \
       {service_account_flag} \
       --scopes=cloud-platform \
-      {metadata_flag} \
+      "${{metadata_arg}}" \
       --metadata-from-file startup-script=startup_script/run.sh )
 
   touch /tmp/{run_id}/vm_created

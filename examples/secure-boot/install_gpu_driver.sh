@@ -16,7 +16,7 @@
 
 set -euxo pipefail
 
-function os_id()       ( set +x ; grep '^ID=' /etc/os-release | cut -d= -f2 | xargs ; )
+function os_id()       ( set +x ;  grep '^ID=' /etc/os-release | cut -d= -f2 | xargs ; )
 function os_version()  ( set +x ;  grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | xargs ; )
 function os_codename() ( set +x ;  grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | xargs ; )
 function is_rocky()    ( set +x ;  [[ "$(os_id)" == 'rocky' ]] ; )
@@ -120,21 +120,20 @@ readonly ROLE
 
 # CUDA version and Driver version
 # https://docs.nvidia.com/deeplearning/frameworks/support-matrix/index.html
+# https://developer.nvidia.com/cuda-downloads
 readonly -A DRIVER_FOR_CUDA=(
-          [11.8]="525.147.05" [12.1]="530.30.02"  [12.4]="550.54.14"
-          [12.5]="555.42.06"  [12.6]="560.28.03"
+          [11.8]="525.147.05" [12.4]="550.54.14"  [12.6]="560.35.03"
 )
+# https://developer.nvidia.com/cudnn-downloads
 readonly -A CUDNN_FOR_CUDA=(
-          [11.8]="8.6.0.163"  [12.1]="8.9.0"      [12.4]="9.1.0.70"
-          [12.5]="9.2.1.18"
+          [11.8]="9.5.1.17"   [12.4]="9.5.1.17"   [12.6]="9.5.1.17"
 )
+# https://developer.nvidia.com/nccl/nccl-download
 readonly -A NCCL_FOR_CUDA=(
-          [11.8]="2.15.5"     [12.1]="2.17.1"     [12.4]="2.21.5"
-          [12.5]="2.22.3"
+          [11.8]="2.15.5"     [12.4]="2.23.4"     [12.6]="2.23.4"
 )
 readonly -A CUDA_SUBVER=(
-          [11.8]="11.8.0"     [12.1]="12.1.0"     [12.4]="12.4.1"
-          [12.5]="12.5.1"
+          [11.8]="11.8.0"     [12.4]="12.4.1"     [12.6]="12.6.2"
 )
 
 RAPIDS_RUNTIME=$(get_metadata_attribute 'rapids-runtime' 'SPARK')
@@ -216,6 +215,7 @@ readonly -A DEFAULT_NVIDIA_CUDA_URLS=(
   [11.8]="${NVIDIA_BASE_DL_URL}/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run"
   [12.1]="${NVIDIA_BASE_DL_URL}/cuda/12.1.0/local_installers/cuda_12.1.0_530.30.02_linux.run"
   [12.4]="${NVIDIA_BASE_DL_URL}/cuda/12.4.0/local_installers/cuda_12.4.0_550.54.14_linux.run"
+  [12.6]="${NVIDIA_BASE_DL_URL}/cuda/12.6.2/local_installers/cuda_12.6.2_560.35.03_linux.run"
 )
 readonly DEFAULT_NVIDIA_CUDA_URL=${DEFAULT_NVIDIA_CUDA_URLS["${CUDA_VERSION}"]}
 NVIDIA_CUDA_URL=$(get_metadata_attribute 'cuda-url' "${DEFAULT_NVIDIA_CUDA_URL}")
@@ -233,9 +233,9 @@ if ( compare_versions_lte "8.3.1.22" "${CUDNN_VERSION}" ); then
   fi
   CUDNN_TARBALL_URL="${NVIDIA_BASE_DL_URL}/redist/cudnn/v${CUDNN_VERSION%.*}/local_installers/${CUDA_VERSION}/${CUDNN_TARBALL}"
 fi
-if ( compare_versions_lte "12.0" "${CUDA_VERSION}" ); then
-  # When cuda version is greater than 12.0
-  CUDNN_TARBALL_URL="${NVIDIA_BASE_DL_URL}/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.2.0.82_cuda12-archive.tar.xz"
+if is_cuda12 ; then
+  # When cuda version is 12
+  CUDNN_TARBALL_URL="${NVIDIA_BASE_DL_URL}/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.5.1.17_cuda12-archive.tar.xz"
 fi
 readonly CUDNN_TARBALL
 readonly CUDNN_TARBALL_URL
@@ -267,7 +267,8 @@ function execute_with_retries() (
     cmd="apt-get -y clean && $cmd"
   fi
   for ((i = 0; i < 3; i++)); do
-    if eval "$cmd" ; then return 0 ; fi
+    time eval "$cmd" > "${install_log}" 2>&1 && retval=$? || { retval=$? ; cat "${install_log}" ; }
+    if [[ $retval == 0 ]] ; then return 0 ; fi
     sleep 5
   done
   return 1
@@ -279,9 +280,9 @@ function install_cuda_keyring_pkg() {
   local kr_ver=1.1
   curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
     "${NVIDIA_REPO_URL}/cuda-keyring_${kr_ver}-1_all.deb" \
-    -o "${download_dir}/cuda-keyring.deb"
-  dpkg -i "${download_dir}/cuda-keyring.deb"
-  rm -f "${download_dir}/cuda-keyring.deb"
+    -o "${tmpdir}/cuda-keyring.deb"
+  dpkg -i "${tmpdir}/cuda-keyring.deb"
+  rm -f "${tmpdir}/cuda-keyring.deb"
   CUDA_KEYRING_PKG_INSTALLED="1"
 }
 
@@ -301,10 +302,10 @@ function install_local_cuda_repo() {
   readonly DIST_KEYRING_DIR="/var/${pkgname}"
 
   curl -fsSL --retry-connrefused --retry 3 --retry-max-time 5 \
-    "${LOCAL_DEB_URL}" -o "${download_dir}/${LOCAL_INSTALLER_DEB}"
+    "${LOCAL_DEB_URL}" -o "${tmpdir}/${LOCAL_INSTALLER_DEB}"
 
-  dpkg -i "${download_dir}/${LOCAL_INSTALLER_DEB}"
-  rm "${download_dir}/${LOCAL_INSTALLER_DEB}"
+  dpkg -i "${tmpdir}/${LOCAL_INSTALLER_DEB}"
+  rm "${tmpdir}/${LOCAL_INSTALLER_DEB}"
   cp ${DIST_KEYRING_DIR}/cuda-*-keyring.gpg /usr/share/keyrings/
 
   if is_ubuntu ; then
@@ -329,11 +330,11 @@ function install_local_cudnn_repo() {
 
   # ${NVIDIA_BASE_DL_URL}/redist/cudnn/v8.6.0/local_installers/11.8/cudnn-linux-x86_64-8.6.0.163_cuda11-archive.tar.xz
   curl -fsSL --retry-connrefused --retry 3 --retry-max-time 5 \
-    "${local_deb_url}" -o "${download_dir}/local-installer.deb"
+    "${local_deb_url}" -o "${tmpdir}/local-installer.deb"
 
-  dpkg -i "${download_dir}/local-installer.deb"
+  dpkg -i "${tmpdir}/local-installer.deb"
 
-  rm -f "${download_dir}/local-installer.deb"
+  rm -f "${tmpdir}/local-installer.deb"
 
   cp /var/cudnn-local-repo-*-${CUDNN}*/cudnn-local-*-keyring.gpg /usr/share/keyrings
 
@@ -361,7 +362,7 @@ function install_local_cudnn8_repo() {
   CUDNN8_PKG_NAME="${pkgname}"
 
   deb_fn="${pkgname}_1.0-1_amd64.deb"
-  local_deb_fn="${download_dir}/${deb_fn}"
+  local_deb_fn="${tmpdir}/${deb_fn}"
   local_deb_url="${NVIDIA_BASE_DL_URL}/redist/cudnn/v${CUDNN}/local_installers/${CUDNN8_CUDA_VER}/${deb_fn}"
   curl -fsSL --retry-connrefused --retry 3 --retry-max-time 5 \
       "${local_deb_url}" -o "${local_deb_fn}"
@@ -383,10 +384,9 @@ function install_nvidia_nccl() {
   local -r nccl_version="${NCCL_VERSION}-1+cuda${CUDA_VERSION}"
 
   if is_rocky ; then
-    time execute_with_retries \
+    execute_with_retries \
       dnf -y -q install \
-        "libnccl-${nccl_version}" "libnccl-devel-${nccl_version}" "libnccl-static-${nccl_version}" \
-        > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+        "libnccl-${nccl_version}" "libnccl-devel-${nccl_version}" "libnccl-static-${nccl_version}"
     sync
   elif is_ubuntu ; then
     install_cuda_keyring_pkg
@@ -394,16 +394,14 @@ function install_nvidia_nccl() {
     apt-get update -qq
 
     if is_ubuntu18 ; then
-      time execute_with_retries \
+      execute_with_retries \
         apt-get install -q -y \
-          libnccl2 libnccl-dev \
-          > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+          libnccl2 libnccl-dev
       sync
     else
-      time execute_with_retries \
+      execute_with_retries \
         apt-get install -q -y \
-          "libnccl2=${nccl_version}" "libnccl-dev=${nccl_version}" \
-          > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+          "libnccl2=${nccl_version}" "libnccl-dev=${nccl_version}"
       sync
     fi
   else
@@ -427,16 +425,14 @@ function install_nvidia_cudnn() {
 
   if is_rocky ; then
     if is_cudnn8 ; then
-      time execute_with_retries dnf -y -q install \
+      execute_with_retries dnf -y -q install \
         "libcudnn${major_version}" \
-        "libcudnn${major_version}-devel" \
-        > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+        "libcudnn${major_version}-devel"
       sync
     elif is_cudnn9 ; then
-      time execute_with_retries dnf -y -q install \
+      execute_with_retries dnf -y -q install \
         "libcudnn9-static-cuda-${CUDA_VERSION%%.*}" \
-        "libcudnn9-devel-cuda-${CUDA_VERSION%%.*}" \
-        > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+        "libcudnn9-devel-cuda-${CUDA_VERSION%%.*}"
       sync
     else
       echo "Unsupported cudnn version: '${major_version}'"
@@ -451,23 +447,21 @@ function install_nvidia_cudnn() {
 
         apt-get update -qq
 
-        time execute_with_retries \
+        execute_with_retries \
           apt-get -y install --no-install-recommends \
             "libcudnn8=${cudnn_pkg_version}" \
-            "libcudnn8-dev=${cudnn_pkg_version}" \
-            > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+            "libcudnn8-dev=${cudnn_pkg_version}"
 	sync
       elif is_cudnn9 ; then
 	install_cuda_keyring_pkg
 
         apt-get update -qq
 
-        time execute_with_retries \
+        execute_with_retries \
           apt-get -y install --no-install-recommends \
           "libcudnn9-cuda-${CUDA_VERSION%%.*}" \
           "libcudnn9-dev-cuda-${CUDA_VERSION%%.*}" \
-          "libcudnn9-static-cuda-${CUDA_VERSION%%.*}" \
-          > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+          "libcudnn9-static-cuda-${CUDA_VERSION%%.*}"
 	sync
       else
         echo "Unsupported cudnn version: [${CUDNN_VERSION}]"
@@ -478,9 +472,8 @@ function install_nvidia_cudnn() {
     packages=(
       "libcudnn${major_version}=${cudnn_pkg_version}"
       "libcudnn${major_version}-dev=${cudnn_pkg_version}")
-    time execute_with_retries \
-      apt-get install -q -y --no-install-recommends "${packages[*]}" \
-      > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+    execute_with_retries \
+      apt-get install -q -y --no-install-recommends "${packages[*]}"
     sync
   else
     echo "Unsupported OS: '${OS_NAME}'"
@@ -692,21 +685,17 @@ function build_driver_from_packages() {
     fi
     add_contrib_component
     apt-get update -qq
-    execute_with_retries apt-get install -y -qq --no-install-recommends dkms  \
-    > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+    execute_with_retries apt-get install -y -qq --no-install-recommends dkms
     #configure_dkms_certs
-    time execute_with_retries apt-get install -y -qq --no-install-recommends "${pkglist[@]}" \
-     > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+    execute_with_retries apt-get install -y -qq --no-install-recommends "${pkglist[@]}"
     sync
 
   elif is_rocky ; then
     #configure_dkms_certs
-    if time execute_with_retries dnf -y -q module install "nvidia-driver:${DRIVER}-dkms" \
-       > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; } ; then
+    if execute_with_retries dnf -y -q module install "nvidia-driver:${DRIVER}-dkms" ; then
       echo "nvidia-driver:${DRIVER}-dkms installed successfully"
     else
-      time execute_with_retries dnf -y -q module install 'nvidia-driver:latest' \
-      > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+      execute_with_retries dnf -y -q module install 'nvidia-driver:latest'
     fi
     sync
   fi
@@ -714,24 +703,22 @@ function build_driver_from_packages() {
 }
 
 function install_nvidia_userspace_runfile() {
-  if test -f "${download_dir}/userspace-complete" ; then return ; fi
+  if test -f "${tmpdir}/userspace-complete" ; then return ; fi
   curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
-    "${USERSPACE_URL}" -o "${download_dir}/userspace.run"
-  time bash "${download_dir}/userspace.run" --no-kernel-modules --silent --install-libglvnd \
-  > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
-  rm -f "${download_dir}/userspace.run"
-  touch "${download_dir}/userspace-complete"
+    "${USERSPACE_URL}" -o "${tmpdir}/userspace.run"
+  time bash "${tmpdir}/userspace.run" --no-kernel-modules --silent --install-libglvnd
+  rm -f "${tmpdir}/userspace.run"
+  touch "${tmpdir}/userspace-complete"
   sync
 }
 
 function install_cuda_runfile() {
-  if test -f "${download_dir}/cuda-complete" ; then return ; fi
+  if test -f "${tmpdir}/cuda-complete" ; then return ; fi
   time curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
-    "${NVIDIA_CUDA_URL}" -o "${download_dir}/cuda.run"
-  time bash "${download_dir}/cuda.run" --silent --toolkit --no-opengl-libs \
-  > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
-  rm -f "${download_dir}/cuda.run"
-  touch "${download_dir}/cuda-complete"
+    "${NVIDIA_CUDA_URL}" -o "${tmpdir}/cuda.run"
+  time bash "${tmpdir}/cuda.run" --silent --toolkit --no-opengl-libs
+  rm -f "${tmpdir}/cuda.run"
+  touch "${tmpdir}/cuda-complete"
   sync
 }
 
@@ -746,12 +733,10 @@ function install_cuda_toolkit() {
   readonly cudatk_package
   if is_debuntu ; then
 #    if is_ubuntu ; then execute_with_retries "apt-get install -y -qq --no-install-recommends cuda-drivers-${DRIVER}=${DRIVER_VERSION}-1" ; fi
-    time execute_with_retries apt-get install -y -qq --no-install-recommends ${cuda_package} ${cudatk_package} \
-    > "${install_log}" 2>&1 || { cat "${install_log}" ; exit -4 ; }
+    execute_with_retries apt-get install -y -qq --no-install-recommends ${cuda_package} ${cudatk_package}
      sync
   elif is_rocky ; then
-    time execute_with_retries dnf -y -q install "${cudatk_package}" \
-    > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+    execute_with_retries dnf -y -q install "${cudatk_package}"
     sync
   fi
 }
@@ -852,8 +837,7 @@ function install_gpu_agent() {
     "${GPU_AGENT_REPO_URL}/report_gpu_metrics.py" \
     | sed -e 's/-u --format=/--format=/' \
     | dd status=none of="${install_dir}/report_gpu_metrics.py"
-  time execute_with_retries pip install -r "${install_dir}/requirements.txt" \
-  > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+  execute_with_retries pip install -r "${install_dir}/requirements.txt"
   sync
 
   # Generate GPU service.
@@ -1060,11 +1044,11 @@ function main() {
 
   if is_debuntu ; then
     export DEBIAN_FRONTEND=noninteractive
-    time execute_with_retries apt-get install -y -qq pciutils "linux-headers-${uname_r}" > /dev/null 2>&1
+    execute_with_retries apt-get install -y -qq pciutils "linux-headers-${uname_r}" > /dev/null 2>&1
   elif is_rocky ; then
-    time execute_with_retries dnf -y -q update --exclude=systemd*,kernel* \
+    execute_with_retries dnf -y -q update --exclude=systemd*,kernel* \
     > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
-    time execute_with_retries dnf -y -q install pciutils gcc \
+    execute_with_retries dnf -y -q install pciutils gcc \
     > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
 
     local dnf_cmd="dnf -y -q install kernel-devel-${uname_r}"
@@ -1072,7 +1056,7 @@ function main() {
     if [[ "${kernel_devel_pkg_out}" =~ 'Unable to find a match: kernel-devel-' ]] ; then
       # this kernel-devel may have been migrated to the vault
       local vault="https://download.rockylinux.org/vault/rocky/$(os_version)"
-      time execute_with_retries dnf -y -q --setopt=localpkg_gpgcheck=1 install \
+      execute_with_retries dnf -y -q --setopt=localpkg_gpgcheck=1 install \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-${uname_r}.rpm" \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-core-${uname_r}.rpm" \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-modules-${uname_r}.rpm" \
@@ -1241,8 +1225,10 @@ function clean_up_sources_lists() {
   # cran-r
   #
   if [[ -f /etc/apt/sources.list.d/cran-r.list ]]; then
+    keyid="0x95c0faf38db3ccad0c080a7bdc78b2ddeabc47b7"
+    if is_ubuntu18 ; then keyid="0x51716619E084DAB9"; fi
     rm -f /usr/share/keyrings/cran-r.gpg
-    curl 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x95c0faf38db3ccad0c080a7bdc78b2ddeabc47b7' | \
+    curl "https://keyserver.ubuntu.com/pks/lookup?op=get&search=${keyid}" | \
       gpg --dearmor -o /usr/share/keyrings/cran-r.gpg
     sed -i -e 's:deb http:deb [signed-by=/usr/share/keyrings/cran-r.gpg] http:g' /etc/apt/sources.list.d/cran-r.list
   fi
@@ -1307,16 +1293,17 @@ function exit_handler() {
 
   # Process disk usage logs from installation period
   rm -f /tmp/keep-running-df
-  sleep 6s
+  sync
+  sleep 5.01s
   # compute maximum size of disk during installation
   # Log file contains logs like the following (minus the preceeding #):
 #Filesystem      Size  Used Avail Use% Mounted on
 #/dev/vda2       6.8G  2.5G  4.0G  39% /
-  df --si
-  perl -e '$max=( sort
+  df -h / | tee -a "${tmpdir}/disk-usage.log"
+  perl -e '$max=( sort { $a => $b }
                    map { (split)[2] =~ /^(\d+)/ }
-                  grep { m:^/: } <STDIN> )[-1];
-print( "maximum-disk-used: $max", $/ );' < /tmp/disk-usage.log
+                  grep { m:^/: } <STDIN> )[0];
+print( "maximum-disk-used: $max", $/ );' < "${tmpdir}/disk-usage.log"
 
   echo "exit_handler has completed"
 
@@ -1328,24 +1315,24 @@ print( "maximum-disk-used: $max", $/ );' < /tmp/disk-usage.log
   return 0
 }
 
-trap exit_handler EXIT
-
 function prepare_to_install(){
   nvsmi_works="0"
   readonly bdcfg="/usr/local/bin/bdconfig"
-  download_dir=/tmp/
+  tmpdir=/tmp/
+  local free_mem
+  trap exit_handler EXIT
   free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
   # Write to a ramdisk instead of churning the persistent disk
-  if [[ ${free_mem} -ge 5250000 ]]; then
-    download_dir="/mnt/shm"
-    mkdir -p "${download_dir}"
-    mount -t tmpfs tmpfs "${download_dir}"
+  if [[ ${free_mem} -ge 10500000 ]]; then
+    tmpdir="/mnt/shm"
+    mkdir -p "${tmpdir}"
+    mount -t tmpfs tmpfs "${tmpdir}"
 
     # Download conda packages to tmpfs
-    /opt/conda/miniconda3/bin/conda config --add pkgs_dirs "${download_dir}"
+    /opt/conda/miniconda3/bin/conda config --add pkgs_dirs "${tmpdir}"
 
     # Download pip packages to tmpfs
-    pip config set global.cache-dir "${download_dir}" || echo "unable to set global.cache-dir"
+    pip config set global.cache-dir "${tmpdir}" || echo "unable to set global.cache-dir"
 
     # Download OS packages to tmpfs
     if is_debuntu ; then
@@ -1353,8 +1340,10 @@ function prepare_to_install(){
     else
       mount -t tmpfs tmpfs /var/cache/dnf
     fi
+  else
+    tmpdir=/tmp
   fi
-  install_log="${download_dir}/install.log"
+  install_log="${tmpdir}/install.log"
 
   if is_debuntu ; then
     clean_up_sources_lists
@@ -1371,23 +1360,23 @@ function prepare_to_install(){
   /opt/conda/miniconda3/bin/conda clean -a
 
   # zero free disk space
-  if [[ -n "$(get_metadata_attribute creating-image)" ]]; then
-    set +e
-    time dd if=/dev/zero of=/zero ; sync ; rm -f /zero
-    set -e
-  fi
+  if [[ -n "$(get_metadata_attribute creating-image)" ]]; then ( set +e
+    df -h
+    time dd if=/dev/zero of=/zero status=progress ; sync ; sleep 3s ; rm -f /zero
+  ) fi
 
   configure_dkms_certs
 
   # Monitor disk usage in a screen session
   if is_debuntu ; then
-      apt-get install -y -qq screen > /dev/null 2>&1
-  elif is_rocky ; then
-      dnf -y -q install screen > /dev/null 2>&1
+      execute_with_retries apt-get install -y -qq screen
+  else
+      execute_with_retries dnf -y -q install screen
   fi
-  touch /tmp/keep-running-df
+  df -h / | tee "${tmpdir}/disk-usage.log"
+  touch "${tmpdir}/keep-running-df"
   screen -d -m -US keep-running-df \
-    bash -c 'while [[ -f /tmp/keep-running-df ]] ; do df --si / | tee -a /tmp/disk-usage.log ; sleep 5s ; done'
+    bash -c "while [[ -f ${tmpdir}/keep-running-df ]] ; do df -h / | tee -a ${tmpdir}/disk-usage.log ; sleep 5s ; done"
 }
 
 prepare_to_install
