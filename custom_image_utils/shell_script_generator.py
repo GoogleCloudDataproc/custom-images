@@ -46,21 +46,22 @@ function exit_handler() {{
 
   if [[ -f /tmp/{run_id}/vm_created ]]; then ( set +e
     echo 'Deleting VM instance.'
-    execute_with_retries gcloud compute instances delete {image_name}-install \
-        --project={project_id} --zone={zone} -q
+    execute_with_retries \
+      gcloud compute instances delete {image_name}-install --project={project_id} --zone={zone} -q
   ) elif [[ -f /tmp/{run_id}/disk_created ]]; then
     echo 'Deleting disk.'
-    execute_with_retries gcloud compute ${{base_obj_type}} delete {image_name}-install --project={project_id} --zone={zone} -q
+    execute_with_retries \
+      gcloud compute ${{base_obj_type}} delete {image_name}-install --project={project_id} --zone={zone} -q
   fi
 
   echo 'Uploading local logs to GCS bucket.'
   gsutil -m rsync -r {log_dir}/ {gcs_log_dir}/
 
   if [[ -f /tmp/{run_id}/image_created ]]; then
-    echo -e "${{GREEN}}Workflow succeeded, check logs at {log_dir}/ or {gcs_log_dir}/${{NC}}"
+    echo -e "${{GREEN}}Workflow succeeded${{NC}}, check logs at {log_dir}/ or {gcs_log_dir}/"
     exit 0
   else
-    echo -e "${{RED}}Workflow failed, check logs at {log_dir}/ or {gcs_log_dir}/${{NC}}"
+    echo -e "${{RED}}Workflow failed${{NC}}, check logs at {log_dir}/ or {gcs_log_dir}/"
     exit 1
   fi
 }}
@@ -141,11 +142,12 @@ function main() {{
     num_src_certs="${{#src_img_modulus_md5sums[@]}}"
     echo "debug - num_src_certs: [${{#src_img_modulus_md5sums[*]}}]"
     echo "value of src_img_modulus_md5sums: [${{src_img_modulus_md5sums}}]"
-    echo "${{num_src_certs}} db certificates attached to source image"
     if [[ -z "${{src_img_modulus_md5sums}}" ]]; then
+      num_src_certs=0
       echo "no db certificates in source image"
       cert_list="${{default_cert_list}}"
     else
+      echo "${{num_src_certs}} db certificates attached to source image"
       echo "db certs exist in source image"
       for cert in ${{default_cert_list[*]}}; do
         if test_element_in_array "$(print_modulus_md5sum ${{cert}})" ${{src_img_modulus_md5sums[@]}} ; then
@@ -179,7 +181,8 @@ function main() {{
     echo 'Creating image.'
     base_obj_type="images"
     instance_disk_args='--image-project={project_id} --image={image_name}-install --boot-disk-size={disk_size}G --boot-disk-type=pd-ssd'
-    time execute_with_retries gcloud compute images create {image_name}-install \
+    time execute_with_retries \
+      gcloud compute images create {image_name}-install \
       --project={project_id} \
       --source-image={dataproc_base_image} \
       ${{cert_args}} \
@@ -219,9 +222,10 @@ function main() {{
   touch /tmp/{run_id}/vm_created
 
   # clean up intermediate install image
-  if [[ "${{base_obj_type}}" == "images" ]] ; then
-    execute_with_retries gcloud compute images delete -q {image_name}-install --project={project_id}
-  fi
+  if [[ "${{base_obj_type}}" == "images" ]] ; then ( set +e
+    # This sometimes returns an API error but deletes the image despite the failure
+    gcloud compute images delete -q {image_name}-install --project={project_id}
+  ) fi
 
   echo 'Waiting for customization script to finish and VM shutdown.'
   execute_with_retries gcloud compute instances tail-serial-port-output {image_name}-install \

@@ -265,7 +265,8 @@ function execute_with_retries() (
   local -r cmd="$*"
 
   if [[ "$cmd" =~ "^apt-get install" ]] ; then
-    cmd="apt-get -y clean && $cmd"
+    apt-get -y clean
+    apt-get -y autoremove
   fi
   for ((i = 0; i < 3; i++)); do
     time eval "$cmd" > "${install_log}" 2>&1 && retval=$? || { retval=$? ; cat "${install_log}" ; }
@@ -707,7 +708,7 @@ function install_nvidia_userspace_runfile() {
   if test -f "${tmpdir}/userspace-complete" ; then return ; fi
   curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
     "${USERSPACE_URL}" -o "${tmpdir}/userspace.run"
-  time bash "${tmpdir}/userspace.run" --no-kernel-modules --silent --install-libglvnd --tmpdir="${tmpdir}"
+  execute_with_retries bash "${tmpdir}/userspace.run" --no-kernel-modules --silent --install-libglvnd --tmpdir="${tmpdir}"
   rm -f "${tmpdir}/userspace.run"
   touch "${tmpdir}/userspace-complete"
   sync
@@ -717,7 +718,7 @@ function install_cuda_runfile() {
   if test -f "${tmpdir}/cuda-complete" ; then return ; fi
   time curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
     "${NVIDIA_CUDA_URL}" -o "${tmpdir}/cuda.run"
-  time bash "${tmpdir}/cuda.run" --silent --toolkit --no-opengl-libs --tmpdir="${tmpdir}"
+  execute_with_retries bash "${tmpdir}/cuda.run" --silent --toolkit --no-opengl-libs --tmpdir="${tmpdir}"
   rm -f "${tmpdir}/cuda.run"
   touch "${tmpdir}/cuda-complete"
   sync
