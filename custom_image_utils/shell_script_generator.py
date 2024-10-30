@@ -135,7 +135,8 @@ function main() {{
 
     local -a cert_list=()
 
-    local -a default_cert_list=("{trusted_cert}" "${{MS_UEFI_CA}}")
+    local -a default_cert_list
+    default_cert_list=("{trusted_cert}" "${{MS_UEFI_CA}}")
     local -a src_img_modulus_md5sums=()
 
     mapfile -t src_img_modulus_md5sums < <(print_img_dbs_modulus_md5sums {dataproc_base_image})
@@ -145,7 +146,7 @@ function main() {{
     if [[ -z "${{src_img_modulus_md5sums}}" ]]; then
       num_src_certs=0
       echo "no db certificates in source image"
-      cert_list="${{default_cert_list}}"
+      cert_list=( "${{default_cert_list[@]}}" )
     else
       echo "${{num_src_certs}} db certificates attached to source image"
       echo "db certs exist in source image"
