@@ -100,15 +100,15 @@ function generate_from_base_purpose() {
 
 # base image -> cuda
 case "${dataproc_version}" in
-  "2.0-debian10" ) disk_size_gb="38" ;; # 40G   31G  7.8G  80% / # cuda-pre-init-2-0-debian10
-  "2.0-rocky8"   ) disk_size_gb="35" ;; # 38G   32G  6.3G  84% / # cuda-pre-init-2-0-rocky8
-  "2.0-ubuntu18" ) disk_size_gb="37" ;; # 39G   30G  8.5G  78% / # cuda-pre-init-2-0-ubuntu18
-  "2.1-debian11" ) disk_size_gb="37" ;; # 39G   34G  4.2G  89% / # cuda-pre-init-2-1-debian11
-  "2.1-rocky8"   ) disk_size_gb="38" ;; # 41G   35G  6.3G  85% / # cuda-pre-init-2-1-rocky8
-  "2.1-ubuntu20" ) disk_size_gb="36" ;; # 37G   33G  4.0G  90% / # cuda-pre-init-2-1-ubuntu20
-  "2.2-debian12" ) disk_size_gb="38" ;; # 40G   35G  3.3G  92% / # cuda-pre-init-2-2-debian12
-  "2.2-rocky9"   ) disk_size_gb="39" ;; # 43G   36G  7.2G  84% / # cuda-pre-init-2-2-rocky9
-  "2.2-ubuntu22" ) disk_size_gb="39" ;; # 40G   36G  4.4G  90% / # cuda-pre-init-2-2-ubuntu22
+  "2.0-debian10" ) disk_size_gb="33" ;; # 38G   17G   19G  47% / # cuda-pre-init-2-0-debian10
+  "2.0-rocky8"   ) disk_size_gb="32" ;; # 32G   19G   14G  59% / # cuda-pre-init-2-0-rocky8
+  "2.0-ubuntu18" ) disk_size_gb="32" ;; # 36G   17G   20G  46% / # cuda-pre-init-2-0-ubuntu18
+  "2.1-debian11" ) disk_size_gb="34" ;; # 34G   20G   13G  63% / # cuda-pre-init-2-1-debian11
+  "2.1-rocky8"   ) disk_size_gb="36" ;; # 36G   22G   15G  61% / # cuda-pre-init-2-1-rocky8
+  "2.1-ubuntu20" ) disk_size_gb="33" ;; # 33G   20G   13G  61% / # cuda-pre-init-2-1-ubuntu20
+  "2.2-debian12" ) disk_size_gb="36" ;; # 36G   23G   11G  69% / # cuda-pre-init-2-2-debian12
+  "2.2-rocky9"   ) disk_size_gb="37" ;; # 37G   23G   15G  62% / # cuda-pre-init-2-2-rocky9
+  "2.2-ubuntu22" ) disk_size_gb="35" ;; # 35G   23G   13G  65% / # cuda-pre-init-2-2-ubuntu22
 esac
 
 # Install GPU drivers + cuda on dataproc base image
@@ -118,15 +118,15 @@ time generate_from_dataproc_version "${dataproc_version}"
 
 # cuda image -> rapids
 case "${dataproc_version}" in
-  "2.0-debian10" ) disk_size_gb="44" ;; # 47G   41G  4.0G  91% / # rapids-pre-init-2-0-debian10
-  "2.0-rocky8"   ) disk_size_gb="45" ;; # 49G   42G  7.0G  86% / # rapids-pre-init-2-0-rocky8
-  "2.0-ubuntu18" ) disk_size_gb="43" ;; # 45G   40G  4.9G  90% / # rapids-pre-init-2-0-ubuntu18
-  "2.1-debian11" ) disk_size_gb="46" ;; # 49G   43G  3.6G  93% / # rapids-pre-init-2-1-debian11
-  "2.1-rocky8"   ) disk_size_gb="48" ;; # 52G   45G  7.2G  87% / # rapids-pre-init-2-1-rocky8
-  "2.1-ubuntu20" ) disk_size_gb="45" ;; # 47G   42G  5.2G  89% / # rapids-pre-init-2-1-ubuntu20
-  "2.2-debian12" ) disk_size_gb="48" ;; # 51G   45G  3.8G  93% / # rapids-pre-init-2-2-debian12
-  "2.2-rocky9"   ) disk_size_gb="49" ;; # 53G   46G  7.2G  87% / # rapids-pre-init-2-2-rocky9
-  "2.2-ubuntu22" ) disk_size_gb="48" ;; # 50G   45G  5.6G  89% / # rapids-pre-init-2-2-ubuntu22
+  "2.0-debian10" ) disk_size_gb="42" ;; # 41G   29G   11G  74% / # rapids-pre-init-2-0-debian10
+  "2.0-rocky8"   ) disk_size_gb="42" ;; # 42G   30G   13G  70% / # rapids-pre-init-2-0-rocky8
+  "2.0-ubuntu18" ) disk_size_gb="41" ;; # 39G   28G   11G  72% / # rapids-pre-init-2-0-ubuntu18
+  "2.1-debian11" ) disk_size_gb="43" ;; # 43G   31G  9.6G  77% / # rapids-pre-init-2-1-debian11
+  "2.1-rocky8"   ) disk_size_gb="45" ;; # 45G   33G   13G  72% / # rapids-pre-init-2-1-rocky8
+  "2.1-ubuntu20" ) disk_size_gb="43" ;; # 42G   31G   12G  74% / # rapids-pre-init-2-1-ubuntu20
+  "2.2-debian12" ) disk_size_gb="45" ;; # 45G   33G  9.5G  78% / # rapids-pre-init-2-2-debian12
+  "2.2-rocky9"   ) disk_size_gb="46" ;; # 46G   34G   13G  73% / # rapids-pre-init-2-2-rocky9
+  "2.2-ubuntu22" ) disk_size_gb="45" ;; # 44G   33G   11G  76% / # rapids-pre-init-2-2-ubuntu22
 esac
 
 #disk_size_gb="50"

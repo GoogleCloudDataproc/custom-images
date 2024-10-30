@@ -235,7 +235,8 @@ if ( compare_versions_lte "8.3.1.22" "${CUDNN_VERSION}" ); then
 fi
 if is_cuda12 ; then
   # When cuda version is 12
-  CUDNN_TARBALL_URL="${NVIDIA_BASE_DL_URL}/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.5.1.17_cuda12-archive.tar.xz"
+  CUDNN_TARBALL="cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive.tar.xz"
+  CUDNN_TARBALL_URL="${NVIDIA_BASE_DL_URL}/cudnn/redist/cudnn/linux-x86_64/${CUDNN_TARBALL}"
 fi
 readonly CUDNN_TARBALL
 readonly CUDNN_TARBALL_URL
@@ -706,7 +707,7 @@ function install_nvidia_userspace_runfile() {
   if test -f "${tmpdir}/userspace-complete" ; then return ; fi
   curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
     "${USERSPACE_URL}" -o "${tmpdir}/userspace.run"
-  time bash "${tmpdir}/userspace.run" --no-kernel-modules --silent --install-libglvnd
+  time bash "${tmpdir}/userspace.run" --no-kernel-modules --silent --install-libglvnd --tmpdir="${tmpdir}"
   rm -f "${tmpdir}/userspace.run"
   touch "${tmpdir}/userspace-complete"
   sync
@@ -716,7 +717,7 @@ function install_cuda_runfile() {
   if test -f "${tmpdir}/cuda-complete" ; then return ; fi
   time curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
     "${NVIDIA_CUDA_URL}" -o "${tmpdir}/cuda.run"
-  time bash "${tmpdir}/cuda.run" --silent --toolkit --no-opengl-libs
+  time bash "${tmpdir}/cuda.run" --silent --toolkit --no-opengl-libs --tmpdir="${tmpdir}"
   rm -f "${tmpdir}/cuda.run"
   touch "${tmpdir}/cuda-complete"
   sync
@@ -1300,6 +1301,7 @@ function exit_handler() {
 #Filesystem      Size  Used Avail Use% Mounted on
 #/dev/vda2       6.8G  2.5G  4.0G  39% /
   df -h / | tee -a "${tmpdir}/disk-usage.log"
+  cat "${tmpdir}/disk-usage.log" | sort
   perl -e '$max=( sort { $a => $b }
                    map { (split)[2] =~ /^(\d+)/ }
                   grep { m:^/: } <STDIN> )[0];

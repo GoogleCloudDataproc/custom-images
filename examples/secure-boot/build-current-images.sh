@@ -85,7 +85,7 @@ configure_service_account
 session_name="build-current-images"
 
 readonly timestamp="$(date +%F-%H-%M)"
-#readonly timestamp="2024-10-24-04-21"
+#readonly timestamp="2024-10-30-01-43"
 export timestamp
 
 export tmpdir=/tmp/${timestamp};
@@ -116,7 +116,10 @@ my( $dp_version ) = ($config =~ /-pre-init-(.+)/);
 $dp_version =~ s/-/./;
 
 my($max) = map { / maximum-disk-used: (\d+)/ } @raw_lines;
-$max+=3;
+if ( $fn =~ /2.0-(debian10|ubuntu18)/ )
+{ $max+=4 }else
+{ $max+=3 }
+$max = 30 if $max < 30;
 my $i_dp_version = sprintf(q{%-15s}, qq{"$dp_version"});
 
 print( qq{  $i_dp_version) disk_size_gb="$max" ;; # $stats # $config}, $/ );
