@@ -269,7 +269,9 @@ function execute_with_retries() (
     apt-get -y autoremove
   fi
   for ((i = 0; i < 3; i++)); do
+    set -x
     time eval "$cmd" > "${install_log}" 2>&1 && retval=$? || { retval=$? ; cat "${install_log}" ; }
+    set +x
     if [[ $retval == 0 ]] ; then return 0 ; fi
     sleep 5
   done
@@ -1250,32 +1252,42 @@ function clean_up_sources_lists() {
 }
 
 function exit_handler() {
-  echo "Exit handler invoked"
   set +ex
+  echo "Exit handler invoked"
+
   # Purge private key material until next grant
   clear_dkms_key
 
   # Free conda cache
-  /opt/conda/miniconda3/bin/conda clean -a
+  /opt/conda/miniconda3/bin/conda clean -a > /dev/null 2>&1
 
   # Clear pip cache
   pip cache purge || echo "unable to purge pip cache"
 
-  # remove the tmpfs conda pkgs_dirs
-  if [[ -d /mnt/shm ]] ; then /opt/conda/miniconda3/bin/conda config --remove pkgs_dirs /mnt/shm ; fi
+  # If system memory was sufficient to mount memory-backed filesystems
+  if [[ "${tmpdir}" == "/mnt/shm" ]] ; then
+    # Stop hadoop services
+    systemctl list-units | perl -n -e 'qx(systemctl stop $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
 
-  # remove the tmpfs pip cache-dir
-  pip config unset global.cache-dir || echo "unable to set global pip cache"
+    # remove the tmpfs conda pkgs_dirs
+    /opt/conda/miniconda3/bin/conda config --remove pkgs_dirs /mnt/shm || echo "unable to remove pkgs_dirs conda config"
 
-  # Clean up shared memory mounts
-  for shmdir in /mnt/shm /var/cache/apt/archives /var/cache/dnf ; do
-    if grep -q "^tmpfs ${shmdir}" /proc/mounts ; then
-      rm -rf ${shmdir}/*
-      sync
+    # remove the tmpfs pip cache-dir
+    pip config unset global.cache-dir || echo "unable to unset global pip cache"
 
-      execute_with_retries umount -f ${shmdir}
-    fi
-  done
+    # Clean up shared memory mounts
+    for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm ; do
+      if grep -q "^tmpfs ${shmdir}" /proc/mounts ; then
+        rm -rf ${shmdir}/*
+        sync
+        sleep 3s
+        execute_with_retries umount -f ${shmdir}
+      fi
+    done
+
+    umount -f /tmp
+    systemctl list-units | perl -n -e 'qx(systemctl start $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
+  fi
 
   # Clean up OS package cache ; re-hold systemd package
   if is_debuntu ; then
@@ -1287,32 +1299,58 @@ function exit_handler() {
     dnf clean all
   fi
 
-  # print disk usage statistics
-  if is_debuntu ; then
-    # Rocky doesn't have sort -h and fails when the argument is passed
-    du --max-depth 3 -hx / | sort -h | tail -10
+  # print disk usage statistics for large components
+  if is_ubuntu ; then
+    du -hs \
+      /usr/lib/{pig,hive,hadoop,jvm,spark,google-cloud-sdk,x86_64-linux-gnu} \
+      /usr/lib \
+      /opt/nvidia/* \
+      /usr/local/cuda-1?.? \
+      /opt/conda/miniconda3
+  elif is_debian ; then
+    du -hs \
+      /usr/lib/{pig,hive,hadoop,jvm,spark,google-cloud-sdk,x86_64-linux-gnu} \
+      /usr/lib \
+      /usr/local/cuda-1?.? \
+      /opt/conda/miniconda3
+  else
+    du -hs \
+      /var/lib/docker \
+      /usr/lib/{pig,hive,hadoop,firmware,jvm,spark,atlas} \
+      /usr/lib64/google-cloud-sdk \
+      /usr/lib \
+      /opt/nvidia/* \
+      /usr/local/cuda-1?.? \
+      /opt/conda/miniconda3
   fi
 
   # Process disk usage logs from installation period
-  rm -f /tmp/keep-running-df
+  rm -f /run/keep-running-df
   sync
   sleep 5.01s
   # compute maximum size of disk during installation
   # Log file contains logs like the following (minus the preceeding #):
-#Filesystem      Size  Used Avail Use% Mounted on
-#/dev/vda2       6.8G  2.5G  4.0G  39% /
-  df -h / | tee -a "${tmpdir}/disk-usage.log"
-  cat "${tmpdir}/disk-usage.log" | sort
-  perl -e '$max=( sort { $a => $b }
+#Filesystem     1K-blocks    Used Available Use% Mounted on
+#/dev/vda2        7096908 2611344   4182932  39% /
+  df / | tee -a "/run/disk-usage.log"
+
+  perl -e '@siz=( sort { $a => $b }
                    map { (split)[2] =~ /^(\d+)/ }
-                  grep { m:^/: } <STDIN> )[0];
-print( "maximum-disk-used: $max", $/ );' < "${tmpdir}/disk-usage.log"
+                  grep { m:^/: } <STDIN> );
+$max=$siz[0]; $min=$siz[-1]; $inc=$max-$min;
+print( "    samples-taken: ", scalar @siz, $/,
+       "maximum-disk-used: $max", $/,
+       "minimum-disk-used: $min", $/,
+       "     increased-by: $inc", $/ )' < "/run/disk-usage.log"
 
   echo "exit_handler has completed"
 
   # zero free disk space
   if [[ -n "$(get_metadata_attribute creating-image)" ]]; then
-    dd if=/dev/zero of=/zero ; sync ; rm -f /zero
+    dd if=/dev/zero of=/zero
+    sync
+    sleep 3s
+    rm -f /zero
   fi
 
   return 0
@@ -1327,6 +1365,12 @@ function prepare_to_install(){
   free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
   # Write to a ramdisk instead of churning the persistent disk
   if [[ ${free_mem} -ge 10500000 ]]; then
+    # Services might use /tmp for temporary files
+    echo "debug: this may break things!"
+    systemctl list-units | perl -n -e 'qx(systemctl stop $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
+    sudo mount -t tmpfs tmpfs /tmp
+    systemctl list-units | perl -n -e 'qx(systemctl start $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
+
     tmpdir="/mnt/shm"
     mkdir -p "${tmpdir}"
     mount -t tmpfs tmpfs "${tmpdir}"
@@ -1364,7 +1408,6 @@ function prepare_to_install(){
 
   # zero free disk space
   if [[ -n "$(get_metadata_attribute creating-image)" ]]; then ( set +e
-    df -h
     time dd if=/dev/zero of=/zero status=progress ; sync ; sleep 3s ; rm -f /zero
   ) fi
 
@@ -1376,10 +1419,10 @@ function prepare_to_install(){
   else
       execute_with_retries dnf -y -q install screen
   fi
-  df -h / | tee "${tmpdir}/disk-usage.log"
-  touch "${tmpdir}/keep-running-df"
+  df / > "/run/disk-usage.log"
+  touch "/run/keep-running-df"
   screen -d -m -US keep-running-df \
-    bash -c "while [[ -f ${tmpdir}/keep-running-df ]] ; do df -h / | tee -a ${tmpdir}/disk-usage.log ; sleep 5s ; done"
+    bash -c "while [[ -f /run/keep-running-df ]] ; do df / | tee -a /run/disk-usage.log ; sleep 5s ; done"
 }
 
 prepare_to_install

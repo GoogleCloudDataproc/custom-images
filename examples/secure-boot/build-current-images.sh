@@ -85,7 +85,7 @@ configure_service_account
 session_name="build-current-images"
 
 readonly timestamp="$(date +%F-%H-%M)"
-#readonly timestamp="2024-10-30-04-13"
+#readonly timestamp="2024-10-31-05-55"
 export timestamp
 
 export tmpdir=/tmp/${timestamp};
@@ -103,6 +103,7 @@ screen -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
 function find_disk_usage() {
   test -f /tmp/genline.pl || cat > /tmp/genline.pl<<'EOF'
 #!/usr/bin/perl -w
+use POSIX qw(ceil);
 use strict;
 
 my $fn = $ARGV[0];
@@ -111,20 +112,20 @@ my( $config ) = ( $fn =~ /custom-image-(.*-(debian|rocky|ubuntu)\d+)-\d+/ );
 my @raw_lines = <STDIN>;
 my( $l ) = grep { m: /dev/.*/\s*$: } @raw_lines;
 my( $stats ) = ( $l =~ m:\s*/dev/\S+\s+(.*?)\s*$: );
+$stats =~ s:(\d{4,}):sprintf(q{%-6s}, sprintf(q{%.2fG},($1/1024)/1024)):eg;
 
 my( $dp_version ) = ($config =~ /-pre-init-(.+)/);
 $dp_version =~ s/-/./;
 
-my($max) = map { / maximum-disk-used: (\d+)/ } @raw_lines;
-$max+=3;
-$max = 30 if $max < 30;
+my($max)   = map { / maximum-disk-used: (\d+)/ } @raw_lines;
+my($gbmax) = ceil((($max / 1024) / 1024) * 1.03);
+$gbmax     = 30 if $gbmax < 30;
 my $i_dp_version = sprintf(q{%-15s}, qq{"$dp_version"});
-
-print( qq{  $i_dp_version) disk_size_gb="$max" ;; # $stats # $config}, $/ );
+print( qq{  $i_dp_version) disk_size_gb="$gbmax" ;; # $stats # $config}, $/ );
 EOF
-  for f in $(grep -l 'Customization script suc' /tmp/custom-image-*/logs/workflow.log|sed -e 's/workflow.log/startup-script.log/')
-  do
-    grep -A20 'Filesystem.*Avail' $f | perl /tmp/genline.pl $f
+  for workflow_log in $(grep -l "Customization script" /tmp/custom-image-*/logs/workflow.log) ;  do
+    startup_log=$(echo "${workflow_log}" | sed -e 's/workflow.log/startup-script.log/')
+    grep -A5 'Filesystem.*Avail' "${startup_log}" | perl /tmp/genline.pl "${workflow_log}"
   done
 }
 

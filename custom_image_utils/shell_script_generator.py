@@ -35,7 +35,10 @@ function execute_with_retries() (
   local -r cmd="$*"
 
   for ((i = 0; i < 3; i++)); do
-    if eval "$cmd"; then return 0 ; fi
+    set -x
+    time eval "$cmd" > "/tmp/{run_id}/install.log" 2>&1 && retval=$? || {{ retval=$? ; cat "/tmp/{run_id}/install.log" ; }}
+    set +x
+    if [[ $retval == 0 ]] ; then return 0 ; fi
     sleep 5
   done
   return 1
@@ -182,7 +185,7 @@ function main() {{
     echo 'Creating image.'
     base_obj_type="images"
     instance_disk_args='--image-project={project_id} --image={image_name}-install --boot-disk-size={disk_size}G --boot-disk-type=pd-ssd'
-    time execute_with_retries \
+    execute_with_retries \
       gcloud compute images create {image_name}-install \
       --project={project_id} \
       --source-image={dataproc_base_image} \
@@ -194,7 +197,7 @@ function main() {{
     echo 'Creating disk.'
     base_obj_type="disks"
     instance_disk_args='--disk=auto-delete=yes,boot=yes,mode=rw,name={image_name}-install'
-    time execute_with_retries gcloud compute disks create {image_name}-install \
+    execute_with_retries gcloud compute disks create {image_name}-install \
       --project={project_id} \
       --zone={zone} \
       --image={dataproc_base_image} \
@@ -205,8 +208,7 @@ function main() {{
 
   date
   echo 'Creating VM instance to run customization script.'
-  ( set -x
-  time execute_with_retries gcloud compute instances create {image_name}-install \
+  execute_with_retries gcloud compute instances create {image_name}-install \
       --project={project_id} \
       --zone={zone} \
       {network_flag} \
@@ -218,7 +220,7 @@ function main() {{
       {service_account_flag} \
       --scopes=cloud-platform \
       "${{metadata_arg}}" \
-      --metadata-from-file startup-script=startup_script/run.sh )
+      --metadata-from-file startup-script=startup_script/run.sh
 
   touch /tmp/{run_id}/vm_created
 
@@ -252,13 +254,12 @@ function main() {{
 
   date
   echo 'Creating custom image.'
-  ( set -x
-  time execute_with_retries gcloud compute images create {image_name} \
+  execute_with_retries gcloud compute images create {image_name} \
     --project={project_id} \
     --source-disk-zone={zone} \
     --source-disk={image_name}-install \
     {storage_location_flag} \
-    --family={family} )
+    --family={family}
 
   touch /tmp/{run_id}/image_created
 }}
