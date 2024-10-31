@@ -548,7 +548,6 @@ function exit_handler() {
     # Clean up shared memory mounts
     for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm ; do
       if grep -q "^tmpfs ${shmdir}" /proc/mounts ; then
-        rm -rf ${shmdir}/*
         sync
         sleep 3s
         execute_with_retries umount -f ${shmdir}
@@ -671,6 +670,7 @@ function prepare_to_install() {
     if is_debuntu ; then
       mount -t tmpfs tmpfs /var/cache/apt/archives
     else
+      while [[ -f /var/cache/dnf/metadata_lock.pid ]] ; do sleep 1s ; done
       mount -t tmpfs tmpfs /var/cache/dnf
     fi
   else
