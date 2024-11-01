@@ -529,7 +529,17 @@ function exit_handler() {
   echo "Exit handler invoked"
 
   # Free conda cache
-  /opt/conda/miniconda3/bin/conda clean -a > /dev/null 2>&1
+  "${CONDA}" clean -a > /dev/null 2>&1
+
+  "${CONDA}" config --remove-key custom_channels
+  if grep -q "${conda_mirror_mountpoint}" /proc/mounts ; then
+    umount "${conda_mirror_mountpoint}"
+    gcloud compute instances detach-disk "$(hostname -s)" \
+      --disk       "${CONDA_DISK_FQN}" \
+      --zone       "${ZONE}" \
+      --disk-scope regional
+  fi
+
 
   # Clear pip cache
   pip cache purge || echo "unable to purge pip cache"
@@ -540,7 +550,7 @@ function exit_handler() {
     systemctl list-units | perl -n -e 'qx(systemctl stop $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
 
     # remove the tmpfs conda pkgs_dirs
-    /opt/conda/miniconda3/bin/conda config --remove pkgs_dirs /mnt/shm || echo "unable to remove pkgs_dirs conda config"
+    "${CONDA}" config --remove pkgs_dirs /mnt/shm || echo "unable to remove pkgs_dirs conda config"
 
     # remove the tmpfs pip cache-dir
     pip config unset global.cache-dir || echo "unable to unset global pip cache"
@@ -652,6 +662,14 @@ function prepare_to_install() {
   readonly DEFAULT_DASK_RAPIDS_VERSION="24.08"
   readonly RAPIDS_VERSION=$(get_metadata_attribute 'rapids-version' ${DEFAULT_DASK_RAPIDS_VERSION})
 
+  readonly PROJECT_ID="$(gcloud config get project)"
+  zone="$(/usr/share/google/get_metadata_value zone)"
+  export ZONE="$(echo $zone | sed -e 's:.*/::')"
+  export REGION="$(echo ${ZONE} | perl -pe 's/^(.+)-[^-]+$/$1/')"
+  export CONDA_MIRROR_DISK_NAME="conda-mirror-${REGION}"
+  export CONDA_DISK_FQN="projects/${PROJECT_ID}/regions/${REGION}/disks/${CONDA_MIRROR_DISK_NAME}"
+
+  export CONDA=/opt/conda/miniconda3/bin/conda
   free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
   # Write to a ramdisk instead of churning the persistent disk
   if [[ ${free_mem} -ge 10500000 ]]; then
@@ -660,7 +678,7 @@ function prepare_to_install() {
     mount -t tmpfs tmpfs /mnt/shm
 
     # Download conda packages to tmpfs
-    /opt/conda/miniconda3/bin/conda config --add pkgs_dirs /mnt/shm
+    "${CONDA}" config --add pkgs_dirs /mnt/shm
     mount -t tmpfs tmpfs /mnt/shm
 
     # Download pip packages to tmpfs
@@ -679,8 +697,32 @@ function prepare_to_install() {
   install_log="${tmpdir}/install.log"
   trap exit_handler EXIT
 
+  conda_mirror_mountpoint=/srv/conda-mirror
+  ( set +e
+    # If the service account can describe the disk, attempt to attach and mount it
+    gcloud compute disks describe "${CONDA_MIRROR_DISK_NAME}" --region us-west4 > /tmp/mirror-disk.json
+    if [[ "$?" == "0" ]] ; then
+      gcloud compute instances attach-disk "$(hostname -s)" \
+        --disk        "${CONDA_DISK_FQN}" \
+	--device-name "${CONDA_MIRROR_DISK_NAME}" \
+	--disk-scope=regional \
+	--mode=ro \
+	--zone="${REGION}"
+
+      mkdir -p "${conda_mirror_mountpoint}"
+      mount "/dev/disk/by-id/google-${CONDA_MIRROR_DISK_NAME}" "${conda_mirror_mountpoint}"
+      for channel in conda-forge rapidsai nvidia ; do
+	"${CONDA}" config --set custom_channels.${channel} "file://${conda_mirror_mountpoint}"
+      done
+    else
+      for channel in conda-forge rapidsai nvidia ; do
+	"${CONDA}" config --set custom_channels.${channel} "http://10.42.79.42/"
+      done
+    fi
+  )
+
   # Clean conda cache
-  /opt/conda/miniconda3/bin/conda clean -a
+  "${CONDA}" clean -a
 
   # Monitor disk usage in a screen session
   if is_debuntu ; then
