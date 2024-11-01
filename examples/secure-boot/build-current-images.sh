@@ -101,31 +101,9 @@ screen -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
 # tail -n 3 /tmp/custom-image-*/logs/startup-script.log
 # tail -n 3 /tmp/custom-image-${PURPOSE}-2-*/logs/workflow.log
 function find_disk_usage() {
-  test -f /tmp/genline.pl || cat > /tmp/genline.pl<<'EOF'
-#!/usr/bin/perl -w
-use POSIX qw(ceil);
-use strict;
-
-my $fn = $ARGV[0];
-my( $config ) = ( $fn =~ /custom-image-(.*-(debian|rocky|ubuntu)\d+)-\d+/ );
-
-my @raw_lines = <STDIN>;
-my( $l ) = grep { m: /dev/.*/\s*$: } @raw_lines;
-my( $stats ) = ( $l =~ m:\s*/dev/\S+\s+(.*?)\s*$: );
-$stats =~ s:(\d{4,}):sprintf(q{%-6s}, sprintf(q{%.2fG},($1/1024)/1024)):eg;
-
-my( $dp_version ) = ($config =~ /-pre-init-(.+)/);
-$dp_version =~ s/-/./;
-
-my($max)   = map { / maximum-disk-used: (\d+)/ } @raw_lines;
-my($gbmax) = ceil((($max / 1024) / 1024) * 1.03);
-$gbmax     = 30 if $gbmax < 30;
-my $i_dp_version = sprintf(q{%-15s}, qq{"$dp_version"});
-print( qq{  $i_dp_version) disk_size_gb="$gbmax" ;; # $stats # $config}, $/ );
-EOF
   for workflow_log in $(grep -l "Customization script" /tmp/custom-image-*/logs/workflow.log) ;  do
     startup_log=$(echo "${workflow_log}" | sed -e 's/workflow.log/startup-script.log/')
-    grep -A5 'Filesystem.*Avail' "${startup_log}" | perl /tmp/genline.pl "${workflow_log}"
+    grep -A5 'Filesystem.*Avail' "${startup_log}" | perl genline.pl "${workflow_log}"
   done
 }
 
