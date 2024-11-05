@@ -412,7 +412,7 @@ function install_dask_rapids() {
   if is_cuda12 ; then
     local python_spec="python>=3.11"
     local cuda_spec="cuda-version>=12,<13"
-    local dask_spec="dask>=2024.7"
+    local dask_spec="dask>=2023.11"
     local numba_spec="numba"
   elif is_cuda11 ; then
     local python_spec="python>=3.9"
@@ -560,7 +560,7 @@ function exit_handler() {
       if grep -q "^tmpfs ${shmdir}" /proc/mounts ; then
         sync
         sleep 3s
-        execute_with_retries umount -f ${shmdir}
+        umount -f ${shmdir}
       fi
     done
 
@@ -659,15 +659,21 @@ function prepare_to_install() {
   RAPIDS_RUNTIME=$(get_metadata_attribute 'rapids-runtime' 'DASK')
   readonly RAPIDS_RUNTIME
 
-  readonly DEFAULT_DASK_RAPIDS_VERSION="24.08"
+  readonly DEFAULT_DASK_RAPIDS_VERSION="23.11"
   readonly RAPIDS_VERSION=$(get_metadata_attribute 'rapids-version' ${DEFAULT_DASK_RAPIDS_VERSION})
 
   readonly PROJECT_ID="$(gcloud config get project)"
   zone="$(/usr/share/google/get_metadata_value zone)"
   export ZONE="$(echo $zone | sed -e 's:.*/::')"
   export REGION="$(echo ${ZONE} | perl -pe 's/^(.+)-[^-]+$/$1/')"
-  export CONDA_MIRROR_DISK_NAME="conda-mirror-${REGION}"
+
+  # use a regional mirror instead of fetching from cloudflare CDN
+  conda_mirror_disk='conda-mirror'
+  export CONDA_MIRROR_DISK="$(get_metadata_attribute 'conda-mirror-disk' ${conda_mirror_disk})"
+  export CONDA_MIRROR_DISK_NAME="$(gcloud compute disks list | awk "/${CONDA_MIRROR_DISK}-${REGION}-/ {print \$1}" | sort | tail -1)"
   export CONDA_DISK_FQN="projects/${PROJECT_ID}/regions/${REGION}/disks/${CONDA_MIRROR_DISK_NAME}"
+  conda_mirror_host='10.42.79.42'
+  export CONDA_MIRROR_HOST="$(get_metadata_attribute 'conda-mirror-host' ${conda_mirror_host})"
 
   export CONDA=/opt/conda/miniconda3/bin/conda
   free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
@@ -698,28 +704,31 @@ function prepare_to_install() {
   trap exit_handler EXIT
 
   conda_mirror_mountpoint=/srv/conda-mirror
+  if [[ -n "${CONDA_MIRROR_DISK_NAME}" ]]; then
   ( set +e
     # If the service account can describe the disk, attempt to attach and mount it
     gcloud compute disks describe "${CONDA_MIRROR_DISK_NAME}" --region us-west4 > /tmp/mirror-disk.json
     if [[ "$?" == "0" ]] ; then
-      gcloud compute instances attach-disk "$(hostname -s)" \
-        --disk        "${CONDA_DISK_FQN}" \
-	--device-name "${CONDA_MIRROR_DISK_NAME}" \
-	--disk-scope=regional \
-	--mode=ro \
-	--zone="${REGION}"
+      for channel in rapidsai nvidia ; do
+	"${CONDA}" config --set custom_channels.${channel} "file://${conda_mirror_mountpoint}/"
+      done
+      if ! grep -q "${CONDA_MIRROR_DISK_NAME}" /proc/mounts ; then 
+        gcloud compute instances attach-disk "$(hostname -s)" \
+          --disk        "${CONDA_DISK_FQN}" \
+          --device-name "${CONDA_MIRROR_DISK_NAME}" \
+          --disk-scope  "regional" \
+          --zone        "${ZONE}" \
+          --mode=ro
 
-      mkdir -p "${conda_mirror_mountpoint}"
-      mount "/dev/disk/by-id/google-${CONDA_MIRROR_DISK_NAME}" "${conda_mirror_mountpoint}"
-      for channel in conda-forge rapidsai nvidia ; do
-	"${CONDA}" config --set custom_channels.${channel} "file://${conda_mirror_mountpoint}"
-      done
-    else
-      for channel in conda-forge rapidsai nvidia ; do
-	"${CONDA}" config --set custom_channels.${channel} "http://10.42.79.42/"
-      done
-    fi
-  )
+        mkdir -p "${conda_mirror_mountpoint}"
+        mount -o ro "/dev/disk/by-id/google-${CONDA_MIRROR_DISK_NAME}" "${conda_mirror_mountpoint}"
+      fi
+    fi ; )
+  elif nc -vz "${CONDA_MIRROR_HOST}" 80 > /dev/null 2>&1 ; then
+    for channel in rapidsai nvidia ; do
+      "${CONDA}" config --set "custom_channels.${channel}" "http://${CONDA_MIRROR_HOST}/"
+    done
+  fi
 
   # Clean conda cache
   "${CONDA}" clean -a
