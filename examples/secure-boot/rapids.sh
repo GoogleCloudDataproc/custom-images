@@ -412,7 +412,7 @@ function install_dask_rapids() {
   if is_cuda12 ; then
     local python_spec="python>=3.11"
     local cuda_spec="cuda-version>=12,<13"
-    local dask_spec="dask>=2023.11"
+    local dask_spec="dask"
     local numba_spec="numba"
   elif is_cuda11 ; then
     local python_spec="python>=3.9"
@@ -547,6 +547,7 @@ function exit_handler() {
   # If system memory was sufficient to mount memory-backed filesystems
   if [[ "${tmpdir}" == "/mnt/shm" ]] ; then
     # Stop hadoop services
+    echo "cleaning up tmpfs mounts"
     systemctl list-units | perl -n -e 'qx(systemctl stop $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
 
     # remove the tmpfs conda pkgs_dirs
@@ -556,7 +557,7 @@ function exit_handler() {
     pip config unset global.cache-dir || echo "unable to unset global pip cache"
 
     # Clean up shared memory mounts
-    for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm ; do
+    for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm /tmp ; do
       if grep -q "^tmpfs ${shmdir}" /proc/mounts ; then
         sync
         sleep 3s
@@ -564,7 +565,7 @@ function exit_handler() {
       fi
     done
 
-    umount -f /tmp
+    echo "restarting services"
     systemctl list-units | perl -n -e 'qx(systemctl start $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
   fi
 
@@ -709,9 +710,11 @@ function prepare_to_install() {
     # If the service account can describe the disk, attempt to attach and mount it
     gcloud compute disks describe "${CONDA_MIRROR_DISK_NAME}" --region us-west4 > /tmp/mirror-disk.json
     if [[ "$?" == "0" ]] ; then
-      for channel in rapidsai nvidia ; do
+      for channel in 'conda-forge' 'rapidsai' 'nvidia' 'dask' ; do
 	"${CONDA}" config --set custom_channels.${channel} "file://${conda_mirror_mountpoint}/"
       done
+      #"${CONDA}" config --set "custom_channels.conda-forge" "http://${CONDA_MIRROR_HOST}/"
+
       if ! grep -q "${CONDA_MIRROR_DISK_NAME}" /proc/mounts ; then 
         gcloud compute instances attach-disk "$(hostname -s)" \
           --disk        "${CONDA_DISK_FQN}" \
@@ -725,7 +728,7 @@ function prepare_to_install() {
       fi
     fi ; )
   elif nc -vz "${CONDA_MIRROR_HOST}" 80 > /dev/null 2>&1 ; then
-    for channel in rapidsai nvidia ; do
+    for channel in 'conda-forge' 'rapidsai' 'nvidia' 'dask' ; do
       "${CONDA}" config --set "custom_channels.${channel}" "http://${CONDA_MIRROR_HOST}/"
     done
   fi
