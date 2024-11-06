@@ -33,6 +33,10 @@ CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sou
 SHUTDOWN_TIMER_IN_SEC=$(/usr/share/google/get_metadata_value attributes/shutdown-timer-in-sec)
 
 OPTIONAL_COMPONENTS=$(/usr/share/google/get_metadata_value attributes/optional-components)
+OPTIONAL_COMPONENTS=$(echo "$OPTIONAL_COMPONENTS" | tr '[:upper:]' '[:lower:]' | tr '&' ',')
+readonly OPTIONAL_COMPONENTS
+readonly BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
+readonly DATAPROC_IMAGE_VERSION="2.2"
 
 ready=""
 
@@ -91,7 +95,7 @@ function cleanup() {
 
 function run_startup_custom_script() {
   if [[ -n "$OPTIONAL_COMPONENTS" ]]; then
-    source "${BDUTIL_DIR}/startup_custom_script.sh"
+    bash -x "${BDUTIL_DIR}/startup_optional_components.sh" "${OPTIONAL_COMPONENTS}" "${BDUTIL_DIR}" "${DATAPROC_IMAGE_VERSION}"
   fi
 }
 
