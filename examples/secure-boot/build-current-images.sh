@@ -49,6 +49,15 @@ function configure_service_account() {
   gcloud secrets add-iam-policy-binding "${public_secret_name}" \
     --member="serviceAccount:${GSA}" \
     --role="roles/secretmanager.secretAccessor" > /dev/null 2>&1
+
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/compute.instanceAdmin.v1 > /dev/null 2>&1
+
+  gcloud iam service-accounts add-iam-policy-binding "${GSA}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/iam.serviceAccountUser > /dev/null 2>&1
+
 }
 
 function revoke_bindings() {
@@ -66,6 +75,15 @@ function revoke_bindings() {
   gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
     --role="roles/secretmanager.viewer" > /dev/null 2>&1
+
+  gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/compute.instanceAdmin.v1 > /dev/null 2>&1
+
+  gcloud iam service-accounts remove-iam-policy-binding "${GSA}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/iam.serviceAccountUser > /dev/null 2>&1
+
 }
 
 export PROJECT_ID="$(jq    -r .PROJECT_ID    env.json)"
@@ -85,7 +103,7 @@ configure_service_account
 session_name="build-current-images"
 
 readonly timestamp="$(date +%F-%H-%M)"
-#readonly timestamp="2024-10-31-05-55"
+#readonly timestamp="2024-11-05-22-55"
 export timestamp
 
 export tmpdir=/tmp/${timestamp};
@@ -103,7 +121,7 @@ screen -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
 function find_disk_usage() {
   for workflow_log in $(grep -l "Customization script" /tmp/custom-image-*/logs/workflow.log) ;  do
     startup_log=$(echo "${workflow_log}" | sed -e 's/workflow.log/startup-script.log/')
-    grep -A5 'Filesystem.*Avail' "${startup_log}" | perl genline.pl "${workflow_log}"
+    grep -A5 'Filesystem.*Avail' "${startup_log}" | perl examples/secure-boot/genline.pl "${workflow_log}"
   done
 }
 
