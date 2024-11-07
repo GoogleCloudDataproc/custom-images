@@ -25,6 +25,7 @@ export PROJECT_ID="$(jq    -r .PROJECT_ID           env.json)"
 export PURPOSE="$(jq       -r .PURPOSE              env.json)"
 export BUCKET="$(jq        -r .BUCKET               env.json)"
 export ZONE="$(jq          -r .ZONE                 env.json)"
+export SUBNET="$(jq        -r .SUBNET               env.json)"
 
 custom_image_zone="${ZONE}"
 disk_size_gb="30" # greater than or equal to 30
@@ -89,6 +90,7 @@ function generate() {
     --zone                 "${custom_image_zone}" \
     --disk-size            "${disk_size_gb}" \
     --gcs-bucket           "${BUCKET}" \
+    --subnet               "${SUBNET}" \
     --shutdown-instance-timer-sec=30 \
     --no-smoke-test \
     ${extra_args}
