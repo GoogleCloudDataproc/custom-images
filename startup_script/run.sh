@@ -33,7 +33,7 @@ CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sou
 SHUTDOWN_TIMER_IN_SEC=$(/usr/share/google/get_metadata_value attributes/shutdown-timer-in-sec)
 
 USER_DATAPROC_COMPONENTS=$(/usr/share/google/get_metadata_value attributes/optional-components)
-USER_DATAPROC_COMPONENTS=$(echo "$USER_DATAPROC_COMPONENTS" | tr '[:upper:]' '[:lower:]' | tr '&' ',')
+USER_DATAPROC_COMPONENTS=$(echo "$USER_DATAPROC_COMPONENTS" | tr '[:upper:]' '[:lower:]' | tr '.' ',')
 BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
 
 ready=""

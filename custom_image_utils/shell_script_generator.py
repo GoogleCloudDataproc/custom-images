@@ -308,7 +308,7 @@ class Generator:
         "custom-sources-path={custom_sources_path}"
     )
     if self.args["optional_components"]:
-      optional_components = self.args["optional_components"].replace(',', '&')
+      optional_components = self.args["optional_components"].replace(',', '.')
       metadata_flag_template += ',optional-components="{}"'.format(optional_components)
     if self.args["metadata"]:
       metadata_flag_template += ",{metadata}"
