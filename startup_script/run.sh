@@ -32,11 +32,9 @@ CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sou
 # get time to wait for stdout to flush
 SHUTDOWN_TIMER_IN_SEC=$(/usr/share/google/get_metadata_value attributes/shutdown-timer-in-sec)
 
-OPTIONAL_COMPONENTS=$(/usr/share/google/get_metadata_value attributes/optional-components)
-OPTIONAL_COMPONENTS=$(echo "$OPTIONAL_COMPONENTS" | tr '[:upper:]' '[:lower:]' | tr '&' ',')
-readonly OPTIONAL_COMPONENTS
-readonly BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
-readonly DATAPROC_IMAGE_VERSION="2.2"
+USER_DATAPROC_COMPONENTS=$(/usr/share/google/get_metadata_value attributes/optional-components)
+USER_DATAPROC_COMPONENTS=$(echo "$USER_DATAPROC_COMPONENTS" | tr '[:upper:]' '[:lower:]' | tr '&' ',')
+BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
 
 ready=""
 
@@ -94,8 +92,8 @@ function cleanup() {
 }
 
 function run_startup_custom_script() {
-  if [[ -n "$OPTIONAL_COMPONENTS" ]]; then
-    bash -x "${BDUTIL_DIR}/startup_optional_components.sh" "${OPTIONAL_COMPONENTS}" "${BDUTIL_DIR}" "${DATAPROC_IMAGE_VERSION}"
+  if [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
+    source "${BDUTIL_DIR}/startup_custom_script.sh"
   fi
 }
 
