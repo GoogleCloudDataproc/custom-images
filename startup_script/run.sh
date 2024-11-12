@@ -93,7 +93,7 @@ function cleanup() {
 
 function run_startup_custom_script() {
   if [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
-    source "${BDUTIL_DIR}/startup_custom_script.sh"
+    source "${BDUTIL_DIR}/startup_optional_components.sh"
   fi
 }
 
