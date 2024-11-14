@@ -618,7 +618,7 @@ function add_repo_cuda() {
   if is_debuntu ; then
     local kr_path=/usr/share/keyrings/cuda-archive-keyring.gpg
     local sources_list_path="/etc/apt/sources.list.d/cuda-${shortname}-x86_64.list"
-echo "deb [signed-by=${kr_path}] https://developer.download.nvidia.com/compute/cuda/repos/${shortname}/x86_64/ /" \
+    echo "deb [signed-by=${kr_path}] https://developer.download.nvidia.com/compute/cuda/repos/${shortname}/x86_64/ /" \
     | sudo tee "${sources_list_path}"
     curl "${NVIDIA_BASE_DL_URL}/cuda/repos/${shortname}/x86_64/cuda-archive-keyring.gpg" \
       -o "${kr_path}"
@@ -1276,16 +1276,15 @@ function exit_handler() {
     pip config unset global.cache-dir || echo "unable to unset global pip cache"
 
     # Clean up shared memory mounts
-    for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm ; do
+    for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm /tmp ; do
       if grep -q "^tmpfs ${shmdir}" /proc/mounts ; then
         rm -rf ${shmdir}/*
         sync
         sleep 3s
-        execute_with_retries umount -f ${shmdir}
+        umount -f ${shmdir}
       fi
     done
 
-    umount -f /tmp
     systemctl list-units | perl -n -e 'qx(systemctl start $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
   fi
 
@@ -1362,6 +1361,7 @@ function prepare_to_install(){
   tmpdir=/tmp/
   local free_mem
   trap exit_handler EXIT
+  export CONDA=/opt/conda/miniconda3/bin/conda
   free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
   # Write to a ramdisk instead of churning the persistent disk
   if [[ ${free_mem} -ge 10500000 ]]; then
@@ -1396,6 +1396,7 @@ function prepare_to_install(){
     clean_up_sources_lists
     apt-get update -qq
     apt-get -y clean
+    sleep 5s
     apt-get -y -qq autoremove
     if is_debian12 ; then
     apt-mark unhold systemd libsystemd0 ; fi

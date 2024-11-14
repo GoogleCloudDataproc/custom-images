@@ -443,9 +443,6 @@ function install_dask_rapids() {
     "${cuda_spec}"
     "${rapids_spec}"
     "${dask_spec}"
-    "dask-bigquery"
-    "dask-ml"
-    "dask-sql"
     "cudf"
     "${numba_spec}"
   )
@@ -471,10 +468,12 @@ function install_dask_rapids() {
     else
       test -d "${DASK_CONDA_ENV}" && ( "${conda}" remove -n 'dask-rapids' --all || rm -rf "${DASK_CONDA_ENV}" )
       "${conda}" config --set channel_priority flexible
+      "${CONDA}" clean -a > /dev/null 2>&1
     fi
   done
   if [[ "${is_installed}" == "0" ]]; then
     echo "failed to install dask"
+    df -h
     return 1
   fi
   )
@@ -525,21 +524,21 @@ function main() {
 }
 
 function exit_handler() {
-  set +ex
+  set +e
+  set -x
   echo "Exit handler invoked"
 
   # Free conda cache
   "${CONDA}" clean -a > /dev/null 2>&1
 
   "${CONDA}" config --remove-key custom_channels
-  if grep -q "${conda_mirror_mountpoint}" /proc/mounts ; then
-    umount "${conda_mirror_mountpoint}"
+  if grep -q "${rapids_mirror_mountpoint}" /proc/mounts ; then
+    umount "${rapids_mirror_mountpoint}"
     gcloud compute instances detach-disk "$(hostname -s)" \
-      --disk       "${CONDA_DISK_FQN}" \
+      --device-name "${RAPIDS_MIRROR_DISK_NAME}" \
       --zone       "${ZONE}" \
       --disk-scope regional
   fi
-
 
   # Clear pip cache
   pip cache purge || echo "unable to purge pip cache"
@@ -610,8 +609,8 @@ function exit_handler() {
   # Log file contains logs like the following (minus the preceeding #):
 #Filesystem     1K-blocks    Used Available Use% Mounted on
 #/dev/vda2        7096908 2611344   4182932  39% /
+  set +x
   df / | tee -a "/run/disk-usage.log"
-
   perl -e '@siz=( sort { $a => $b }
                    map { (split)[2] =~ /^(\d+)/ }
                   grep { m:^/: } <STDIN> );
@@ -620,12 +619,12 @@ print( "    samples-taken: ", scalar @siz, $/,
        "maximum-disk-used: $max", $/,
        "minimum-disk-used: $min", $/,
        "     increased-by: $inc", $/ )' < "/run/disk-usage.log"
-
+  set -x
   echo "exit_handler has completed"
 
   # zero free disk space
   if [[ -n "$(get_metadata_attribute creating-image)" ]]; then
-    dd if=/dev/zero of=/zero
+    eval "dd if=/dev/zero of=/zero"
     sync
     sleep 3s
     rm -f /zero
@@ -668,23 +667,16 @@ function prepare_to_install() {
   export ZONE="$(echo $zone | sed -e 's:.*/::')"
   export REGION="$(echo ${ZONE} | perl -pe 's/^(.+)-[^-]+$/$1/')"
 
-  # use a regional mirror instead of fetching from cloudflare CDN
-  conda_mirror_disk='conda-mirror'
-  export CONDA_MIRROR_DISK="$(get_metadata_attribute 'conda-mirror-disk' ${conda_mirror_disk})"
-  export CONDA_MIRROR_DISK_NAME="$(gcloud compute disks list | awk "/${CONDA_MIRROR_DISK}-${REGION}-/ {print \$1}" | sort | tail -1)"
-  export CONDA_DISK_FQN="projects/${PROJECT_ID}/regions/${REGION}/disks/${CONDA_MIRROR_DISK_NAME}"
-  conda_mirror_host='10.42.79.42'
-  export CONDA_MIRROR_HOST="$(get_metadata_attribute 'conda-mirror-host' ${conda_mirror_host})"
-
   export CONDA=/opt/conda/miniconda3/bin/conda
   free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
   # Write to a ramdisk instead of churning the persistent disk
-  if [[ ${free_mem} -ge 10500000 ]]; then
+  if [[ ${free_mem} -ge 33300000 ]]; then
     tmpdir=/mnt/shm
     mkdir -p /mnt/shm
     mount -t tmpfs tmpfs /mnt/shm
 
     # Download conda packages to tmpfs
+    # Minimum of 15.5G of capacity required for rapids package install via conda
     "${CONDA}" config --add pkgs_dirs /mnt/shm
     mount -t tmpfs tmpfs /mnt/shm
 
@@ -704,32 +696,38 @@ function prepare_to_install() {
   install_log="${tmpdir}/install.log"
   trap exit_handler EXIT
 
-  conda_mirror_mountpoint=/srv/conda-mirror
-  if [[ -n "${CONDA_MIRROR_DISK_NAME}" ]]; then
+  # use a regional mirror instead of fetching from cloudflare CDN
+  export RAPIDS_MIRROR_DISK="$(get_metadata_attribute 'rapids-mirror-disk' '')"
+  export RAPIDS_MIRROR_DISK_NAME="$(gcloud compute disks list | awk "/${RAPIDS_MIRROR_DISK}-${REGION}-/ {print \$1}" | sort | tail -1)"
+  export RAPIDS_DISK_FQN="projects/${PROJECT_ID}/regions/${REGION}/disks/${RAPIDS_MIRROR_DISK_NAME}"
+  export RAPIDS_MIRROR_HOST="$(get_metadata_attribute 'rapids-mirror-host' '')"
+  rapids_mirror_mountpoint=/srv/mirror
+  if [[ -n "${RAPIDS_MIRROR_DISK_NAME}" ]]; then
   ( set +e
     # If the service account can describe the disk, attempt to attach and mount it
-    gcloud compute disks describe "${CONDA_MIRROR_DISK_NAME}" --region us-west4 > /tmp/mirror-disk.json
+    gcloud compute disks describe "${RAPIDS_MIRROR_DISK_NAME}" --region us-west4 > /tmp/mirror-disk.txt
     if [[ "$?" == "0" ]] ; then
-      for channel in 'conda-forge' 'rapidsai' 'nvidia' 'dask' ; do
-	"${CONDA}" config --set custom_channels.${channel} "file://${conda_mirror_mountpoint}/"
+      for channel in 'rapidsai' 'nvidia' 'main' 'r' 'conda-forge' ; do
+        "${CONDA}" config --set \
+          "custom_channels.${channel}" "file://${rapids_mirror_mountpoint}/conda.anaconda.org/"
       done
-      #"${CONDA}" config --set "custom_channels.conda-forge" "http://${CONDA_MIRROR_HOST}/"
 
-      if ! grep -q "${CONDA_MIRROR_DISK_NAME}" /proc/mounts ; then 
+      if ! grep -q "${rapids_mirror_mountpoint}" /proc/mounts ; then 
         gcloud compute instances attach-disk "$(hostname -s)" \
-          --disk        "${CONDA_DISK_FQN}" \
-          --device-name "${CONDA_MIRROR_DISK_NAME}" \
+          --disk        "${RAPIDS_DISK_FQN}" \
+          --device-name "${RAPIDS_MIRROR_DISK_NAME}" \
           --disk-scope  "regional" \
           --zone        "${ZONE}" \
           --mode=ro
 
-        mkdir -p "${conda_mirror_mountpoint}"
-        mount -o ro "/dev/disk/by-id/google-${CONDA_MIRROR_DISK_NAME}" "${conda_mirror_mountpoint}"
+        mkdir -p "${rapids_mirror_mountpoint}"
+        mount -o ro "/dev/disk/by-id/google-${RAPIDS_MIRROR_DISK_NAME}" "${rapids_mirror_mountpoint}"
       fi
     fi ; )
-  elif nc -vz "${CONDA_MIRROR_HOST}" 80 > /dev/null 2>&1 ; then
-    for channel in 'conda-forge' 'rapidsai' 'nvidia' 'dask' ; do
-      "${CONDA}" config --set "custom_channels.${channel}" "http://${CONDA_MIRROR_HOST}/"
+  elif [[ -n "${RAPIDS_MIRROR_HOST}" ]] && nc -vz "${RAPIDS_MIRROR_HOST}" 80 > /dev/null 2>&1 ; then
+    for channel in 'conda-forge' 'rapidsai' 'nvidia' 'r' 'main' ; do
+      "${CONDA}" config --set \
+        "custom_channels.${channel}" "http://${RAPIDS_MIRROR_HOST}/conda.anaconda.org/"
     done
   fi
 
@@ -738,9 +736,9 @@ function prepare_to_install() {
 
   # Monitor disk usage in a screen session
   if is_debuntu ; then
-      apt-get install -y -qq screen
+    apt-get install -y -qq screen
   else
-      dnf -y -q install screen
+    dnf -y -q install screen
   fi
   df / > "/run/disk-usage.log"
   touch "/run/keep-running-df"
