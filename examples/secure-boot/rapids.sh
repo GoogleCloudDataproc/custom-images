@@ -88,7 +88,7 @@ function configure_dask_yarn() {
 # https://yarn.dask.org/en/latest/configuration.html#default-configuration
 
 yarn:
-  environment: python://${DASK_CONDA_ENV}/bin/python
+  environment: python://${RAPIDS_CONDA_ENV}/bin/python
 
   worker:
     count: 2
@@ -110,7 +110,7 @@ function install_systemd_dask_worker() {
 LOGFILE="/var/log/${DASK_WORKER_SERVICE}.log"
 nvidia-smi -c DEFAULT
 echo "dask-cuda-worker starting, logging to \${LOGFILE}"
-${DASK_CONDA_ENV}/bin/dask-cuda-worker "${MASTER}:8786" --local-directory="${dask_worker_local_dir}" --memory-limit=auto >> "\${LOGFILE}" 2>&1
+${RAPIDS_CONDA_ENV}/bin/dask-cuda-worker "${MASTER}:8786" --local-directory="${dask_worker_local_dir}" --memory-limit=auto >> "\${LOGFILE}" 2>&1
 EOF
 
   chmod 750 "${DASK_WORKER_LAUNCHER}"
@@ -162,7 +162,7 @@ function install_systemd_dask_scheduler() {
 #!/bin/bash
 LOGFILE="/var/log/${DASK_SCHEDULER_SERVICE}.log"
 echo "dask scheduler starting, logging to \${LOGFILE}"
-${DASK_CONDA_ENV}/bin/dask scheduler >> "\${LOGFILE}" 2>&1
+${RAPIDS_CONDA_ENV}/bin/dask scheduler >> "\${LOGFILE}" 2>&1
 EOF
 
   chmod 750 "${DASK_SCHEDULER_LAUNCHER}"
@@ -409,16 +409,24 @@ EOF
 }
 
 function install_dask_rapids() {
+#To enable CUDA support, UCX requires the CUDA Runtime library (libcudart).
+#The library can be installed with the appropriate command below:
+
+#* For CUDA 11, run:    conda install cudatoolkit cuda-version=11
+#* For CUDA 12, run:    conda install cuda-cudart cuda-version=12
+
   if is_cuda12 ; then
     local python_spec="python>=3.11"
     local cuda_spec="cuda-version>=12,<13"
     local dask_spec="dask"
     local numba_spec="numba"
+    local cudart_spec="cuda-cudart"
   elif is_cuda11 ; then
     local python_spec="python>=3.9"
     local cuda_spec="cuda-version>=11,<12.0a0"
     local dask_spec="dask"
     local numba_spec="numba"
+    local cudart_spec="cudatoolkit"
   fi
 
   rapids_spec="rapids>=${RAPIDS_VERSION}"
@@ -441,6 +449,7 @@ function install_dask_rapids() {
 
   CONDA_PACKAGES+=(
     "${cuda_spec}"
+    "${cudart_spec}"
     "${rapids_spec}"
     "${dask_spec}"
     "cudf"
@@ -448,32 +457,54 @@ function install_dask_rapids() {
   )
 
   # Install cuda, rapids, dask
-  mamba="/opt/conda/miniconda3/bin/mamba"
-  conda="/opt/conda/miniconda3/bin/conda"
+  mamba="${CONDA_ROOT}/bin/mamba"
+  conda="${CONDA_ROOT}/bin/conda"
 
-  "${conda}" remove -n dask --all || echo "unable to remove conda environment [dask]"
+  readonly DASK_CONDA_ENV="${CONDA_ROOT}/envs/${RAPIDS_ENV_NAME}"  
+  if test -d "${DASK_CONDA_ENV}" ; then
+    "${conda}" remove -n "${RAPIDS_ENV_NAME}" --all > /dev/null 2>&1 || rm -rf "${DASK_CONDA_ENV}"
+  fi
+  # Unpin conda version and upgrade
+#  perl -ni -e 'print unless /^conda /' "${CONDA_ROOT}/conda-meta/pinned"
+#  "${mamba}" install conda mamba libmamba libmambapy conda-libmamba-solver
+
+  # This error occurs when we set channel_alias
+#  util_files_to_patch="$(find "${CONDA_ROOT}" -name utils.py | grep mamba/utils.py)"
+#  perl -pi -e 's[raise ValueError\("missing key][print("missing key]' ${util_files_to_patch}
+#  File "/home/zhyue/mambaforge/lib/python3.9/site-packages/mamba/utils.py", line 393, in compute_final_precs
+#  raise ValueError("missing key {} in channels: {}".format(key, lookup_dict))
+
+  CONDA_EXE="${CONDA_ROOT}/bin/conda"
+  CONDA_PYTHON_EXE="${CONDA_ROOT}/bin/python"
+  PATH="${CONDA_ROOT}/bin/condabin:${CONDA_ROOT}/bin:${PATH}"
 
   ( set +e
   local is_installed="0"
   for installer in "${mamba}" "${conda}" ; do
-    time "${installer}" "create" -m -n 'dask-rapids' -y --no-channel-priority \
+    echo "${installer}" "create" -q -m -n "${RAPIDS_ENV_NAME}" -y --no-channel-priority \
+      -c 'conda-forge' -c 'nvidia' -c 'rapidsai'  \
+      ${CONDA_PACKAGES[*]} \
+      "${python_spec}"
+#    read placeholder
+    # for debugging, consider -vvv
+    time "${installer}" "create" -q -m -n "${RAPIDS_ENV_NAME}" -y --no-channel-priority \
       -c 'conda-forge' -c 'nvidia' -c 'rapidsai'  \
       ${CONDA_PACKAGES[*]} \
       "${python_spec}" \
-      > "${install_log}" 2>&1 && retval=$? || { retval=$? ; cat "${install_log}" ; }
+      && retval=$? || retval=$?
     sync
     if [[ "$retval" == "0" ]] ; then
       is_installed="1"
       break
     else
-      test -d "${DASK_CONDA_ENV}" && ( "${conda}" remove -n 'dask-rapids' --all || rm -rf "${DASK_CONDA_ENV}" )
+      test -d "${RAPIDS_CONDA_ENV}" && ( "${conda}" remove -n "${RAPIDS_ENV_NAME}" --all > /dev/null 2>&1 || rm -rf "${RAPIDS_CONDA_ENV}" )
       "${conda}" config --set channel_priority flexible
-      "${CONDA}" clean -a > /dev/null 2>&1
+      df -h
+      clean_conda_cache
     fi
   done
   if [[ "${is_installed}" == "0" ]]; then
     echo "failed to install dask"
-    df -h
     return 1
   fi
   )
@@ -523,49 +554,37 @@ function main() {
   fi
 }
 
+function clean_conda_cache() {
+  if ! grep -q "${rapids_mirror_mountpoint}" /proc/mounts ; then
+    "${CONDA}" clean -a
+  fi
+}
+
 function exit_handler() {
   set +e
   set -x
   echo "Exit handler invoked"
 
-  # Free conda cache
-  "${CONDA}" clean -a > /dev/null 2>&1
+  unmount_rapids_mirror
 
-  "${CONDA}" config --remove-key custom_channels
-  if grep -q "${rapids_mirror_mountpoint}" /proc/mounts ; then
-    umount "${rapids_mirror_mountpoint}"
-    gcloud compute instances detach-disk "$(hostname -s)" \
-      --device-name "${RAPIDS_MIRROR_DISK_NAME}" \
-      --zone       "${ZONE}" \
-      --disk-scope regional
-  fi
-
-  # Clear pip cache
-  pip cache purge || echo "unable to purge pip cache"
+  mv ~/.condarc.default ~/.condarc
+  mv /root/.config/pip/pip.conf.default /root/.config/pip/pip.conf
 
   # If system memory was sufficient to mount memory-backed filesystems
   if [[ "${tmpdir}" == "/mnt/shm" ]] ; then
-    # Stop hadoop services
     echo "cleaning up tmpfs mounts"
-    systemctl list-units | perl -n -e 'qx(systemctl stop $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
-
-    # remove the tmpfs conda pkgs_dirs
-    "${CONDA}" config --remove pkgs_dirs /mnt/shm || echo "unable to remove pkgs_dirs conda config"
-
-    # remove the tmpfs pip cache-dir
-    pip config unset global.cache-dir || echo "unable to unset global pip cache"
 
     # Clean up shared memory mounts
     for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm /tmp ; do
       if grep -q "^tmpfs ${shmdir}" /proc/mounts ; then
         sync
-        sleep 3s
         umount -f ${shmdir}
       fi
     done
-
-    echo "restarting services"
-    systemctl list-units | perl -n -e 'qx(systemctl start $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
+  else
+    clean_conda_cache
+    # Clear pip cache from non-tmpfs
+    pip cache purge || echo "unable to purge pip cache"
   fi
 
   # Clean up OS package cache ; re-hold systemd package
@@ -583,13 +602,13 @@ function exit_handler() {
       /usr/lib \
       /opt/nvidia/* \
       /usr/local/cuda-1?.? \
-      /opt/conda/miniconda3
+      ${CONDA_ROOT}
   elif is_debian ; then
     du -hs \
       /usr/lib/{pig,hive,hadoop,jvm,spark,google-cloud-sdk,x86_64-linux-gnu} \
       /usr/lib \
       /usr/local/cuda-1?.? \
-      /opt/conda/miniconda3
+      ${CONDA_ROOT}
   else
     du -hs \
       /var/lib/docker \
@@ -598,7 +617,7 @@ function exit_handler() {
       /usr/lib \
       /opt/nvidia/* \
       /usr/local/cuda-1?.? \
-      /opt/conda/miniconda3
+      ${CONDA_ROOT}
   fi
 
   # Process disk usage logs from installation period
@@ -633,6 +652,71 @@ print( "    samples-taken: ", scalar @siz, $/,
   return 0
 }
 
+function unmount_rapids_mirror() {
+  if ! grep -q "${rapids_mirror_mountpoint}" /proc/mounts ; then return ; fi
+
+  umount "${rapids_mirror_mountpoint}"
+  umount "${rapids_mirror_mountpoint}_ro"
+  gcloud compute instances detach-disk "$(hostname -s)" \
+    --device-name "${RAPIDS_MIRROR_DISK_NAME}" \
+    --zone       "${ZONE}" \
+    --disk-scope regional
+}
+
+function mount_rapids_mirror() {
+  # use a regional mirror instead of fetching from cloudflare CDN
+  export RAPIDS_MIRROR_DISK_NAME="$(gcloud compute disks list | awk "/${RAPIDS_MIRROR_DISK}-/ {print \$1}" | sort | tail -1)"
+  export RAPIDS_DISK_FQN="projects/${PROJECT_ID}/regions/${REGION}/disks/${RAPIDS_MIRROR_DISK_NAME}"
+
+  if [[ -z "${RAPIDS_MIRROR_DISK_NAME}" ]]; then return ; fi
+
+  # If the service account can describe the disk, attempt to attach and mount it
+  eval gcloud compute disks describe "${RAPIDS_MIRROR_DISK_NAME}" --region "${REGION}" > /tmp/mirror-disk.txt
+  if [[ "$?" != "0" ]] ; then return ; fi
+  
+  if ! grep -q "${rapids_mirror_mountpoint}" /proc/mounts ; then 
+    gcloud compute instances attach-disk "$(hostname -s)" \
+      --disk        "${RAPIDS_DISK_FQN}" \
+      --device-name "${RAPIDS_MIRROR_DISK_NAME}" \
+      --disk-scope  "regional" \
+      --zone        "${ZONE}" \
+      --mode=ro
+
+    mkdir -p "${rapids_mirror_mountpoint}" "${rapids_mirror_mountpoint}_ro" "${tmpdir}/overlay" "${tmpdir}/workdir"
+    mount -o ro "/dev/disk/by-id/google-${RAPIDS_MIRROR_DISK_NAME}" "${rapids_mirror_mountpoint}_ro"
+    mount -t overlay overlay -o lowerdir="${rapids_mirror_mountpoint}_ro",upperdir="${tmpdir}/overlay",workdir="${tmpdir}/workdir" "${rapids_mirror_mountpoint}"
+  fi
+  ${CONDA} config --add pkgs_dirs "${rapids_mirror_mountpoint}/conda_cache"
+#  echo "${CONDA}" config --set channel_alias "file://${rapids_mirror_mountpoint}/conda.anaconda.org"
+#  for channel in 'rapidsai' 'nvidia' 'pkgs/main' 'pkgs/r' 'conda-forge' ; do
+#    echo "${CONDA}" config --set \
+#      "custom_channels.${channel}" "file://${rapids_mirror_mountpoint}/conda.anaconda.org/"
+#  done
+  # patch conda to install from mirror
+#  files_to_patch=$(find ${CONDA_ROOT}/ -name 'download.py' | grep conda/gateways/connection)
+#  perl -i -pe 's{if "://" not in self.url:}{if "file://" in self.url or "://" not in self.url:}' \
+#    ${files_to_patch}
+#  perl -i -pe 's{self.url = url$}{self.url = url.replace("file://","")}' \
+#    ${files_to_patch}
+
+#  time for d in dask main nvidia r rapidsai conda-forge ; do
+#    find "${rapids_mirror_mountpoint}/conda.anaconda.org/${d}" -name '*.conda' -o -name '*.tar.bz2' -print0 | \
+#      xargs -0 ln -sf -t "${pkgs_dir}"
+#  done
+
+  # Point to the cache built with the mirror
+#  for channel in 'rapidsai' 'nvidia' 'main' 'r' 'conda-forge' ; do
+#    for plat in noarch linux-64 ; do
+#      echo ${CONDA} config --add pkgs_dirs "/srv/mirror/conda.anaconda.org/${channel}/${plat}"
+#    done
+#  done
+
+#  for channel in pkgs/main pkgs/r ; do
+#    echo ${CONDA} config --add default_channels "file://${rapids_mirror_mountpoint}/conda.anaconda.org/${channel}"
+#  done
+
+}
+
 function prepare_to_install() {
   readonly DEFAULT_CUDA_VERSION="12.4"
   CUDA_VERSION=$(get_metadata_attribute 'cuda-version' ${DEFAULT_CUDA_VERSION})
@@ -641,13 +725,17 @@ function prepare_to_install() {
   readonly ROLE=$(get_metadata_attribute dataproc-role)
   readonly MASTER=$(get_metadata_attribute dataproc-master)
 
+  export CONDA_ROOT=/opt/conda/miniconda3
+  export CONDA="${CONDA_ROOT}/bin/conda"
+
   # Dask config
   DASK_RUNTIME="$(get_metadata_attribute dask-runtime || echo 'standalone')"
   readonly DASK_RUNTIME
   readonly DASK_SERVICE=dask-cluster
   readonly DASK_WORKER_SERVICE=dask-worker
   readonly DASK_SCHEDULER_SERVICE=dask-scheduler
-  readonly DASK_CONDA_ENV="/opt/conda/miniconda3/envs/dask-rapids"
+  readonly RAPIDS_ENV_NAME="dask-rapids"
+  readonly RAPIDS_CONDA_ENV="${CONDA_ROOT}/envs/${RAPIDS_ENV_NAME}"
 
   # Knox config
   readonly KNOX_HOME=/usr/lib/knox
@@ -667,78 +755,67 @@ function prepare_to_install() {
   export ZONE="$(echo $zone | sed -e 's:.*/::')"
   export REGION="$(echo ${ZONE} | perl -pe 's/^(.+)-[^-]+$/$1/')"
 
-  export CONDA=/opt/conda/miniconda3/bin/conda
+  export RAPIDS_MIRROR_DISK="$(get_metadata_attribute 'rapids-mirror-disk' '')"
+  export RAPIDS_MIRROR_HOST="$(get_metadata_attribute 'rapids-mirror-host' '')"
+
+  rapids_mirror_mountpoint=/srv/mirror
+
   free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
+  # With a local conda mirror mounted, use reduced ram disk size
+  if [[ -n "${RAPIDS_MIRROR_DISK}" ]] ; then
+    min_mem=18500000
+    pkgs_dir=
+  else
+    min_mem=33300000
+  fi
   # Write to a ramdisk instead of churning the persistent disk
-  if [[ ${free_mem} -ge 33300000 ]]; then
+  if [[ ${free_mem} -ge ${min_mem} ]]; then
     tmpdir=/mnt/shm
-    mkdir -p /mnt/shm
-    mount -t tmpfs tmpfs /mnt/shm
+    mkdir -p "${tmpdir}"
+    mount -t tmpfs tmpfs "${tmpdir}"
 
-    # Download conda packages to tmpfs
-    # Minimum of 15.5G of capacity required for rapids package install via conda
-    "${CONDA}" config --add pkgs_dirs /mnt/shm
-    mount -t tmpfs tmpfs /mnt/shm
-
-    # Download pip packages to tmpfs
-    pip config set global.cache-dir /mnt/shm || echo "unable to set global.cache-dir"
-
-    # Download OS packages to tmpfs
-    if is_debuntu ; then
-      mount -t tmpfs tmpfs /var/cache/apt/archives
-    else
-      while [[ -f /var/cache/dnf/metadata_lock.pid ]] ; do sleep 1s ; done
-      mount -t tmpfs tmpfs /var/cache/dnf
-    fi
+    # Minimum of 11G of capacity required for rapids package install via conda
+    # + 5G without rapids mirror mounted
+    mount -t tmpfs tmpfs "${tmpdir}"
   else
     tmpdir=/tmp
   fi
+
   install_log="${tmpdir}/install.log"
   trap exit_handler EXIT
 
-  # use a regional mirror instead of fetching from cloudflare CDN
-  export RAPIDS_MIRROR_DISK="$(get_metadata_attribute 'rapids-mirror-disk' '')"
-  export RAPIDS_MIRROR_DISK_NAME="$(gcloud compute disks list | awk "/${RAPIDS_MIRROR_DISK}-${REGION}-/ {print \$1}" | sort | tail -1)"
-  export RAPIDS_DISK_FQN="projects/${PROJECT_ID}/regions/${REGION}/disks/${RAPIDS_MIRROR_DISK_NAME}"
-  export RAPIDS_MIRROR_HOST="$(get_metadata_attribute 'rapids-mirror-host' '')"
-  rapids_mirror_mountpoint=/srv/mirror
-  if [[ -n "${RAPIDS_MIRROR_DISK_NAME}" ]]; then
-  ( set +e
-    # If the service account can describe the disk, attempt to attach and mount it
-    gcloud compute disks describe "${RAPIDS_MIRROR_DISK_NAME}" --region us-west4 > /tmp/mirror-disk.txt
-    if [[ "$?" == "0" ]] ; then
-      for channel in 'rapidsai' 'nvidia' 'main' 'r' 'conda-forge' ; do
-        "${CONDA}" config --set \
-          "custom_channels.${channel}" "file://${rapids_mirror_mountpoint}/conda.anaconda.org/"
-      done
+  touch ~/.condarc
+  cp ~/.condarc ~/.condarc.default
 
-      if ! grep -q "${rapids_mirror_mountpoint}" /proc/mounts ; then 
-        gcloud compute instances attach-disk "$(hostname -s)" \
-          --disk        "${RAPIDS_DISK_FQN}" \
-          --device-name "${RAPIDS_MIRROR_DISK_NAME}" \
-          --disk-scope  "regional" \
-          --zone        "${ZONE}" \
-          --mode=ro
+  #"${CONDA}" config --set verbosity 3
+  # Clean conda cache
+  clean_conda_cache
 
-        mkdir -p "${rapids_mirror_mountpoint}"
-        mount -o ro "/dev/disk/by-id/google-${RAPIDS_MIRROR_DISK_NAME}" "${rapids_mirror_mountpoint}"
-      fi
-    fi ; )
-  elif [[ -n "${RAPIDS_MIRROR_HOST}" ]] && nc -vz "${RAPIDS_MIRROR_HOST}" 80 > /dev/null 2>&1 ; then
-    for channel in 'conda-forge' 'rapidsai' 'nvidia' 'r' 'main' ; do
-      "${CONDA}" config --set \
+  mount_rapids_mirror
+
+  if [[ -n "${RAPIDS_MIRROR_HOST}" ]] && nc -vz "${RAPIDS_MIRROR_HOST}" 80 > /dev/null 2>&1 ; then
+    for channel in 'conda-forge' 'rapidsai' 'nvidia' 'pkgs/r' 'pkgs/main' ; do
+      echo "${CONDA}" config --set \
         "custom_channels.${channel}" "http://${RAPIDS_MIRROR_HOST}/conda.anaconda.org/"
     done
   fi
 
-  # Clean conda cache
-  "${CONDA}" clean -a
+  if grep -q "${rapids_mirror_mountpoint}" /proc/mounts ; then
+    # if we are using the mirror disk, install exclusively from its cache
+    extra_conda_args="--offline"
+  else
+    pkgs_dir="${tmpdir}/pkgs_dir"
+    mkdir -p "${pkgs_dir}"
+    "${CONDA}" config --add pkgs_dirs "${pkgs_dir}"
+  fi
 
   # Monitor disk usage in a screen session
   if is_debuntu ; then
-    apt-get install -y -qq screen
+    command -v screen || \
+      apt-get install -y -qq screen
   else
-    dnf -y -q install screen
+    command -v screen || \
+      dnf -y -q install screen
   fi
   df / > "/run/disk-usage.log"
   touch "/run/keep-running-df"

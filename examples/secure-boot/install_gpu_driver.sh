@@ -16,6 +16,18 @@
 
 set -euxo pipefail
 
+# if customer needs proxy:
+
+function set_proxy(){
+  export METADATA_HTTP_PROXY=""
+  export http_proxy="${METADATA_HTTP_PROXY}"
+  export https_proxy="${METADATA_HTTP_PROXY}"
+  export HTTP_PROXY="${METADATA_HTTP_PROXY}"
+  export HTTPS_PROXY="${METADATA_HTTP_PROXY}"
+  export no_proxy=metadata.google.internal
+  export NO_PROXY=metadata.google.internal
+}
+
 function os_id()       ( set +x ;  grep '^ID=' /etc/os-release | cut -d= -f2 | xargs ; )
 function os_version()  ( set +x ;  grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | xargs ; )
 function os_codename() ( set +x ;  grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | xargs ; )
@@ -745,6 +757,11 @@ function install_cuda_toolkit() {
   fi
 }
 
+function remove_drivers_aliases() {
+ local conffile="/etc/modprobe.d/nvidia-aliases.conf"
+ rm "${conffile}"
+}
+
 function install_drivers_aliases() {
   if is_rocky ; then return ; fi
   if ! (is_debian12 || is_debian11) ; then return ; fi
@@ -768,9 +785,14 @@ function load_kernel_module() {
     rmmod ${module} > /dev/null 2>&1 || echo "unable to rmmod ${module}"
   done
 
-  install_drivers_aliases
+#  install_drivers_aliases
   depmod -a
   modprobe nvidia
+  for suffix in uvm modeset drm; do
+    modprobe "nvidia-${suffix}"
+  done
+  # TODO: if peermem is available, also modprobe nvidia-peermem
+#  remove_drivers_aliases
 }
 
 # Install NVIDIA GPU driver provided by NVIDIA
@@ -789,14 +811,11 @@ function install_nvidia_gpu_driver() {
           libglvnd0 \
           libcuda1
     #clear_dkms_key
-    load_kernel_module
   elif is_ubuntu18 || is_debian10 || (is_debian12 && is_cuda11) ; then
 
     install_nvidia_userspace_runfile
 
     build_driver_from_github
-
-    load_kernel_module
 
     install_cuda_runfile
   elif is_debuntu ; then
@@ -804,18 +823,13 @@ function install_nvidia_gpu_driver() {
 
     build_driver_from_packages
 
-    load_kernel_module
-
     install_cuda_toolkit
   elif is_rocky ; then
     add_repo_cuda
 
     build_driver_from_packages
 
-    load_kernel_module
-
     install_cuda_toolkit
-
   else
     echo "Unsupported OS: '${OS_NAME}'"
     exit 1
@@ -1059,7 +1073,8 @@ function main() {
     local kernel_devel_pkg_out="$(eval "${dnf_cmd} 2>&1")"
     if [[ "${kernel_devel_pkg_out}" =~ 'Unable to find a match: kernel-devel-' ]] ; then
       # this kernel-devel may have been migrated to the vault
-      local vault="https://download.rockylinux.org/vault/rocky/$(os_version)"
+      local os_ver="$(echo $uname_r | perl -pe 's/.*el(\d+_\d+)\..*/$1/; s/_/./')"
+      local vault="https://download.rockylinux.org/vault/rocky/${os_ver}"
       execute_with_retries dnf -y -q --setopt=localpkg_gpgcheck=1 install \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-${uname_r}.rpm" \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-core-${uname_r}.rpm" \
@@ -1099,6 +1114,8 @@ function main() {
     if [[ $IS_MIG_ENABLED -eq 0 ]]; then
       install_nvidia_gpu_driver
 
+      load_kernel_module
+
       if [[ -n ${CUDNN_VERSION} ]]; then
         install_nvidia_nccl
         install_nvidia_cudnn
@@ -1116,7 +1133,7 @@ function main() {
         rmmod ${module} > /dev/null 2>&1 || echo "unable to rmmod ${module}"
       done
 
-      MIG_GPU_LIST="$(nvsmi -L | grep -e MIG -e H100 -e A100 || echo -n "")"
+      MIG_GPU_LIST="$(nvsmi -L | grep -e MIG -e P100 -e H100 -e A100 || echo -n "")"
       if test -n "$(nvsmi -L)" ; then
 	# cache the result of the gpu query
         ADDRS=$(nvsmi --query-gpu=index --format=csv,noheader | perl -e 'print(join(q{,},map{chomp; qq{"$_"}}<STDIN>))')
@@ -1258,20 +1275,11 @@ function exit_handler() {
   # Purge private key material until next grant
   clear_dkms_key
 
-  # Free conda cache
-  /opt/conda/miniconda3/bin/conda clean -a > /dev/null 2>&1
-
   # Clear pip cache
   pip cache purge || echo "unable to purge pip cache"
 
   # If system memory was sufficient to mount memory-backed filesystems
   if [[ "${tmpdir}" == "/mnt/shm" ]] ; then
-    # Stop hadoop services
-    systemctl list-units | perl -n -e 'qx(systemctl stop $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
-
-    # remove the tmpfs conda pkgs_dirs
-    /opt/conda/miniconda3/bin/conda config --remove pkgs_dirs /mnt/shm || echo "unable to remove pkgs_dirs conda config"
-
     # remove the tmpfs pip cache-dir
     pip config unset global.cache-dir || echo "unable to unset global pip cache"
 
@@ -1285,13 +1293,15 @@ function exit_handler() {
       fi
     done
 
-    systemctl list-units | perl -n -e 'qx(systemctl start $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
+    # restart services stopped during preparation stage
+    # systemctl list-units | perl -n -e 'qx(systemctl start $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
   fi
 
-  # Clean up OS package cache ; re-hold systemd package
   if is_debuntu ; then
+    # Clean up OS package cache
     apt-get -y -qq clean
     apt-get -y -qq autoremove
+    # re-hold systemd package
     if is_debian12 ; then
     apt-mark hold systemd libsystemd0 ; fi
   else
@@ -1305,13 +1315,13 @@ function exit_handler() {
       /usr/lib \
       /opt/nvidia/* \
       /usr/local/cuda-1?.? \
-      /opt/conda/miniconda3
+      /opt/conda/miniconda3 | sort -h
   elif is_debian ; then
     du -hs \
       /usr/lib/{pig,hive,hadoop,jvm,spark,google-cloud-sdk,x86_64-linux-gnu} \
       /usr/lib \
       /usr/local/cuda-1?.? \
-      /opt/conda/miniconda3
+      /opt/conda/miniconda3 | sort -h
   else
     du -hs \
       /var/lib/docker \
@@ -1361,22 +1371,23 @@ function prepare_to_install(){
   tmpdir=/tmp/
   local free_mem
   trap exit_handler EXIT
-  export CONDA=/opt/conda/miniconda3/bin/conda
   free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
   # Write to a ramdisk instead of churning the persistent disk
   if [[ ${free_mem} -ge 10500000 ]]; then
-    # Services might use /tmp for temporary files
-    echo "debug: this may break things!"
-    systemctl list-units | perl -n -e 'qx(systemctl stop $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
+
+    # Services might use /tmp for temporary files - if we see errors,
+    # consider uncommenting the following command to stop them during
+    # install
+
+    # systemctl list-units | perl -n -e 'qx(systemctl stop $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
     sudo mount -t tmpfs tmpfs /tmp
-    systemctl list-units | perl -n -e 'qx(systemctl start $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
 
     tmpdir="/mnt/shm"
     mkdir -p "${tmpdir}"
     mount -t tmpfs tmpfs "${tmpdir}"
 
-    # Download conda packages to tmpfs
-    /opt/conda/miniconda3/bin/conda config --add pkgs_dirs "${tmpdir}"
+    # Clear pip cache
+    pip cache purge || echo "unable to purge pip cache"
 
     # Download pip packages to tmpfs
     pip config set global.cache-dir "${tmpdir}" || echo "unable to set global.cache-dir"
@@ -1404,12 +1415,9 @@ function prepare_to_install(){
     dnf clean all
   fi
 
-  # Clean conda cache
-  /opt/conda/miniconda3/bin/conda clean -a
-
   # zero free disk space
   if [[ -n "$(get_metadata_attribute creating-image)" ]]; then ( set +e
-    time dd if=/dev/zero of=/zero status=progress ; sync ; sleep 3s ; rm -f /zero
+    time dd if=/dev/zero of=/zero status=none ; sync ; sleep 3s ; rm -f /zero
   ) fi
 
   configure_dkms_certs

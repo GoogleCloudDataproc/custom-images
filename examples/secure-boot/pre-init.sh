@@ -27,6 +27,8 @@ export BUCKET="$(jq        -r .BUCKET               env.json)"
 export ZONE="$(jq          -r .ZONE                 env.json)"
 export SUBNET="$(jq        -r .SUBNET               env.json)"
 
+export region="$(echo "${ZONE}" | perl -pe 's/-[a-z]+$//')"
+
 custom_image_zone="${ZONE}"
 disk_size_gb="30" # greater than or equal to 30
 
@@ -42,6 +44,8 @@ metadata="dask-runtime=standalone"
 metadata="${metadata},rapids-runtime=DASK"
 metadata="${metadata},cuda-version=12.4"
 metadata="${metadata},creating-image=c9h"
+metadata="${metadata},rapids-mirror-disk=rapids-mirror-${region}"
+metadata="${metadata},rapids-mirror-host=10.42.79.42"
 
 # If no OS family specified, default to debian
 if [[ "${IMAGE_VERSION}" != *-* ]] ; then
@@ -81,7 +85,7 @@ function generate() {
   fi
   set -xe
   python generate_custom_image.py \
-    --machine-type         "n1-standard-8" \
+    --machine-type         "n1-standard-16" \
     --accelerator          "type=nvidia-tesla-t4" \
     --image-name           "${image_name}" \
     --customization-script "${customization_script}" \
@@ -125,11 +129,11 @@ time generate_from_dataproc_version "${dataproc_version}"
 case "${dataproc_version}" in
   "2.0-debian10" ) disk_size_gb="41" ;; # 40.12G 37.51G   0.86G  98% / # rapids-pre-init-2-0-debian10
   "2.0-rocky8"   ) disk_size_gb="39" ;; # 38.79G 38.04G   0.76G  99% / # rapids-pre-init-2-0-rocky8
-  "2.0-ubuntu18" ) disk_size_gb="39" ;; # 37.62G 36.69G   0.91G  98% / # rapids-pre-init-2-0-ubuntu18
-  "2.1-debian11" ) disk_size_gb="43" ;; # 42.09G 39.77G   0.49G  99% / # rapids-pre-init-2-1-debian11
+  "2.0-ubuntu18" ) disk_size_gb="40" ;; # 37.62G 36.69G   0.91G  98% / # rapids-pre-init-2-0-ubuntu18
+  "2.1-debian11" ) disk_size_gb="44" ;; # 42.09G 39.77G   0.49G  99% / # rapids-pre-init-2-1-debian11
   "2.1-rocky8"   ) disk_size_gb="44" ;; # 43.79G 41.11G   2.68G  94% / # rapids-pre-init-2-1-rocky8
   "2.1-ubuntu20" ) disk_size_gb="41" ;; # 39.55G 39.39G   0.15G 100% / # rapids-pre-init-2-1-ubuntu20
-  "2.2-debian12" ) disk_size_gb="45" ;; # 44.06G 41.73G   0.41G 100% / # rapids-pre-init-2-2-debian12
+  "2.2-debian12" ) disk_size_gb="46" ;; # 44.06G 41.73G   0.41G 100% / # rapids-pre-init-2-2-debian12
   "2.2-rocky9"   ) disk_size_gb="45" ;; # 44.79G 42.29G   2.51G  95% / # rapids-pre-init-2-2-rocky9
   "2.2-ubuntu22" ) disk_size_gb="44" ;; # 42.46G 41.97G   0.48G  99% / # rapids-pre-init-2-2-ubuntu22
 esac
