@@ -16,18 +16,6 @@
 
 set -euxo pipefail
 
-# if customer needs proxy:
-
-function set_proxy(){
-  export METADATA_HTTP_PROXY=""
-  export http_proxy="${METADATA_HTTP_PROXY}"
-  export https_proxy="${METADATA_HTTP_PROXY}"
-  export HTTP_PROXY="${METADATA_HTTP_PROXY}"
-  export HTTPS_PROXY="${METADATA_HTTP_PROXY}"
-  export no_proxy=metadata.google.internal
-  export NO_PROXY=metadata.google.internal
-}
-
 function os_id()       ( set +x ;  grep '^ID=' /etc/os-release | cut -d= -f2 | xargs ; )
 function os_version()  ( set +x ;  grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | xargs ; )
 function os_codename() ( set +x ;  grep '^VERSION_CODENAME=' /etc/os-release | cut -d= -f2 | xargs ; )
@@ -245,8 +233,8 @@ if ( compare_versions_lte "8.3.1.22" "${CUDNN_VERSION}" ); then
   fi
   CUDNN_TARBALL_URL="${NVIDIA_BASE_DL_URL}/redist/cudnn/v${CUDNN_VERSION%.*}/local_installers/${CUDA_VERSION}/${CUDNN_TARBALL}"
 fi
-if is_cuda12 ; then
-  # When cuda version is 12
+if ( compare_versions_lte "12.0" "${CUDA_VERSION}" ); then
+  # When cuda version is greater than 12.0
   CUDNN_TARBALL="cudnn-linux-x86_64-${CUDNN_VERSION}_cuda12-archive.tar.xz"
   CUDNN_TARBALL_URL="${NVIDIA_BASE_DL_URL}/cudnn/redist/cudnn/linux-x86_64/${CUDNN_TARBALL}"
 fi
@@ -757,42 +745,18 @@ function install_cuda_toolkit() {
   fi
 }
 
-function remove_drivers_aliases() {
- local conffile="/etc/modprobe.d/nvidia-aliases.conf"
- rm "${conffile}"
-}
-
-function install_drivers_aliases() {
-  if is_rocky ; then return ; fi
-  if ! (is_debian12 || is_debian11) ; then return ; fi
-  if (is_debian12 && is_cuda11) && is_src_nvidia ; then return ; fi # don't install on debian 12 / cuda11 with drivers from nvidia
-  # Add a modprobe alias to prefer the open kernel modules
-  local conffile="/etc/modprobe.d/nvidia-aliases.conf"
-  echo -n "" > "${conffile}"
-  local prefix
-  if   is_src_os     ; then prefix="nvidia-current-open"
-  elif is_src_nvidia ; then prefix="nvidia-current" ; fi
-  local suffix
-  for suffix in uvm peermem modeset drm; do
-    echo "alias nvidia-${suffix} ${prefix}-${suffix}" >> "${conffile}"
-  done
-  echo "alias nvidia ${prefix}" >> "${conffile}"
-}
-
 function load_kernel_module() {
   # for some use cases, the kernel module needs to be removed before first use of nvidia-smi
   for module in nvidia_uvm nvidia_drm nvidia_modeset nvidia ; do
     rmmod ${module} > /dev/null 2>&1 || echo "unable to rmmod ${module}"
   done
 
-#  install_drivers_aliases
   depmod -a
   modprobe nvidia
   for suffix in uvm modeset drm; do
     modprobe "nvidia-${suffix}"
   done
   # TODO: if peermem is available, also modprobe nvidia-peermem
-#  remove_drivers_aliases
 }
 
 # Install NVIDIA GPU driver provided by NVIDIA
@@ -1062,12 +1026,10 @@ function main() {
 
   if is_debuntu ; then
     export DEBIAN_FRONTEND=noninteractive
-    execute_with_retries apt-get install -y -qq pciutils "linux-headers-${uname_r}" > /dev/null 2>&1
+    execute_with_retries apt-get install -y -qq pciutils "linux-headers-${uname_r}"
   elif is_rocky ; then
-    execute_with_retries dnf -y -q update --exclude=systemd*,kernel* \
-    > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
-    execute_with_retries dnf -y -q install pciutils gcc \
-    > "${install_log}" 2>&1 || { cat "${install_log}" && exit -4 ; }
+    execute_with_retries dnf -y -q update --exclude=systemd*,kernel*
+    execute_with_retries dnf -y -q install pciutils gcc
 
     local dnf_cmd="dnf -y -q install kernel-devel-${uname_r}"
     local kernel_devel_pkg_out="$(eval "${dnf_cmd} 2>&1")"
@@ -1080,8 +1042,7 @@ function main() {
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-core-${uname_r}.rpm" \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-modules-${uname_r}.rpm" \
         "${vault}/BaseOS/x86_64/os/Packages/k/kernel-modules-core-${uname_r}.rpm" \
-        "${vault}/AppStream/x86_64/os/Packages/k/kernel-devel-${uname_r}.rpm" \
-	> "${install_log}" 2>&1 || { cat "${install_log}" ; exit -4 ; }
+        "${vault}/AppStream/x86_64/os/Packages/k/kernel-devel-${uname_r}.rpm"
       sync
     else
       execute_with_retries "${dnf_cmd}"
@@ -1365,6 +1326,16 @@ print( "    samples-taken: ", scalar @siz, $/,
   return 0
 }
 
+function set_proxy(){
+  export METADATA_HTTP_PROXY="$(get_metadata_attribute http-proxy)"
+  export http_proxy="${METADATA_HTTP_PROXY}"
+  export https_proxy="${METADATA_HTTP_PROXY}"
+  export HTTP_PROXY="${METADATA_HTTP_PROXY}"
+  export HTTPS_PROXY="${METADATA_HTTP_PROXY}"
+  export no_proxy=metadata.google.internal,169.254.169.254
+  export NO_PROXY=metadata.google.internal,169.254.169.254
+}
+
 function prepare_to_install(){
   nvsmi_works="0"
   readonly bdcfg="/usr/local/bin/bdconfig"
@@ -1402,6 +1373,8 @@ function prepare_to_install(){
     tmpdir=/tmp
   fi
   install_log="${tmpdir}/install.log"
+
+  set_proxy
 
   if is_debuntu ; then
     clean_up_sources_lists
