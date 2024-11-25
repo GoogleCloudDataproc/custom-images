@@ -129,7 +129,7 @@ readonly ROLE
 # https://docs.nvidia.com/deeplearning/frameworks/support-matrix/index.html
 # https://developer.nvidia.com/cuda-downloads
 readonly -A DRIVER_FOR_CUDA=(
-          [11.8]="560.35.03" [12.4]="560.35.06"  [12.6]="560.35.06"
+          [11.8]="560.35.03" [12.4]="560.35.03"  [12.6]="560.35.03"
 )
 # https://developer.nvidia.com/cudnn-downloads
 readonly -A CUDNN_FOR_CUDA=(
