@@ -199,7 +199,7 @@ readonly USERSPACE_URL=$(get_metadata_attribute 'gpu-driver-url' "${DEFAULT_USER
 
 # Short name for urls
 if is_ubuntu22  ; then
-    # at the time of writing 20240721 there is no ubuntu2204 in the index of repos at
+    # at the time of writing 20241125 there is no ubuntu2204 in the index of repos at
     # https://developer.download.nvidia.com/compute/machine-learning/repos/
     # use packages from previous release until such time as nvidia
     # release ubuntu2204 builds
@@ -231,7 +231,11 @@ readonly NCCL_REPO_URL
 readonly NCCL_REPO_KEY="${NVIDIA_BASE_DL_URL}/machine-learning/repos/${nccl_shortname}/x86_64/7fa2af80.pub" # 3bf863cc.pub
 
 if ge_cuda12 ; then
-  readonly DEFAULT_NVIDIA_CUDA_URL="${NVIDIA_BASE_DL_URL}/cuda/${CUDA_FULL_VERSION}/local_installers/cuda_${CUDA_FULL_VERSION}_${DRIVER_VERSION}_linux.run"
+  if (le_debian11 || le_ubuntu18)
+  then CUDA_DRIVER_VERSION="525.60.13"         ; CUDA_URL_VERSION="12.0.0"
+  else CUDA_DRIVER_VERSION="${DRIVER_VERSION}" ; CUDA_URL_VERSION="${CUDA_FULL_VERSION}" ; fi
+
+  readonly DEFAULT_NVIDIA_CUDA_URL="${NVIDIA_BASE_DL_URL}/cuda/${CUDA_URL_VERSION}/local_installers/cuda_${CUDA_URL_VERSION}_${CUDA_DRIVER_VERSION}_linux.run"
 else
   readonly DEFAULT_NVIDIA_CUDA_URL="https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run"
 fi
