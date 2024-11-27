@@ -103,11 +103,11 @@ configure_service_account
 session_name="build-current-images"
 
 readonly timestamp="$(date +%F-%H-%M)"
-#readonly timestamp="2024-11-05-22-55"
+#readonly timestamp="2024-11-27-06-47"
 export timestamp
 
 export tmpdir=/tmp/${timestamp};
-mkdir ${tmpdir}
+mkdir -p ${tmpdir}
 export ZONE="$(jq -r .ZONE env.json)"
 gcloud compute instances list --zones "${ZONE}" --format json > ${tmpdir}/instances.json
 gcloud compute images    list                   --format json > ${tmpdir}/images.json
@@ -115,17 +115,13 @@ gcloud compute images    list                   --format json > ${tmpdir}/images
 # Run generation scripts simultaneously for each dataproc image version
 screen -L -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
 
-# tail -n 3 /tmp/custom-image-*/logs/workflow.log
-# tail -n 3 /tmp/custom-image-*/logs/startup-script.log
-# tail -n 3 /tmp/custom-image-${PURPOSE}-2-*/logs/workflow.log
 function find_disk_usage() {
-  for workflow_log in $(grep -l "Customization script" /tmp/custom-image-*/logs/workflow.log) ;  do
+  grep 'Customization script' /tmp/custom-image-*/logs/workflow.log
+#  grep maximum-disk-used /tmp/custom-image-*/logs/startup-script.log
+  for workflow_log in $(grep -l "Customization script" /tmp/custom-image-*/logs/workflow.log) ; do
     startup_log=$(echo "${workflow_log}" | sed -e 's/workflow.log/startup-script.log/')
     grep -A5 'Filesystem.*1K-blocks' "${startup_log}" | perl examples/secure-boot/genline.pl "${workflow_log}"
   done
 }
-
-# sleep 8m ; grep 'Customization script' /tmp/custom-image-*/logs/workflow.log
-# grep maximum-disk-used /tmp/custom-image-*/logs/startup-script.log
 
 revoke_bindings

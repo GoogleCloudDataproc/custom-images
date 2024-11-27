@@ -143,7 +143,7 @@ esac
 # Install dask with rapids on base image
 PURPOSE="rapids-pre-init"
 customization_script="examples/secure-boot/rapids.sh"
-time generate_from_base_purpose "cuda-pre-init"
+#time generate_from_base_purpose "cuda-pre-init"
 
 ## Install dask without rapids on base image
 #PURPOSE="dask-pre-init"
