@@ -187,12 +187,14 @@ function is_cuda11() ( set +x ; [[ "${CUDA_VERSION%%.*}" == "11" ]] ; )
 function le_cuda11() ( set +x ; version_le "${CUDA_VERSION%%.*}" "11" ; )
 function ge_cuda11() ( set +x ; version_ge "${CUDA_VERSION%%.*}" "11" ; )
 
-readonly DEFAULT_DRIVER="${DRIVER_FOR_CUDA[${CUDA_VERSION}]}"
+DEFAULT_DRIVER="${DRIVER_FOR_CUDA[${CUDA_VERSION}]}"
+if ( ge_ubuntu22 && version_le "${CUDA_VERSION}" "12.0" ) ; then
+                                         DEFAULT_DRIVER="560.28.03"  ; fi
+if ( is_debian11 || is_ubuntu20 ) ; then DEFAULT_DRIVER="560.28.03"  ; fi
+if ( is_rocky    && le_cuda11 )   ; then DEFAULT_DRIVER="525.147.05" ; fi
+if ( is_ubuntu20 && le_cuda11 )   ; then DEFAULT_DRIVER="535.183.06" ; fi
+if ( is_rocky9   && ge_cuda12 )   ; then DEFAULT_DRIVER="565.57.01"  ; fi
 DRIVER_VERSION=$(get_metadata_attribute 'gpu-driver-version' "${DEFAULT_DRIVER}")
-if ( is_debian11 || is_ubuntu20 ) ; then DRIVER_VERSION="560.28.03"  ; fi
-if ( is_ubuntu20 && le_cuda11 )   ; then DRIVER_VERSION="535.183.06" ; fi
-if ( is_rocky && le_cuda11 )      ; then DRIVER_VERSION="525.147.05" ; fi #553.22.1
-if ( ge_ubuntu22 && version_le "${CUDA_VERSION}" "12.0" ) ; then DRIVER_VERSION="560.28.03"  ; fi
 
 readonly DRIVER_VERSION
 readonly DRIVER=${DRIVER_VERSION%%.*}
@@ -992,7 +994,8 @@ function configure_gpu_script() {
   # need to update the getGpusResources.sh script to look for MIG devices since if multiple GPUs nvidia-smi still
   # lists those because we only disable the specific GIs via CGROUPs. Here we just create it based off of:
   # https://raw.githubusercontent.com/apache/spark/master/examples/src/main/scripts/getGpusResources.sh
-  cat > ${spark_gpu_script_dir}/getGpusResources.sh <<'EOF'
+  local -r gpus_resources_script="${spark_gpu_script_dir}/getGpusResources.sh"
+  cat > "${gpus_resources_script}" <<'EOF'
 #!/usr/bin/env bash
 
 #
@@ -1012,31 +1015,17 @@ function configure_gpu_script() {
 # limitations under the License.
 #
 
-CACHE_FILE="/var/run/nvidia-gpu-index.txt"
-if [[ -f "${CACHE_FILE}" ]]; then
-  cat "${CACHE_FILE}"
-  exit 0
-fi
-NV_SMI_L_CACHE_FILE="/var/run/nvidia-smi_-L.txt"
-if [[ -f "${NV_SMI_L_CACHE_FILE}" ]]; then
-  NVIDIA_SMI_L="$(cat "${NV_SMI_L_CACHE_FILE}")"
-else
-  NVIDIA_SMI_L="$(nvidia-smi -L | tee "${NV_SMI_L_CACHE_FILE}")"
-fi
+ADDRS=$(nvidia-smi --query-gpu=index --format=csv,noheader | perl -e 'print(join(q{,},map{chomp; qq{"$_"}}<STDIN>))')
 
-NUM_MIG_DEVICES=$(echo "${NVIDIA_SMI_L}" | grep -e MIG -e H100 -e A100 | wc -l || echo '0')
-
-if [[ "${NUM_MIG_DEVICES}" -gt "0" ]] ; then
-  MIG_INDEX=$(( $NUM_MIG_DEVICES - 1 ))
-  ADDRS="$(perl -e 'print(join(q{,},map{qq{"$_"}}(0..$ARGV[0])),$/)' "${MIG_INDEX}")"
-else
-  ADDRS=$(nvidia-smi --query-gpu=index --format=csv,noheader | perl -e 'print(join(q{,},map{chomp; qq{"$_"}}<STDIN>))')
-fi
-
-echo {\"name\": \"gpu\", \"addresses\":[$ADDRS]} | tee "${CACHE_FILE}"
+echo {\"name\": \"gpu\", \"addresses\":[${ADDRS}]}
 EOF
 
-  chmod a+rwx -R ${spark_gpu_script_dir}
+  chmod a+rx "${gpus_resources_script}"
+
+  local spark_defaults_conf="/etc/spark/conf.dist/spark-defaults.conf"
+  if ! grep spark.executor.resource.gpu.discoveryScript "${spark_defaults_conf}" ; then
+    echo "spark.executor.resource.gpu.discoveryScript=${gpus_resources_script}" >> "${spark_defaults_conf}"
+  fi
 }
 
 function configure_gpu_isolation() {
