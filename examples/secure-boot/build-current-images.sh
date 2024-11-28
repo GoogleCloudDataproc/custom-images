@@ -49,6 +49,15 @@ function configure_service_account() {
   gcloud secrets add-iam-policy-binding "${public_secret_name}" \
     --member="serviceAccount:${GSA}" \
     --role="roles/secretmanager.secretAccessor" > /dev/null 2>&1
+
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/compute.instanceAdmin.v1 > /dev/null 2>&1
+
+  gcloud iam service-accounts add-iam-policy-binding "${GSA}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/iam.serviceAccountUser > /dev/null 2>&1
+
 }
 
 function revoke_bindings() {
@@ -66,6 +75,15 @@ function revoke_bindings() {
   gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
     --role="roles/secretmanager.viewer" > /dev/null 2>&1
+
+  gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/compute.instanceAdmin.v1 > /dev/null 2>&1
+
+  gcloud iam service-accounts remove-iam-policy-binding "${GSA}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/iam.serviceAccountUser > /dev/null 2>&1
+
 }
 
 export PROJECT_ID="$(jq    -r .PROJECT_ID    env.json)"
@@ -85,49 +103,25 @@ configure_service_account
 session_name="build-current-images"
 
 readonly timestamp="$(date +%F-%H-%M)"
-#readonly timestamp="2024-10-24-04-21"
+#readonly timestamp="2024-11-27-06-47"
 export timestamp
 
 export tmpdir=/tmp/${timestamp};
-mkdir ${tmpdir}
+mkdir -p ${tmpdir}
 export ZONE="$(jq -r .ZONE env.json)"
 gcloud compute instances list --zones "${ZONE}" --format json > ${tmpdir}/instances.json
 gcloud compute images    list                   --format json > ${tmpdir}/images.json
 
 # Run generation scripts simultaneously for each dataproc image version
-screen -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
+screen -L -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
 
-# tail -n 3 /tmp/custom-image-*/logs/workflow.log
-# tail -n 3 /tmp/custom-image-*/logs/startup-script.log
-# tail -n 3 /tmp/custom-image-${PURPOSE}-2-*/logs/workflow.log
 function find_disk_usage() {
-  test -f /tmp/genline.pl || cat > /tmp/genline.pl<<'EOF'
-#!/usr/bin/perl -w
-use strict;
-
-my $fn = $ARGV[0];
-my( $config ) = ( $fn =~ /custom-image-(.*-(debian|rocky|ubuntu)\d+)-\d+/ );
-
-my @raw_lines = <STDIN>;
-my( $l ) = grep { m: /dev/.*/\s*$: } @raw_lines;
-my( $stats ) = ( $l =~ m:\s*/dev/\S+\s+(.*?)\s*$: );
-
-my( $dp_version ) = ($config =~ /-pre-init-(.+)/);
-$dp_version =~ s/-/./;
-
-my($max) = map { / maximum-disk-used: (\d+)/ } @raw_lines;
-$max+=3;
-my $i_dp_version = sprintf(q{%-15s}, qq{"$dp_version"});
-
-print( qq{  $i_dp_version) disk_size_gb="$max" ;; # $stats # $config}, $/ );
-EOF
-  for f in $(grep -l 'Customization script suc' /tmp/custom-image-*/logs/workflow.log|sed -e 's/workflow.log/startup-script.log/')
-  do
-    grep -A20 'Filesystem.*Avail' $f | perl /tmp/genline.pl $f
+  grep 'Customization script' /tmp/custom-image-*/logs/workflow.log
+#  grep maximum-disk-used /tmp/custom-image-*/logs/startup-script.log
+  for workflow_log in $(grep -l "Customization script" /tmp/custom-image-*/logs/workflow.log) ; do
+    startup_log=$(echo "${workflow_log}" | sed -e 's/workflow.log/startup-script.log/')
+    grep -A5 'Filesystem.*1K-blocks' "${startup_log}" | perl examples/secure-boot/genline.pl "${workflow_log}"
   done
 }
-
-# sleep 8m ; grep 'Customization script' /tmp/custom-image-*/logs/workflow.log
-# grep maximum-disk-used /tmp/custom-image-*/logs/startup-script.log
 
 revoke_bindings

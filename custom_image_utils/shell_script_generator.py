@@ -35,7 +35,10 @@ function execute_with_retries() (
   local -r cmd="$*"
 
   for ((i = 0; i < 3; i++)); do
-    if eval "$cmd"; then return 0 ; fi
+    set -x
+    time eval "$cmd" > "/tmp/{run_id}/install.log" 2>&1 && retval=$? || {{ retval=$? ; cat "/tmp/{run_id}/install.log" ; }}
+    set +x
+    if [[ $retval == 0 ]] ; then return 0 ; fi
     sleep 5
   done
   return 1
@@ -44,23 +47,24 @@ function execute_with_retries() (
 function exit_handler() {{
   echo 'Cleaning up before exiting.'
 
-  if [[ -f /tmp/{run_id}/vm_created ]]; then
+  if [[ -f /tmp/{run_id}/vm_created ]]; then ( set +e
     echo 'Deleting VM instance.'
-    execute_with_retries gcloud compute instances delete {image_name}-install \
-        --project={project_id} --zone={zone} -q
-  elif [[ -f /tmp/{run_id}/disk_created ]]; then
+    execute_with_retries \
+      gcloud compute instances delete {image_name}-install --project={project_id} --zone={zone} -q
+  ) elif [[ -f /tmp/{run_id}/disk_created ]]; then
     echo 'Deleting disk.'
-    execute_with_retries gcloud compute ${{base_obj_type}} delete {image_name}-install --project={project_id} --zone={zone} -q
+    execute_with_retries \
+      gcloud compute ${{base_obj_type}} delete {image_name}-install --project={project_id} --zone={zone} -q
   fi
 
   echo 'Uploading local logs to GCS bucket.'
   gsutil -m rsync -r {log_dir}/ {gcs_log_dir}/
 
   if [[ -f /tmp/{run_id}/image_created ]]; then
-    echo -e "${{GREEN}}Workflow succeeded, check logs at {log_dir}/ or {gcs_log_dir}/${{NC}}"
+    echo -e "${{GREEN}}Workflow succeeded${{NC}}, check logs at {log_dir}/ or {gcs_log_dir}/"
     exit 0
   else
-    echo -e "${{RED}}Workflow failed, check logs at {log_dir}/ or {gcs_log_dir}/${{NC}}"
+    echo -e "${{RED}}Workflow failed${{NC}}, check logs at {log_dir}/ or {gcs_log_dir}/"
     exit 1
   fi
 }}
@@ -111,11 +115,13 @@ function main() {{
 
   local cert_args=""
   local num_src_certs="0"
+  metadata_arg="{metadata_flag}"
   if [[ -n '{trusted_cert}' ]] && [[ -f '{trusted_cert}' ]]; then
     # build tls/ directory from variables defined near the header of
     # the examples/secure-boot/create-key-pair.sh file
 
     eval "$(bash examples/secure-boot/create-key-pair.sh)"
+    metadata_arg="${{metadata_arg}},public_secret_name=${{public_secret_name}},private_secret_name=${{private_secret_name}},secret_project=${{secret_project}},secret_version=${{secret_version}}"
 
     # by default, a gcloud secret with the name of efi-db-pub-key-042 is
     # created in the current project to store the certificate installed
@@ -132,16 +138,20 @@ function main() {{
 
     local -a cert_list=()
 
-    local -a default_cert_list=("{trusted_cert}" "${{MS_UEFI_CA}}")
+    local -a default_cert_list
+    default_cert_list=("{trusted_cert}" "${{MS_UEFI_CA}}")
     local -a src_img_modulus_md5sums=()
 
     mapfile -t src_img_modulus_md5sums < <(print_img_dbs_modulus_md5sums {dataproc_base_image})
     num_src_certs="${{#src_img_modulus_md5sums[@]}}"
-    echo "${{num_src_certs}} db certificates attached to source image"
-    if [[ "${{num_src_certs}}" -eq "0" ]]; then
+    echo "debug - num_src_certs: [${{#src_img_modulus_md5sums[*]}}]"
+    echo "value of src_img_modulus_md5sums: [${{src_img_modulus_md5sums}}]"
+    if [[ -z "${{src_img_modulus_md5sums}}" ]]; then
+      num_src_certs=0
       echo "no db certificates in source image"
-      cert_list=default_cert_list
+      cert_list=( "${{default_cert_list[@]}}" )
     else
+      echo "${{num_src_certs}} db certificates attached to source image"
       echo "db certs exist in source image"
       for cert in ${{default_cert_list[*]}}; do
         if test_element_in_array "$(print_modulus_md5sum ${{cert}})" ${{src_img_modulus_md5sums[@]}} ; then
@@ -175,7 +185,8 @@ function main() {{
     echo 'Creating image.'
     base_obj_type="images"
     instance_disk_args='--image-project={project_id} --image={image_name}-install --boot-disk-size={disk_size}G --boot-disk-type=pd-ssd'
-    time execute_with_retries gcloud compute images create {image_name}-install \
+    execute_with_retries \
+      gcloud compute images create {image_name}-install \
       --project={project_id} \
       --source-image={dataproc_base_image} \
       ${{cert_args}} \
@@ -186,7 +197,7 @@ function main() {{
     echo 'Creating disk.'
     base_obj_type="disks"
     instance_disk_args='--disk=auto-delete=yes,boot=yes,mode=rw,name={image_name}-install'
-    time execute_with_retries gcloud compute disks create {image_name}-install \
+    execute_with_retries gcloud compute disks create {image_name}-install \
       --project={project_id} \
       --zone={zone} \
       --image={dataproc_base_image} \
@@ -197,8 +208,7 @@ function main() {{
 
   date
   echo 'Creating VM instance to run customization script.'
-  ( set -x
-  time execute_with_retries gcloud compute instances create {image_name}-install \
+  execute_with_retries gcloud compute instances create {image_name}-install \
       --project={project_id} \
       --zone={zone} \
       {network_flag} \
@@ -209,15 +219,16 @@ function main() {{
       {accelerator_flag} \
       {service_account_flag} \
       --scopes=cloud-platform \
-      {metadata_flag} \
-      --metadata-from-file startup-script=startup_script/run.sh )
+      "${{metadata_arg}}" \
+      --metadata-from-file startup-script=startup_script/run.sh
 
   touch /tmp/{run_id}/vm_created
 
   # clean up intermediate install image
-  if [[ "${{base_obj_type}}" == "images" ]] ; then
-    execute_with_retries gcloud compute images delete -q {image_name}-install --project={project_id}
-  fi
+  if [[ "${{base_obj_type}}" == "images" ]] ; then ( set +e
+    # This sometimes returns an API error but deletes the image despite the failure
+    gcloud compute images delete -q {image_name}-install --project={project_id}
+  ) fi
 
   echo 'Waiting for customization script to finish and VM shutdown.'
   execute_with_retries gcloud compute instances tail-serial-port-output {image_name}-install \
@@ -226,7 +237,7 @@ function main() {{
       --port=1 2>&1 \
       | grep 'startup-script' \
       | sed -e 's/ {image_name}-install.*startup-script://g' \
-      | dd bs=1 of={log_dir}/startup-script.log \
+      | dd status=none bs=1 of={log_dir}/startup-script.log \
       || true
   echo 'Checking customization script result.'
   date
@@ -243,13 +254,12 @@ function main() {{
 
   date
   echo 'Creating custom image.'
-  ( set -x
-  time execute_with_retries gcloud compute images create {image_name} \
+  execute_with_retries gcloud compute images create {image_name} \
     --project={project_id} \
     --source-disk-zone={zone} \
     --source-disk={image_name}-install \
     {storage_location_flag} \
-    --family={family} )
+    --family={family}
 
   touch /tmp/{run_id}/image_created
 }}

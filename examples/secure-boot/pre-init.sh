@@ -25,6 +25,9 @@ export PROJECT_ID="$(jq    -r .PROJECT_ID           env.json)"
 export PURPOSE="$(jq       -r .PURPOSE              env.json)"
 export BUCKET="$(jq        -r .BUCKET               env.json)"
 export ZONE="$(jq          -r .ZONE                 env.json)"
+export SUBNET="$(jq        -r .SUBNET               env.json)"
+
+export region="$(echo "${ZONE}" | perl -pe 's/-[a-z]+$//')"
 
 custom_image_zone="${ZONE}"
 disk_size_gb="30" # greater than or equal to 30
@@ -37,13 +40,12 @@ gcloud config set project ${PROJECT_ID}
 #gcloud auth login
 
 eval "$(bash examples/secure-boot/create-key-pair.sh)"
-metadata="public_secret_name=${public_secret_name}"
-metadata="${metadata},private_secret_name=${private_secret_name}"
-metadata="${metadata},secret_project=${secret_project}"
-metadata="${metadata},secret_version=${secret_version}"
-metadata="${metadata},dask-runtime=standalone"
+metadata="dask-runtime=standalone"
 metadata="${metadata},rapids-runtime=DASK"
 metadata="${metadata},cuda-version=12.4"
+metadata="${metadata},creating-image=c9h"
+metadata="${metadata},rapids-mirror-disk=rapids-mirror-${region}"
+metadata="${metadata},rapids-mirror-host=10.42.79.42"
 
 # If no OS family specified, default to debian
 if [[ "${IMAGE_VERSION}" != *-* ]] ; then
@@ -67,6 +69,12 @@ function generate() {
     return
   fi
 
+  local install_image="$(jq -r ".[] | select(.name == \"${image_name}-install\").name" "${tmpdir}/images.json")"
+  if [[ -n "${install_image}" ]] ; then
+    echo "Install image already exists.  Cleaning up after aborted run."
+    gcloud -q compute images delete "${image_name}-install"
+  fi
+
   local instance="$(jq -r ".[] | select(.name == \"${image_name}-install\").name" "${tmpdir}/instances.json")"
 
   if [[ -n "${instance}" ]]; then
@@ -77,7 +85,7 @@ function generate() {
   fi
   set -xe
   python generate_custom_image.py \
-    --machine-type         "n1-standard-8" \
+    --machine-type         "n1-standard-16" \
     --accelerator          "type=nvidia-tesla-t4" \
     --image-name           "${image_name}" \
     --customization-script "${customization_script}" \
@@ -86,6 +94,7 @@ function generate() {
     --zone                 "${custom_image_zone}" \
     --disk-size            "${disk_size_gb}" \
     --gcs-bucket           "${BUCKET}" \
+    --subnet               "${SUBNET}" \
     --shutdown-instance-timer-sec=30 \
     --no-smoke-test \
     ${extra_args}
@@ -100,15 +109,15 @@ function generate_from_base_purpose() {
 
 # base image -> cuda
 case "${dataproc_version}" in
-  "2.0-debian10" ) disk_size_gb="38" ;; # 40G   31G  7.8G  80% / # cuda-pre-init-2-0-debian10
-  "2.0-rocky8"   ) disk_size_gb="35" ;; # 38G   32G  6.2G  84% / # cuda-pre-init-2-0-rocky8
-  "2.0-ubuntu18" ) disk_size_gb="37" ;; # 39G   30G  8.5G  79% / # cuda-pre-init-2-0-ubuntu18
-  "2.1-debian11" ) disk_size_gb="37" ;; # 39G   34G  4.1G  90% / # cuda-pre-init-2-1-debian11
-  "2.1-rocky8"   ) disk_size_gb="38" ;; # 41G   35G  6.1G  86% / # cuda-pre-init-2-1-rocky8
-  "2.1-ubuntu20" ) disk_size_gb="35" ;; # 37G   32G  4.4G  88% / # cuda-pre-init-2-1-ubuntu20
-  "2.2-debian12" ) disk_size_gb="38" ;; # 40G   35G  3.3G  92% / # cuda-pre-init-2-2-debian12
-  "2.2-rocky9"   ) disk_size_gb="40" ;; # 42G   36G  5.9G  86% / # cuda-pre-init-2-2-rocky9
-  "2.2-ubuntu22" ) disk_size_gb="38" ;; # 40G   35G  4.8G  88% / # cuda-pre-init-2-2-ubuntu22
+  "2.0-debian10" ) disk_size_gb="30" ;; # 29.30G 28.29G       0 100% / # cuda-pre-init-2-0-debian10
+  "2.0-rocky8"   ) disk_size_gb="30" ;; # 29.79G 28.94G   0.85G  98% / # cuda-pre-init-2-0-rocky8
+  "2.0-ubuntu18" ) disk_size_gb="30" ;; # 28.89G 27.64G   1.24G  96% / # cuda-pre-init-2-0-ubuntu18
+  "2.1-debian11" ) disk_size_gb="32" ;; # 31.26G 30.74G       0 100% / # cuda-pre-init-2-1-debian11
+  "2.1-rocky8"   ) disk_size_gb="34" ;; # 33.79G 32.00G   1.80G  95% / # cuda-pre-init-2-1-rocky8
+  "2.1-ubuntu20" ) disk_size_gb="32" ;; # 30.83G 30.35G   0.46G  99% / # cuda-pre-init-2-1-ubuntu20
+  "2.2-debian12" ) disk_size_gb="34" ;; # 33.23G 32.71G       0 100% / # cuda-pre-init-2-2-debian12
+  "2.2-rocky9"   ) disk_size_gb="35" ;; # 34.79G 33.16G   1.64G  96% / # cuda-pre-init-2-2-rocky9
+  "2.2-ubuntu22" ) disk_size_gb="35" ;; # 33.74G 32.94G   0.78G  98% / # cuda-pre-init-2-2-ubuntu22
 esac
 
 # Install GPU drivers + cuda on dataproc base image
@@ -118,15 +127,15 @@ time generate_from_dataproc_version "${dataproc_version}"
 
 # cuda image -> rapids
 case "${dataproc_version}" in
-  "2.0-debian10" ) disk_size_gb="44" ;; # 47G   41G  4.0G  91% / # rapids-pre-init-2-0-debian10
-  "2.0-rocky8"   ) disk_size_gb="45" ;; # 49G   42G  7.0G  86% / # rapids-pre-init-2-0-rocky8
-  "2.0-ubuntu18" ) disk_size_gb="43" ;; # 45G   40G  4.9G  90% / # rapids-pre-init-2-0-ubuntu18
-  "2.1-debian11" ) disk_size_gb="46" ;; # 49G   43G  3.6G  93% / # rapids-pre-init-2-1-debian11
-  "2.1-rocky8"   ) disk_size_gb="48" ;; # 52G   45G  7.2G  87% / # rapids-pre-init-2-1-rocky8
-  "2.1-ubuntu20" ) disk_size_gb="45" ;; # 47G   42G  5.2G  89% / # rapids-pre-init-2-1-ubuntu20
-  "2.2-debian12" ) disk_size_gb="48" ;; # 51G   45G  3.8G  93% / # rapids-pre-init-2-2-debian12
-  "2.2-rocky9"   ) disk_size_gb="49" ;; # 53G   46G  7.2G  87% / # rapids-pre-init-2-2-rocky9
-  "2.2-ubuntu22" ) disk_size_gb="48" ;; # 50G   45G  5.6G  89% / # rapids-pre-init-2-2-ubuntu22
+  "2.0-debian10" ) disk_size_gb="41" ;; # 40.12G 37.51G   0.86G  98% / # rapids-pre-init-2-0-debian10
+  "2.0-rocky8"   ) disk_size_gb="41" ;; # 38.79G 38.04G   0.76G  99% / # rapids-pre-init-2-0-rocky8
+  "2.0-ubuntu18" ) disk_size_gb="40" ;; # 37.62G 36.69G   0.91G  98% / # rapids-pre-init-2-0-ubuntu18
+  "2.1-debian11" ) disk_size_gb="44" ;; # 42.09G 39.77G   0.49G  99% / # rapids-pre-init-2-1-debian11
+  "2.1-rocky8"   ) disk_size_gb="44" ;; # 43.79G 41.11G   2.68G  94% / # rapids-pre-init-2-1-rocky8
+  "2.1-ubuntu20" ) disk_size_gb="45" ;; # 39.55G 39.39G   0.15G 100% / # rapids-pre-init-2-1-ubuntu20
+  "2.2-debian12" ) disk_size_gb="46" ;; # 44.06G 41.73G   0.41G 100% / # rapids-pre-init-2-2-debian12
+  "2.2-rocky9"   ) disk_size_gb="45" ;; # 44.79G 42.29G   2.51G  95% / # rapids-pre-init-2-2-rocky9
+  "2.2-ubuntu22" ) disk_size_gb="46" ;; # 42.46G 41.97G   0.48G  99% / # rapids-pre-init-2-2-ubuntu22
 esac
 
 #disk_size_gb="50"
@@ -134,9 +143,9 @@ esac
 # Install dask with rapids on base image
 PURPOSE="rapids-pre-init"
 customization_script="examples/secure-boot/rapids.sh"
-time generate_from_base_purpose "cuda-pre-init"
+#time generate_from_base_purpose "cuda-pre-init"
 
-# Install dask without rapids on base image
-PURPOSE="dask-pre-init"
-customization_script="examples/secure-boot/dask.sh"
-time generate_from_base_purpose "cuda-pre-init"
+## Install dask without rapids on base image
+#PURPOSE="dask-pre-init"
+#customization_script="examples/secure-boot/dask.sh"
+#time generate_from_base_purpose "cuda-pre-init"
