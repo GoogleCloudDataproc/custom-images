@@ -149,3 +149,21 @@ customization_script="examples/secure-boot/rapids.sh"
 #PURPOSE="dask-pre-init"
 #customization_script="examples/secure-boot/dask.sh"
 #time generate_from_base_purpose "cuda-pre-init"
+
+# cuda image -> pytorch
+case "${dataproc_version}" in
+  "2.0-debian10" ) disk_size_gb="44" ;; # 40.12G 37.51G   0.86G  98% / # rapids-pre-init-2-0-debian10
+  "2.0-rocky8"   ) disk_size_gb="41" ;; # 38.79G 38.04G   0.76G  99% / # rapids-pre-init-2-0-rocky8
+  "2.0-ubuntu18" ) disk_size_gb="44" ;; # 37.62G 36.69G   0.91G  98% / # rapids-pre-init-2-0-ubuntu18
+  "2.1-debian11" ) disk_size_gb="44" ;; # 42.09G 39.77G   0.49G  99% / # rapids-pre-init-2-1-debian11
+  "2.1-rocky8"   ) disk_size_gb="44" ;; # 43.79G 41.11G   2.68G  94% / # rapids-pre-init-2-1-rocky8
+  "2.1-ubuntu20" ) disk_size_gb="45" ;; # 39.55G 39.39G   0.15G 100% / # rapids-pre-init-2-1-ubuntu20
+  "2.2-debian12" ) disk_size_gb="48" ;; # 44.06G 41.73G   0.41G 100% / # rapids-pre-init-2-2-debian12
+  "2.2-rocky9"   ) disk_size_gb="45" ;; # 44.79G 42.29G   2.51G  95% / # rapids-pre-init-2-2-rocky9
+  "2.2-ubuntu22" ) disk_size_gb="46" ;; # 42.46G 41.97G   0.48G  99% / # rapids-pre-init-2-2-ubuntu22
+esac
+
+## Install pytorch on base image
+PURPOSE="pytorch-pre-init"
+customization_script="examples/secure-boot/pytorch.sh"
+time generate_from_base_purpose "cuda-pre-init"
