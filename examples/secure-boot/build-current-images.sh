@@ -102,8 +102,8 @@ configure_service_account
 # screen session name
 session_name="build-current-images"
 
-#readonly timestamp="$(date +%F-%H-%M)"
-readonly timestamp="2024-11-29-07-12"
+readonly timestamp="$(date +%F-%H-%M)"
+#readonly timestamp="2024-11-29-07-12"
 export timestamp
 
 export tmpdir=/tmp/${timestamp};
