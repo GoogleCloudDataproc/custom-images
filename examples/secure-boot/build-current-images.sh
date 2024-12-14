@@ -17,6 +17,22 @@
 
 set -ex
 
+function execute_with_retries() (
+  set +x
+  local -r cmd="$*"
+  local install_log="${tmpdir}/install.log"
+
+  for ((i = 0; i < 3; i++)); do
+    set -x
+    time eval "$cmd" > "${install_log}" 2>&1 && retval=$? || { retval=$? ; cat "${install_log}" ; }
+    set +x
+    if [[ $retval == 0 ]] ; then return 0 ; fi
+    sleep 5
+  done
+  return 1
+)
+
+
 function configure_service_account() {
   # Create service account
   if gcloud iam service-accounts list --filter email="${GSA}" 2>&1 | grep -q 'Listed 0 items.' ; then
@@ -30,65 +46,100 @@ function configure_service_account() {
   if [[ -d tls ]] ; then mv tls "tls-$(date +%s)" ; fi
   eval "$(bash examples/secure-boot/create-key-pair.sh)"
 
-  # Grant service account access to bucket
-  gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/storage.objectViewer" > /dev/null 2>&1
+    --role="roles/storage.objectUser"
+
+  # Grant service account access to buckets in this project
+  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/dataproc.worker
+
+  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/storage.objectCreator
+
+  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/storage.objectViewer
+
+  execute_with_retries gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+    --member="serviceAccount:${GSA}" \
+    --role="roles/storage.objectUser"
+  # gcloud storage buckets add-iam-policy-binding gs://cjac-dataproc-repro-1718310842 --member=serviceAccount:sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com --role=roles/storage.objectUser
+
+
+  # Grant service account access to temp bucket
+  execute_with_retries gcloud storage buckets add-iam-policy-binding "gs://${TEMP_BUCKET}" \
+    --member="serviceAccount:${GSA}" \
+    --role="roles/storage.objectUser"
+
+#  Dec  6 23:50:02 ERROR: (gcloud.storage.cp) [sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com] does not have permission to access b instance [dataproc-temp-us-west4-163375334009-cab4kfsl] (or it may not exist): sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com does not have storage.buckets.get access to the Google Cloud Storage bucket. Permission 'storage.buckets.get' denied on resource (or it may not exist). This command is authenticated as sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com which is the active account specified by the [core/account] property.
+# ERROR: (gcloud.storage.cp) [sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com] does not have permission to access b instance [dataproc-temp-us-west4-163375334009-cab4kfsl] (or it may not exist): sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com does not have storage.buckets.get access to the Google Cloud Storage bucket. Permission 'storage.buckets.get' denied on resource (or it may not exist). This command is authenticated as sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com which is the active account specified by the [core/account] property.
 
   # Grant the service account access to list secrets for the project
-  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.viewer" > /dev/null 2>&1
+    --role="roles/secretmanager.viewer"
 
   # Grant service account permission to access the private secret
-  gcloud secrets add-iam-policy-binding "${private_secret_name}" \
+  execute_with_retries gcloud secrets add-iam-policy-binding "${private_secret_name}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.secretAccessor" > /dev/null 2>&1
+    --role="roles/secretmanager.secretAccessor"
 
   # Grant service account permission to access the public secret
-  gcloud secrets add-iam-policy-binding "${public_secret_name}" \
+  execute_with_retries gcloud secrets add-iam-policy-binding "${public_secret_name}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.secretAccessor" > /dev/null 2>&1
+    --role="roles/secretmanager.secretAccessor"
 
-  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role=roles/compute.instanceAdmin.v1 > /dev/null 2>&1
+    --role=roles/compute.instanceAdmin.v1
 
-  gcloud iam service-accounts add-iam-policy-binding "${GSA}" \
+  execute_with_retries gcloud iam service-accounts add-iam-policy-binding "${GSA}" \
     --member="serviceAccount:${GSA}" \
-    --role=roles/iam.serviceAccountUser > /dev/null 2>&1
+    --role=roles/iam.serviceAccountUser
 
 }
 
 function revoke_bindings() {
   # Revoke permission to access the private secret
-  gcloud secrets remove-iam-policy-binding "${private_secret_name}" \
+  execute_with_retries gcloud secrets remove-iam-policy-binding "${private_secret_name}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.secretAccessor" > /dev/null 2>&1
-
-  # Revoke access to bucket
-  gcloud storage buckets remove-iam-policy-binding "gs://${BUCKET}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/storage.objectViewer" > /dev/null 2>&1
+    --role="roles/secretmanager.secretAccessor"
 
   # Revoke access to list secrets for the project
-  gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.viewer" > /dev/null 2>&1
+    --role="roles/secretmanager.viewer"
 
-  gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+  # Revoke service account access to buckets in this project
+  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role=roles/compute.instanceAdmin.v1 > /dev/null 2>&1
+    --role=roles/dataproc.worker
 
-  gcloud iam service-accounts remove-iam-policy-binding "${GSA}" \
+  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role=roles/iam.serviceAccountUser > /dev/null 2>&1
+    --role=roles/storage.objectCreator
+
+  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/storage.objectViewer
+
+  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/compute.instanceAdmin.v1
+
+  execute_with_retries gcloud iam service-accounts remove-iam-policy-binding "${GSA}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/iam.serviceAccountUser
 
 }
 
 export PROJECT_ID="$(jq    -r .PROJECT_ID    env.json)"
 export PURPOSE="$(jq       -r .PURPOSE       env.json)"
 export BUCKET="$(jq        -r .BUCKET        env.json)"
+export TEMP_BUCKET="$(jq   -r .TEMP_BUCKET   env.json)"
 
 SA_NAME="sa-${PURPOSE}"
 GSA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -116,9 +167,9 @@ gcloud compute images    list                   --format json > ${tmpdir}/images
 screen -L -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
 
 function find_disk_usage() {
-  grep 'Customization script' /tmp/custom-image-*/logs/workflow.log
-#  grep maximum-disk-used /tmp/custom-image-*/logs/startup-script.log
-  for workflow_log in $(grep -l "Customization script" /tmp/custom-image-*/logs/workflow.log) ; do
+  #  grep maximum-disk-used /tmp/custom-image-*/logs/startup-script.log
+  grep -H 'Customization script' /tmp/custom-image-*/logs/workflow.log
+  for workflow_log in $(grep -Hl "Customization script" /tmp/custom-image-*/logs/workflow.log) ; do
     startup_log=$(echo "${workflow_log}" | sed -e 's/workflow.log/startup-script.log/')
     grep -A5 'Filesystem.*1K-blocks' "${startup_log}" | perl examples/secure-boot/genline.pl "${workflow_log}"
   done

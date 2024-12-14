@@ -24,6 +24,7 @@ export IMAGE_VERSION="$(jq -r .IMAGE_VERSION        env.json)" ; fi
 export PROJECT_ID="$(jq    -r .PROJECT_ID           env.json)"
 export PURPOSE="$(jq       -r .PURPOSE              env.json)"
 export BUCKET="$(jq        -r .BUCKET               env.json)"
+export TEMP_BUCKET="$(jq   -r .TEMP_BUCKET          env.json)"
 export ZONE="$(jq          -r .ZONE                 env.json)"
 export SUBNET="$(jq        -r .SUBNET               env.json)"
 
@@ -39,14 +40,6 @@ gcloud config set project ${PROJECT_ID}
 
 #gcloud auth login
 
-eval "$(bash examples/secure-boot/create-key-pair.sh)"
-metadata="dask-runtime=standalone"
-metadata="${metadata},rapids-runtime=DASK"
-metadata="${metadata},cuda-version=12.4"
-metadata="${metadata},creating-image=c9h"
-metadata="${metadata},rapids-mirror-disk=rapids-mirror-${region}"
-metadata="${metadata},rapids-mirror-host=10.42.79.42"
-
 # If no OS family specified, default to debian
 if [[ "${IMAGE_VERSION}" != *-* ]] ; then
   case "${IMAGE_VERSION}" in
@@ -57,6 +50,29 @@ if [[ "${IMAGE_VERSION}" != *-* ]] ; then
 else
   dataproc_version="${IMAGE_VERSION}"
 fi
+
+CUDA_VERSION="12.6"
+# base image -> cuda
+case "${dataproc_version}" in
+  "2.0-debian10" ) CUDA_VERSION=12.5 ;;
+  "2.0-rocky8"   ) echo -n '' ;;
+  "2.0-ubuntu18" ) CUDA_VERSION=12.1 ;;
+  "2.1-debian11" ) echo -n '' ;;
+  "2.1-rocky8"   ) echo -n '' ;;
+  "2.1-ubuntu20" ) echo -n '' ;;
+  "2.2-debian12" ) echo -n '' ;;
+  "2.2-rocky9"   ) echo -n '' ;;
+  "2.2-ubuntu22" ) echo -n '' ;;
+esac
+
+eval "$(bash examples/secure-boot/create-key-pair.sh)"
+metadata="dask-runtime=standalone"
+metadata="${metadata},rapids-runtime=DASK"
+metadata="${metadata},cuda-version=${CUDA_VERSION}"
+metadata="${metadata},creating-image=c9h"
+metadata="${metadata},rapids-mirror-disk=rapids-mirror-${region}"
+metadata="${metadata},rapids-mirror-host=10.42.79.42"
+metadata="${metadata},dataproc-temp-bucket=${TEMP_BUCKET}"
 
 function generate() {
   local extra_args="$*"
@@ -84,9 +100,10 @@ function generate() {
       --zone "${custom_image_zone}"
   fi
   set -xe
+#    --machine-type         "n1-standard-16" \
   python generate_custom_image.py \
-    --machine-type         "n1-standard-16" \
-    --accelerator          "type=nvidia-tesla-t4" \
+    --machine-type         "n1-standard-32" \
+    --accelerator          "type=nvidia-tesla-t4,count=1" \
     --image-name           "${image_name}" \
     --customization-script "${customization_script}" \
     --service-account      "${GSA}" \
@@ -109,21 +126,26 @@ function generate_from_base_purpose() {
 
 # base image -> cuda
 case "${dataproc_version}" in
-  "2.0-debian10" ) disk_size_gb="30" ;; # 29.30G 28.29G       0 100% / # cuda-pre-init-2-0-debian10
-  "2.0-rocky8"   ) disk_size_gb="30" ;; # 29.79G 28.94G   0.85G  98% / # cuda-pre-init-2-0-rocky8
-  "2.0-ubuntu18" ) disk_size_gb="30" ;; # 28.89G 27.64G   1.24G  96% / # cuda-pre-init-2-0-ubuntu18
-  "2.1-debian11" ) disk_size_gb="32" ;; # 31.26G 30.74G       0 100% / # cuda-pre-init-2-1-debian11
-  "2.1-rocky8"   ) disk_size_gb="34" ;; # 33.79G 32.00G   1.80G  95% / # cuda-pre-init-2-1-rocky8
+  "2.0-debian10" ) disk_size_gb="32" ;; # 29.30G 28.29G       0 100% / # cuda-pre-init-2-0-debian10
+  "2.0-rocky8"   ) disk_size_gb="32" ;; # 29.79G 28.94G   0.85G  98% / # cuda-pre-init-2-0-rocky8
+  "2.0-ubuntu18" ) disk_size_gb="32" ;; # 28.89G 27.64G   1.24G  96% / # cuda-pre-init-2-0-ubuntu18
+  "2.1-debian11" ) disk_size_gb="34" ;; # 31.26G 30.74G       0 100% / # cuda-pre-init-2-1-debian11
+  "2.1-rocky8"   ) disk_size_gb="36" ;; # 33.79G 32.00G   1.80G  95% / # cuda-pre-init-2-1-rocky8
   "2.1-ubuntu20" ) disk_size_gb="32" ;; # 30.83G 30.35G   0.46G  99% / # cuda-pre-init-2-1-ubuntu20
-  "2.2-debian12" ) disk_size_gb="34" ;; # 33.23G 32.71G       0 100% / # cuda-pre-init-2-2-debian12
-  "2.2-rocky9"   ) disk_size_gb="35" ;; # 34.79G 33.16G   1.64G  96% / # cuda-pre-init-2-2-rocky9
-  "2.2-ubuntu22" ) disk_size_gb="35" ;; # 33.74G 32.94G   0.78G  98% / # cuda-pre-init-2-2-ubuntu22
+  "2.2-debian12" ) disk_size_gb="36" ;; # 33.23G 32.71G       0 100% / # cuda-pre-init-2-2-debian12
+  "2.2-rocky9"   ) disk_size_gb="37" ;; # 34.79G 33.16G   1.64G  96% / # cuda-pre-init-2-2-rocky9
+  "2.2-ubuntu22" ) disk_size_gb="37" ;; # 33.74G 32.94G   0.78G  98% / # cuda-pre-init-2-2-ubuntu22
 esac
 
 # Install GPU drivers + cuda on dataproc base image
 PURPOSE="cuda-pre-init"
 customization_script="examples/secure-boot/install_gpu_driver.sh"
 time generate_from_dataproc_version "${dataproc_version}"
+
+# Install GPU drivers + cuda + spark-rapids on dataproc base image
+PURPOSE="spark-rapids-pre-init"
+customization_script="examples/secure-boot/spark-rapids.sh"
+#time generate_from_dataproc_version "${dataproc_version}"
 
 # cuda image -> rapids
 case "${dataproc_version}" in
@@ -166,4 +188,4 @@ esac
 ## Install pytorch on base image
 PURPOSE="pytorch-pre-init"
 customization_script="examples/secure-boot/pytorch.sh"
-time generate_from_base_purpose "cuda-pre-init"
+#time generate_from_base_purpose "cuda-pre-init"
