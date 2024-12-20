@@ -131,10 +131,10 @@ case "${dataproc_version}" in
   "2.0-ubuntu18" ) disk_size_gb="32" ;; # 28.89G 27.64G   1.24G  96% / # cuda-pre-init-2-0-ubuntu18
   "2.1-debian11" ) disk_size_gb="34" ;; # 31.26G 30.74G       0 100% / # cuda-pre-init-2-1-debian11
   "2.1-rocky8"   ) disk_size_gb="36" ;; # 33.79G 32.00G   1.80G  95% / # cuda-pre-init-2-1-rocky8
-  "2.1-ubuntu20" ) disk_size_gb="32" ;; # 30.83G 30.35G   0.46G  99% / # cuda-pre-init-2-1-ubuntu20
+  "2.1-ubuntu20" ) disk_size_gb="34" ;; # 30.83G 30.35G   0.46G  99% / # cuda-pre-init-2-1-ubuntu20
   "2.2-debian12" ) disk_size_gb="36" ;; # 33.23G 32.71G       0 100% / # cuda-pre-init-2-2-debian12
   "2.2-rocky9"   ) disk_size_gb="37" ;; # 34.79G 33.16G   1.64G  96% / # cuda-pre-init-2-2-rocky9
-  "2.2-ubuntu22" ) disk_size_gb="37" ;; # 33.74G 32.94G   0.78G  98% / # cuda-pre-init-2-2-ubuntu22
+  "2.2-ubuntu22" ) disk_size_gb="39" ;; # 33.74G 32.94G   0.78G  98% / # cuda-pre-init-2-2-ubuntu22
 esac
 
 # Install GPU drivers + cuda on dataproc base image
