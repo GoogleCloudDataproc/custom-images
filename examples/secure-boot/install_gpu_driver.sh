@@ -13,6 +13,13 @@
 # limitations under the License.
 
 #
+# This initialization action is generated from
+# initialization-actions/templates/gpu/install_gpu_driver.sh.in
+#
+# Modifications made directly to the generated file will be lost when
+# the template is re-evaluated
+
+#
 # This script installs NVIDIA GPU drivers and collects GPU utilization metrics.
 
 set -euxo pipefail
@@ -26,25 +33,30 @@ function version_gt() ( set +x ;  [ "$1" = "$2" ] && return 1 || version_ge $1 $
 function version_le() ( set +x ;  [ "$1" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ] ; )
 function version_lt() ( set +x ;  [ "$1" = "$2" ] && return 1 || version_le $1 $2 ; )
 
-readonly -A supported_os=(
-  ['debian']="10 11 12"
-  ['rocky']="8 9"
-  ['ubuntu']="18.04 20.04 22.04"
-)
+function define_os_comparison_functions() {
 
-# dynamically define OS version test utility functions
-if [[ "$(os_id)" == "rocky" ]];
-then _os_version=$(os_version | sed -e 's/[^0-9].*$//g')
-else _os_version="$(os_version)"; fi
-for os_id_val in 'rocky' 'ubuntu' 'debian' ; do
-  eval "function is_${os_id_val}() ( set +x ;  [[ \"$(os_id)\" == '${os_id_val}' ]] ; )"
+  readonly -A supported_os=(
+    ['debian']="10 11 12"
+    ['rocky']="8 9"
+    ['ubuntu']="18.04 20.04 22.04"
+  )
 
-  for osver in $(echo "${supported_os["${os_id_val}"]}") ; do
-    eval "function is_${os_id_val}${osver%%.*}() ( set +x ; is_${os_id_val} && [[ \"${_os_version}\" == \"${osver}\" ]] ; )"
-    eval "function ge_${os_id_val}${osver%%.*}() ( set +x ; is_${os_id_val} && version_ge \"${_os_version}\" \"${osver}\" ; )"
-    eval "function le_${os_id_val}${osver%%.*}() ( set +x ; is_${os_id_val} && version_le \"${_os_version}\" \"${osver}\" ; )"
+  # dynamically define OS version test utility functions
+  if [[ "$(os_id)" == "rocky" ]];
+  then _os_version=$(os_version | sed -e 's/[^0-9].*$//g')
+  else _os_version="$(os_version)"; fi
+  for os_id_val in 'rocky' 'ubuntu' 'debian' ; do
+    eval "function is_${os_id_val}() ( set +x ;  [[ \"$(os_id)\" == '${os_id_val}' ]] ; )"
+
+    for osver in $(echo "${supported_os["${os_id_val}"]}") ; do
+      eval "function is_${os_id_val}${osver%%.*}() ( set +x ; is_${os_id_val} && [[ \"${_os_version}\" == \"${osver}\" ]] ; )"
+      eval "function ge_${os_id_val}${osver%%.*}() ( set +x ; is_${os_id_val} && version_ge \"${_os_version}\" \"${osver}\" ; )"
+      eval "function le_${os_id_val}${osver%%.*}() ( set +x ; is_${os_id_val} && version_le \"${_os_version}\" \"${osver}\" ; )"
+    done
   done
-done
+}
+
+define_os_comparison_functions
 
 function is_debuntu()  ( set +x ;  is_debian || is_ubuntu ; )
 
@@ -151,6 +163,7 @@ function cache_fetched_package() {
 }
 
 function add_contrib_component() {
+  if ! is_debuntu ; then return ; fi
   if ge_debian12 ; then
       # Include in sources file components on which nvidia-kernel-open-dkms depends
       local -r debian_sources="/etc/apt/sources.list.d/debian.sources"
@@ -374,7 +387,85 @@ function check_os() {
       echo "Error: The Rocky Linux version ($(os_version)) is not supported. Please use a compatible Rocky Linux version."
       exit 1
   fi
+
+  SPARK_VERSION="$(spark-submit --version 2>&1 | sed -n 's/.*version[[:blank:]]\+\([0-9]\+\.[0-9]\).*/\1/p' | head -n1)"
+  readonly SPARK_VERSION
+  if version_lt "${SPARK_VERSION}" "3.1" || \
+     version_ge "${SPARK_VERSION}" "4.0" ; then
+    echo "Error: Your Spark version is not supported. Please upgrade Spark to one of the supported versions."
+    exit 1
+  fi
+
+  # Detect dataproc image version
+  if (! test -v DATAPROC_IMAGE_VERSION) ; then
+    if test -v DATAPROC_VERSION ; then
+      DATAPROC_IMAGE_VERSION="${DATAPROC_VERSION}"
+    else
+      if   version_lt "${SPARK_VERSION}" "3.2" ; then DATAPROC_IMAGE_VERSION="2.0"
+      elif version_lt "${SPARK_VERSION}" "3.4" ; then DATAPROC_IMAGE_VERSION="2.1"
+      elif version_lt "${SPARK_VERSION}" "3.6" ; then DATAPROC_IMAGE_VERSION="2.2"
+      else echo "Unknown dataproc image version" ; exit 1 ; fi
+    fi
+  fi
 }
+
+#
+# Generate repo file under /etc/apt/sources.list.d/
+#
+function apt_add_repo() {
+  local -r repo_name="$1"
+  local -r repo_data="$3" # "http(s)://host/path/uri argument0 .. argumentN"
+  local -r include_src="${4:-yes}"
+  local -r kr_path="${5:-/usr/share/keyrings/${repo_name}.gpg}"
+  local -r repo_path="${6:-/etc/apt/sources.list.d/${repo_name}.list}"
+
+  echo "deb [signed-by=${kr_path}] ${repo_data}" > "${repo_path}"
+  if [[ "${include_src}" == "yes" ]] ; then
+    echo "deb-src [signed-by=${kr_path}] ${repo_data}" >> "${repo_path}"
+  fi
+
+  apt-get update -qq
+}
+
+#
+# Generate repo file under /etc/yum.repos.d/
+#
+function dnf_add_repo() {
+  local -r repo_name="$1"
+  local -r repo_url="$3" # "http(s)://host/path/filename.repo"
+  local -r kr_path="${5:-/etc/pki/rpm-gpg/${repo_name}.gpg}"
+  local -r repo_path="${6:-/etc/yum.repos.d/${repo_name}.repo}"
+
+  curl -s -L "${repo_url}" \
+    | perl -p -e "s{^gpgkey=.*$}{gpgkey=file://${kr_path}}" \
+    | dd of="${repo_path}" status=progress
+}
+
+#
+# Install package signing key and add corresponding repository
+# https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+#
+# Keyrings default to
+# /usr/share/keyrings/${repo_name}.gpg (debian/ubuntu) or
+# /etc/pki/rpm-gpg/${repo_name}.gpg    (rocky/RHEL)
+#
+function os_add_repo() {
+  local -r repo_name="$1"
+  local -r signing_key_url="$2"
+  local -r repo_data="$3" # "http(s)://host/path/uri argument0 .. argumentN"
+  local kr_path
+  if is_debuntu ; then kr_path="${5:-/usr/share/keyrings/${repo_name}.gpg}"
+                  else kr_path="${5:-/etc/pki/rpm-gpg/${repo_name}.gpg}" ; fi
+
+  mkdir -p "$(dirname "${kr_path}")"
+
+  curl -fsS --retry-connrefused --retry 10 --retry-max-time 30 "${signing_key_url}" \
+    | gpg --import --no-default-keyring --keyring "${kr_path}"
+
+  if is_debuntu ; then apt_add_repo "${repo_name}" "${signing_key_url}" "${repo_data}" "${4:-yes}" "${kr_path}" "${6:-}"
+                  else dnf_add_repo "${repo_name}" "${signing_key_url}" "${repo_data}" "${4:-yes}" "${kr_path}" "${6:-}" ; fi
+}
+
 
 readonly _shortname="$(os_id)$(os_version|perl -pe 's/(\d+).*/$1/')"
 
@@ -456,6 +547,10 @@ function set_cuda_version() {
   readonly DEFAULT_CUDA_VERSION
 
   CUDA_VERSION=$(get_metadata_attribute 'cuda-version' "${DEFAULT_CUDA_VERSION}")
+  if test -n "$(echo "${CUDA_VERSION}" | perl -ne 'print if /\d+\.\d+\.\d+/')" ; then
+    CUDA_FULL_VERSION="${CUDA_VERSION}"
+    CUDA_VERSION="${CUDA_VERSION%.*}"
+  fi
   readonly CUDA_VERSION
   if ( ! test -v CUDA_FULL_VERSION ) ; then
     CUDA_FULL_VERSION=${CUDA_SUBVER["${CUDA_VERSION}"]}
@@ -1000,22 +1095,17 @@ function add_nonfree_components() {
 }
 
 function add_repo_nvidia_container_toolkit() {
-  if is_debuntu ; then
-      local kr_path=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-      local sources_list_path=/etc/apt/sources.list.d/nvidia-container-toolkit.list
-      # https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
-      test -f "${kr_path}" ||
-        curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
-          | gpg --dearmor -o "${kr_path}"
+  local nvctk_root="https://nvidia.github.io/libnvidia-container"
+  local signing_key_url="${nvctk_root}/gpgkey"
+  local repo_data
 
-      test -f "${sources_list_path}" ||
-        curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
-          | perl -pe "s#deb https://#deb [signed-by=${kr_path}] https://#g" \
-          | tee "${sources_list_path}"
-  else
-    curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | \
-      tee /etc/yum.repos.d/nvidia-container-toolkit.repo
-  fi
+  if is_debuntu ; then repo_data="${nvctk_root}/stable/deb/\$(ARCH) /"
+                  else repo_data="${nvctk_root}/stable/rpm/nvidia-container-toolkit.repo" ; fi
+
+  os_add_repo nvidia-container-toolkit \
+              "${signing_key_url}" \
+              "${repo_data}" \
+              "no"
 }
 
 function add_repo_cuda() {
@@ -1275,12 +1365,21 @@ function install_cuda(){
 }
 
 function install_nvidia_container_toolkit() {
+  local container_runtime_default
+    if command -v docker     ; then container_runtime_default='docker'
+  elif command -v containerd ; then container_runtime_default='containerd'
+  elif command -v crio       ; then container_runtime_default='crio'
+                               else container_runtime_default='' ; fi
+  CONTAINER_RUNTIME=$(get_metadata_attribute 'container-runtime' "${container_runtime_default}")
+
+  if test -z "${CONTAINER_RUNTIME}" ; then return ; fi
+
   add_repo_nvidia_container_toolkit
   if is_debuntu ; then
-    execute_with_retries apt-get install -y -qq nvidia-container-toolkit
-  else
-    execute_with_retries dnf -y -q install nvidia-container-toolkit
-  fi
+    execute_with_retries apt-get install -y -q nvidia-container-toolkit ; else
+    execute_with_retries dnf     install -y -q nvidia-container-toolkit ; fi
+  nvidia-ctk runtime configure --runtime="${CONTAINER_RUNTIME}"
+  systemctl restart "${CONTAINER_RUNTIME}"
 }
 
 # Install NVIDIA GPU driver provided by NVIDIA
@@ -1552,19 +1651,79 @@ function install_dependencies() {
 function prepare_gpu_env(){
   # Verify SPARK compatability
   RAPIDS_RUNTIME=$(get_metadata_attribute 'rapids-runtime' 'SPARK')
-  SPARK_VERSION="$(spark-submit --version 2>&1 | sed -n 's/.*version[[:blank:]]\+\([0-9]\+\.[0-9]\).*/\1/p' | head -n1)"
-  readonly SPARK_VERSION
-  if version_lt "${SPARK_VERSION}" "3.1" || \
-     version_ge "${SPARK_VERSION}" "4.0" ; then
-    echo "Error: Your Spark version is not supported. Please upgrade Spark to one of the supported versions."
-    exit 1
-  fi
 
   readonly DEFAULT_XGBOOST_VERSION="1.7.6" # try 2.1.1
   nvsmi_works="0"
 
   if   is_cuda11 ; then gcc_ver="11"
   elif is_cuda12 ; then gcc_ver="12" ; fi
+}
+
+# Hold all NVIDIA-related packages from upgrading unintenionally or services like unattended-upgrades
+# Users should run apt-mark unhold before they wish to upgrade these packages
+function hold_nvidia_packages() {
+  apt-mark hold nvidia-*
+  apt-mark hold libnvidia-*
+  if dpkg -l | grep -q "xserver-xorg-video-nvidia"; then
+    apt-mark hold xserver-xorg-video-nvidia*
+  fi
+}
+
+function delete_mig_instances() (
+  # delete all instances
+  set +e
+  nvidia-smi mig -dci
+
+  case "${?}" in
+    "0" ) echo "compute instances deleted"            ;;
+    "2" ) echo "invalid argument"                     ;;
+    "6" ) echo "No compute instances found to delete" ;;
+    *   ) echo "unrecognized return code"             ;;
+  esac
+
+  nvidia-smi mig -dgi
+  case "${?}" in
+    "0" ) echo "compute instances deleted"        ;;
+    "2" ) echo "invalid argument"                 ;;
+    "6" ) echo "No GPU instances found to delete" ;;
+    *   ) echo "unrecognized return code"         ;;
+  esac
+)
+
+# https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-operator-mig.html#configuring-mig-profiles
+function configure_mig_cgi() {
+  delete_mig_instances
+  META_MIG_CGI_VALUE="$(get_metadata_attribute 'MIG_CGI')"
+  if test -n "${META_MIG_CGI_VALUE}"; then
+    nvidia-smi mig -cgi "${META_MIG_CGI_VALUE}" -C
+  else
+    if lspci | grep -q H100 ; then
+      # run the following command to list placement profiles
+      # nvidia-smi mig -lgipp
+      #
+      # This is the result when using H100 instances on 20241220
+      # GPU  0 Profile ID 19 Placements: {0,1,2,3,4,5,6}:1
+      # GPU  0 Profile ID 20 Placements: {0,1,2,3,4,5,6}:1
+      # GPU  0 Profile ID 15 Placements: {0,2,4,6}:2
+      # GPU  0 Profile ID 14 Placements: {0,2,4}:2
+      # GPU  0 Profile ID  9 Placements: {0,4}:4
+      # GPU  0 Profile ID  5 Placement : {0}:4
+      # GPU  0 Profile ID  0 Placement : {0}:8
+
+      # For H100 3D controllers, use profile 19, 7x1G instances
+      nvidia-smi mig -cgi 19 -C
+    elif lspci | grep -q A100 ; then
+      # Dataproc only supports A100s right now split in 2 if not specified
+      # https://docs.nvidia.com/datacenter/tesla/mig-user-guide/#creating-gpu-instances
+      nvidia-smi mig -cgi 9,9 -C
+    else
+      echo "unrecognized 3D controller"
+    fi
+  fi
+}
+
+function enable_mig() {
+  nvidia-smi -mig 1
 }
 
 
@@ -1753,12 +1912,11 @@ function main() {
   fi
 
   # Restart YARN services if they are running already
-  if [[ $(systemctl show hadoop-yarn-resourcemanager.service -p SubState --value) == 'running' ]]; then
-    systemctl restart hadoop-yarn-resourcemanager.service
-  fi
-  if [[ $(systemctl show hadoop-yarn-nodemanager.service -p SubState --value) == 'running' ]]; then
-    systemctl restart hadoop-yarn-nodemanager.service
-  fi
+  for svc in resourcemanager nodemanager; do
+    if [[ $(systemctl show hadoop-yarn-${svc}.service -p SubState --value) == 'running' ]]; then
+      systemctl restart hadoop-yarn-${svc}.service
+    fi
+  done
 }
 
 function exit_handler() {
@@ -1794,6 +1952,7 @@ function exit_handler() {
     # re-hold systemd package
     if ge_debian12 ; then
     apt-mark hold systemd libsystemd0 ; fi
+    hold_nvidia_packages
   else
     dnf clean all
   fi
@@ -1891,18 +2050,6 @@ function prepare_to_install(){
   mount_ramdisk
 
   readonly install_log="${tmpdir}/install.log"
-
-  # Detect dataproc image version
-  if (! test -v DATAPROC_IMAGE_VERSION) ; then
-    if test -v DATAPROC_VERSION ; then
-      DATAPROC_IMAGE_VERSION="${DATAPROC_VERSION}"
-    else
-      if   version_lt "${SPARK_VERSION_ENV}" "3.2" ; then DATAPROC_IMAGE_VERSION="2.0"
-      elif version_lt "${SPARK_VERSION_ENV}" "3.4" ; then DATAPROC_IMAGE_VERSION="2.1"
-      elif version_lt "${SPARK_VERSION_ENV}" "3.6" ; then DATAPROC_IMAGE_VERSION="2.2"
-      else echo "Unknown dataproc image version" ; exit 1 ; fi
-    fi
-  fi
 
   if test -f "${workdir}/prepare-complete" ; then return ; fi
 

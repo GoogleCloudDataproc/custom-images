@@ -24,14 +24,13 @@ function execute_with_retries() (
 
   for ((i = 0; i < 3; i++)); do
     set -x
-    time eval "$cmd" > "${install_log}" 2>&1 && retval=$? || { retval=$? ; cat "${install_log}" ; }
+    eval "$cmd" > "${install_log}" 2>&1 && retval=$? || { retval=$? ; cat "${install_log}" ; }
     set +x
     if [[ $retval == 0 ]] ; then return 0 ; fi
     sleep 5
   done
   return 1
 )
-
 
 function configure_service_account() {
   # Create service account
@@ -48,83 +47,62 @@ function configure_service_account() {
 
   execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/storage.objectUser"
+    --role="roles/dataproc.worker" \
+    --condition=None
 
-  # Grant service account access to buckets in this project
-  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role=roles/dataproc.worker
+  # Grant the service account access to buckets in this project
+  # TODO: this is over-broad and should be limited only to the buckets
+  # used by these clusters
+  for storage_object_role in 'User' 'Creator' 'Viewer' ; do
+    execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+      --member="serviceAccount:${GSA}" \
+      --role="roles/storage.object${storage_object_role}" \
+      --condition=None
+  done
 
-  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role=roles/storage.objectCreator
-
-  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role=roles/storage.objectViewer
-
-  execute_with_retries gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/storage.objectUser"
-  # gcloud storage buckets add-iam-policy-binding gs://cjac-dataproc-repro-1718310842 --member=serviceAccount:sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com --role=roles/storage.objectUser
-
-
-  # Grant service account access to temp bucket
-  execute_with_retries gcloud storage buckets add-iam-policy-binding "gs://${TEMP_BUCKET}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/storage.objectUser"
-
-#  Dec  6 23:50:02 ERROR: (gcloud.storage.cp) [sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com] does not have permission to access b instance [dataproc-temp-us-west4-163375334009-cab4kfsl] (or it may not exist): sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com does not have storage.buckets.get access to the Google Cloud Storage bucket. Permission 'storage.buckets.get' denied on resource (or it may not exist). This command is authenticated as sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com which is the active account specified by the [core/account] property.
-# ERROR: (gcloud.storage.cp) [sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com] does not have permission to access b instance [dataproc-temp-us-west4-163375334009-cab4kfsl] (or it may not exist): sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com does not have storage.buckets.get access to the Google Cloud Storage bucket. Permission 'storage.buckets.get' denied on resource (or it may not exist). This command is authenticated as sa-rapids-pre-init@cjac-2021-00.iam.gserviceaccount.com which is the active account specified by the [core/account] property.
-
-  # Grant the service account access to list secrets for the project
-  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.viewer"
-
-  # Grant service account permission to access the private secret
-  execute_with_retries gcloud secrets add-iam-policy-binding "${private_secret_name}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.secretAccessor"
-
-  # Grant service account permission to access the public secret
-  execute_with_retries gcloud secrets add-iam-policy-binding "${public_secret_name}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.secretAccessor"
+  for secret in "${public_secret_name}" "${private_secret_name}" ; do
+    for sm_role in 'viewer' 'secretAccessor' ; do
+      # Grant the service account permission to list the secret
+      execute_with_retries gcloud secrets -q add-iam-policy-binding "${secret}" \
+        --member="serviceAccount:${GSA}" \
+        --role="roles/secretmanager.${sm_role}" \
+        --condition=None
+    done
+  done
 
   execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role=roles/compute.instanceAdmin.v1
+    --role=roles/compute.instanceAdmin.v1 \
+    --condition=None
 
   execute_with_retries gcloud iam service-accounts add-iam-policy-binding "${GSA}" \
     --member="serviceAccount:${GSA}" \
-    --role=roles/iam.serviceAccountUser
-
+    --role=roles/iam.serviceAccountUser \
+    --condition=None
 }
 
 function revoke_bindings() {
-  # Revoke permission to access the private secret
-  execute_with_retries gcloud secrets remove-iam-policy-binding "${private_secret_name}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.secretAccessor"
-
-  # Revoke access to list secrets for the project
   execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.viewer"
+    --role="roles/dataproc.worker"
 
-  # Revoke service account access to buckets in this project
-  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role=roles/dataproc.worker
+  # Revoke the service account's access to buckets in this project
+  for storage_object_role in 'User' 'Creator' 'Viewer' ; do
+    execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+      --member="serviceAccount:${GSA}" \
+      --role="roles/storage.object${storage_object_role}"
+  done
 
-  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role=roles/storage.objectCreator
+  for secret in "${public_secret_name}" "${private_secret_name}" ; do
+    # Revoke the service account's permission to list and access the secret
+    for sm_role in 'viewer' 'secretAccessor' ; do
+      execute_with_retries gcloud secrets -q remove-iam-policy-binding "${secret}" \
+        --member="serviceAccount:${GSA}" \
+        --role="roles/secretmanager.${sm_role}" \
+        --condition=None
+    done
+  done
 
-  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role=roles/storage.objectViewer
 
   execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
@@ -133,13 +111,11 @@ function revoke_bindings() {
   execute_with_retries gcloud iam service-accounts remove-iam-policy-binding "${GSA}" \
     --member="serviceAccount:${GSA}" \
     --role=roles/iam.serviceAccountUser
-
 }
 
 export PROJECT_ID="$(jq    -r .PROJECT_ID    env.json)"
 export PURPOSE="$(jq       -r .PURPOSE       env.json)"
 export BUCKET="$(jq        -r .BUCKET        env.json)"
-export TEMP_BUCKET="$(jq   -r .TEMP_BUCKET   env.json)"
 
 SA_NAME="sa-${PURPOSE}"
 GSA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -153,8 +129,8 @@ configure_service_account
 # screen session name
 session_name="build-current-images"
 
-readonly timestamp="$(date +%F-%H-%M)"
-#readonly timestamp="2024-11-29-07-12"
+#readonly timestamp="$(date +%F-%H-%M)"
+readonly timestamp="2024-12-23-22-02"
 export timestamp
 
 export tmpdir=/tmp/${timestamp};
