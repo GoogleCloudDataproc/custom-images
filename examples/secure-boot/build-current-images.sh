@@ -147,7 +147,9 @@ function find_disk_usage() {
   grep -H 'Customization script' /tmp/custom-image-*/logs/workflow.log
   for workflow_log in $(grep -Hl "Customization script" /tmp/custom-image-*/logs/workflow.log) ; do
     startup_log=$(echo "${workflow_log}" | sed -e 's/workflow.log/startup-script.log/')
-    grep -A5 'Filesystem.*1K-blocks' "${startup_log}" | perl examples/secure-boot/genline.pl "${workflow_log}"
+    grep -v '^\['  "${startup_log}" \
+      | grep -A8 'Filesystem.*Avail' \
+      | perl examples/secure-boot/genline.pl "${workflow_log}"
   done
 }
 
