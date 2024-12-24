@@ -437,13 +437,10 @@ function dnf_add_repo() {
   local -r repo_path="${6:-/etc/yum.repos.d/${repo_name}.repo}"
 
   curl -s -L "${repo_url}" \
-    | perl -p -e "s{^gpgkey=.*$}{gpgkey=file://${kr_path}}" \
     | dd of="${repo_path}" status=progress
+#    | perl -p -e "s{^gpgkey=.*$}{gpgkey=file://${kr_path}}" \
 }
 
-#
-# Install package signing key and add corresponding repository
-# https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
 #
 # Keyrings default to
 # /usr/share/keyrings/${repo_name}.gpg (debian/ubuntu) or
@@ -1094,6 +1091,9 @@ function add_nonfree_components() {
   fi
 }
 
+#
+# Install package signing key and add corresponding repository
+# https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
 function add_repo_nvidia_container_toolkit() {
   local nvctk_root="https://nvidia.github.io/libnvidia-container"
   local signing_key_url="${nvctk_root}/gpgkey"

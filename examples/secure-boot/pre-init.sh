@@ -51,28 +51,42 @@ else
   dataproc_version="${IMAGE_VERSION}"
 fi
 
-CUDA_VERSION="12.6"
+CUDA_VERSION="12.4"
 # base image -> cuda
 case "${dataproc_version}" in
-  "2.0-debian10" ) CUDA_VERSION=12.5 ;;
+  "2.0-debian10" ) echo -n '' ;;
   "2.0-rocky8"   ) echo -n '' ;;
-  "2.0-ubuntu18" ) CUDA_VERSION=12.1 ;;
+  "2.0-ubuntu18" ) echo -n '' ;;
   "2.1-debian11" ) echo -n '' ;;
   "2.1-rocky8"   ) echo -n '' ;;
   "2.1-ubuntu20" ) echo -n '' ;;
-  "2.2-debian12" ) echo -n '' ;;
-  "2.2-rocky9"   ) echo -n '' ;;
-  "2.2-ubuntu22" ) echo -n '' ;;
+  "2.2-debian12" ) CUDA_VERSION=12.6 ;;
+  "2.2-rocky9"   ) CUDA_VERSION=12.6 ;;
+  "2.2-ubuntu22" ) CUDA_VERSION=12.6 ;;
 esac
 
 eval "$(bash examples/secure-boot/create-key-pair.sh)"
 metadata="dask-runtime=standalone"
-metadata="${metadata},rapids-runtime=DASK"
+metadata="${metadata},rapids-runtime=RAPIDS"
 metadata="${metadata},cuda-version=${CUDA_VERSION}"
 metadata="${metadata},creating-image=c9h"
 metadata="${metadata},rapids-mirror-disk=rapids-mirror-${region}"
 metadata="${metadata},rapids-mirror-host=10.42.79.42"
 metadata="${metadata},dataproc-temp-bucket=${TEMP_BUCKET}"
+
+function create_h100_instance() {
+  python generate_custom_image.py \
+    --machine-type         "a3-highgpu-8g" \
+    --accelerator          "type=nvidia-h100-80gb,count=8" \
+    $*
+}
+
+function create_t4_instance() {
+  python generate_custom_image.py \
+    --machine-type         "n1-standard-32" \
+    --accelerator          "type=nvidia-tesla-t4,count=1" \
+    $*
+}
 
 function generate() {
   local extra_args="$*"
@@ -100,10 +114,8 @@ function generate() {
       --zone "${custom_image_zone}"
   fi
   set -xe
-#    --machine-type         "n1-standard-16" \
-  python generate_custom_image.py \
-    --machine-type         "n1-standard-32" \
-    --accelerator          "type=nvidia-tesla-t4,count=1" \
+#  create_h100_instance \
+  create_t4_instance \
     --image-name           "${image_name}" \
     --customization-script "${customization_script}" \
     --service-account      "${GSA}" \
@@ -137,14 +149,21 @@ case "${dataproc_version}" in
   "2.2-ubuntu22" ) disk_size_gb="39" ;; # 33.74G 32.94G   0.78G  98% / # cuda-pre-init-2-2-ubuntu22
 esac
 
+disk_size_gb="40" # greater than or equal to 40
+
 # Install GPU drivers + cuda on dataproc base image
 PURPOSE="cuda-pre-init"
 customization_script="examples/secure-boot/install_gpu_driver.sh"
 time generate_from_dataproc_version "${dataproc_version}"
 
-# Install GPU drivers + cuda + spark-rapids on dataproc base image
-PURPOSE="spark-rapids-pre-init"
+## Execute spark-rapids/spark-rapids.sh init action on base image
+PURPOSE="spark-pre-init"
 customization_script="examples/secure-boot/spark-rapids.sh"
+#time generate_from_dataproc_version "${dataproc_version}"
+
+## Execute spark-rapids/mig.sh init action on base image
+PURPOSE="mig-pre-init"
+customization_script="examples/secure-boot/mig.sh"
 #time generate_from_dataproc_version "${dataproc_version}"
 
 # cuda image -> rapids
@@ -160,12 +179,12 @@ case "${dataproc_version}" in
   "2.2-ubuntu22" ) disk_size_gb="46" ;; # 42.46G 41.97G   0.48G  99% / # rapids-pre-init-2-2-ubuntu22
 esac
 
-#disk_size_gb="50"
+disk_size_gb="45"
 
 # Install dask with rapids on base image
 PURPOSE="rapids-pre-init"
 customization_script="examples/secure-boot/rapids.sh"
-#time generate_from_base_purpose "cuda-pre-init"
+time generate_from_base_purpose "cuda-pre-init"
 
 ## Install dask without rapids on base image
 #PURPOSE="dask-pre-init"
@@ -174,15 +193,15 @@ customization_script="examples/secure-boot/rapids.sh"
 
 # cuda image -> pytorch
 case "${dataproc_version}" in
-  "2.0-debian10" ) disk_size_gb="44" ;; # 40.12G 37.51G   0.86G  98% / # rapids-pre-init-2-0-debian10
-  "2.0-rocky8"   ) disk_size_gb="41" ;; # 38.79G 38.04G   0.76G  99% / # rapids-pre-init-2-0-rocky8
-  "2.0-ubuntu18" ) disk_size_gb="44" ;; # 37.62G 36.69G   0.91G  98% / # rapids-pre-init-2-0-ubuntu18
-  "2.1-debian11" ) disk_size_gb="44" ;; # 42.09G 39.77G   0.49G  99% / # rapids-pre-init-2-1-debian11
-  "2.1-rocky8"   ) disk_size_gb="44" ;; # 43.79G 41.11G   2.68G  94% / # rapids-pre-init-2-1-rocky8
-  "2.1-ubuntu20" ) disk_size_gb="45" ;; # 39.55G 39.39G   0.15G 100% / # rapids-pre-init-2-1-ubuntu20
-  "2.2-debian12" ) disk_size_gb="48" ;; # 44.06G 41.73G   0.41G 100% / # rapids-pre-init-2-2-debian12
-  "2.2-rocky9"   ) disk_size_gb="45" ;; # 44.79G 42.29G   2.51G  95% / # rapids-pre-init-2-2-rocky9
-  "2.2-ubuntu22" ) disk_size_gb="46" ;; # 42.46G 41.97G   0.48G  99% / # rapids-pre-init-2-2-ubuntu22
+  "2.0-debian10" ) disk_size_gb="44" ;; # 40.12G 37.51G   0.86G  98% / # pre-init-2-0-debian10
+  "2.0-rocky8"   ) disk_size_gb="41" ;; # 38.79G 38.04G   0.76G  99% / # pre-init-2-0-rocky8
+  "2.0-ubuntu18" ) disk_size_gb="44" ;; # 37.62G 36.69G   0.91G  98% / # pre-init-2-0-ubuntu18
+  "2.1-debian11" ) disk_size_gb="44" ;; # 42.09G 39.77G   0.49G  99% / # pre-init-2-1-debian11
+  "2.1-rocky8"   ) disk_size_gb="44" ;; # 43.79G 41.11G   2.68G  94% / # pre-init-2-1-rocky8
+  "2.1-ubuntu20" ) disk_size_gb="45" ;; # 39.55G 39.39G   0.15G 100% / # pre-init-2-1-ubuntu20
+  "2.2-debian12" ) disk_size_gb="48" ;; # 44.06G 41.73G   0.41G 100% / # pre-init-2-2-debian12
+  "2.2-rocky9"   ) disk_size_gb="45" ;; # 44.79G 42.29G   2.51G  95% / # pre-init-2-2-rocky9
+  "2.2-ubuntu22" ) disk_size_gb="46" ;; # 42.46G 41.97G   0.48G  99% / # pre-init-2-2-ubuntu22
 esac
 
 ## Install pytorch on base image
