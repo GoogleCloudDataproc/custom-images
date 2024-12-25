@@ -20,6 +20,8 @@
 set -euxo pipefail
 
 function os_id()       { grep '^ID=' /etc/os-release | cut -d= -f2 | xargs ; }
+function os_version()  ( set +x ;  grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | xargs ; )
+
 function is_ubuntu()   { [[ "$(os_id)" == 'ubuntu' ]] ; }
 function is_ubuntu18() { is_ubuntu && [[ "$(os_version)" == '18.04'* ]] ; }
 function is_debian()   { [[ "$(os_id)" == 'debian' ]] ; }
@@ -419,6 +421,22 @@ EOF
 }
 
 function install_dask_rapids() {
+  local -r _shortname="$(os_id)$(os_version|perl -pe 's/(\d+).*/$1/')"
+  local -r workdir=/opt/install-dask-rapids
+  mkdir -p "${workdir}"
+  temp_bucket="$(get_metadata_attribute dataproc-temp-bucket)"
+  readonly temp_bucket
+  local -r pkg_bucket="gs://${temp_bucket}/dpgce-packages"
+  local -r build_tarball="conda_dask-rapids${RAPIDS_VERSION}_cuda${CUDA_VERSION%%.*}_${_shortname}.tar.xz"
+  local -r local_tarball="${tmpdir}/${build_tarball}"
+  local -r gcs_tarball="${pkg_bucket}/${_shortname}/${build_tarball}"
+
+  output=$(gsutil ls "${gcs_tarball}" 2>&1 || echo '')
+  if echo "${output}" | grep -q "${gcs_tarball}" ; then
+    gcloud storage cat "${gcs_tarball}" | tar -C / -xJv
+    return
+  fi
+
   if is_cuda12 ; then
     local python_spec="python>=3.11"
     local cuda_spec="cuda-version>=12,<13"
@@ -478,6 +496,9 @@ function install_dask_rapids() {
     sync
     if [[ "$retval" == "0" ]] ; then
       is_installed="1"
+      tar cv "${DASK_CONDA_ENV}" | xz -cze | dd of="${local_tarball}" status=progress
+      gcloud storage cp "${local_tarball}" "${gcs_tarball}"
+      rm "${local_tarball}"
       break
     fi
     "${conda}" config --set channel_priority flexible
