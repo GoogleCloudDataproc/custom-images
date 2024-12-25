@@ -472,6 +472,113 @@ readonly HIVE_CONF_DIR='/etc/hive/conf'
 readonly SPARK_CONF_DIR='/etc/spark/conf'
 
 
+function configure_dkms_certs() {
+  if test -v PSN && [[ -z "${PSN}" ]]; then
+      echo "No signing secret provided.  skipping";
+      return 0
+  fi
+
+  mkdir -p "${CA_TMPDIR}"
+
+  # If the private key exists, verify it
+  if [[ -f "${CA_TMPDIR}/db.rsa" ]]; then
+    echo "Private key material exists"
+
+    local expected_modulus_md5sum
+    expected_modulus_md5sum=$(get_metadata_attribute modulus_md5sum)
+    if [[ -n "${expected_modulus_md5sum}" ]]; then
+      modulus_md5sum="${expected_modulus_md5sum}"
+
+      # Verify that cert md5sum matches expected md5sum
+      if [[ "${modulus_md5sum}" != "$(openssl rsa -noout -modulus -in "${CA_TMPDIR}/db.rsa" | openssl md5 | awk '{print $2}')" ]]; then
+        echo "unmatched rsa key"
+      fi
+
+      # Verify that key md5sum matches expected md5sum
+      if [[ "${modulus_md5sum}" != "$(openssl x509 -noout -modulus -in ${mok_der} | openssl md5 | awk '{print $2}')" ]]; then
+        echo "unmatched x509 cert"
+      fi
+    else
+      modulus_md5sum="$(openssl rsa -noout -modulus -in "${CA_TMPDIR}/db.rsa" | openssl md5 | awk '{print $2}')"
+    fi
+    ln -sf "${CA_TMPDIR}/db.rsa" "${mok_key}"
+
+    return
+  fi
+
+  # Retrieve cloud secrets keys
+  local sig_priv_secret_name
+  sig_priv_secret_name="${PSN}"
+  local sig_pub_secret_name
+  sig_pub_secret_name="$(get_metadata_attribute public_secret_name)"
+  local sig_secret_project
+  sig_secret_project="$(get_metadata_attribute secret_project)"
+  local sig_secret_version
+  sig_secret_version="$(get_metadata_attribute secret_version)"
+
+  # If metadata values are not set, do not write mok keys
+  if [[ -z "${sig_priv_secret_name}" ]]; then return 0 ; fi
+
+  # Write private material to volatile storage
+  gcloud secrets versions access "${sig_secret_version}" \
+         --project="${sig_secret_project}" \
+         --secret="${sig_priv_secret_name}" \
+      | dd status=none of="${CA_TMPDIR}/db.rsa"
+
+  # Write public material to volatile storage
+  gcloud secrets versions access "${sig_secret_version}" \
+         --project="${sig_secret_project}" \
+         --secret="${sig_pub_secret_name}" \
+      | base64 --decode \
+      | dd status=none of="${CA_TMPDIR}/db.der"
+
+  local mok_directory="$(dirname "${mok_key}")"
+  mkdir -p "${mok_directory}"
+
+  # symlink private key and copy public cert from volatile storage to DKMS directory
+  ln -sf "${CA_TMPDIR}/db.rsa" "${mok_key}"
+  cp  -f "${CA_TMPDIR}/db.der" "${mok_der}"
+
+  modulus_md5sum="$(openssl rsa -noout -modulus -in "${mok_key}" | openssl md5 | awk '{print $2}')"
+}
+
+function clear_dkms_key {
+  if [[ -z "${PSN}" ]]; then
+      echo "No signing secret provided.  skipping" >&2
+      return 0
+  fi
+  rm -rf "${CA_TMPDIR}" "${mok_key}"
+}
+
+function check_secure_boot() {
+  local SECURE_BOOT="disabled"
+  SECURE_BOOT=$(mokutil --sb-state|awk '{print $2}')
+
+  PSN="$(get_metadata_attribute private_secret_name)"
+  readonly PSN
+
+  if [[ "${SECURE_BOOT}" == "enabled" ]] && le_debian11 ; then
+    echo "Error: Secure Boot is not supported on Debian before image 2.2. Please disable Secure Boot while creating the cluster."
+    exit 1
+  elif [[ "${SECURE_BOOT}" == "enabled" ]] && [[ -z "${PSN}" ]]; then
+    echo "Secure boot is enabled, but no signing material provided."
+    echo "Please either disable secure boot or provide signing material as per"
+    echo "https://github.com/GoogleCloudDataproc/custom-images/tree/master/examples/secure-boot"
+    return 1
+  fi
+
+  CA_TMPDIR="$(mktemp -u -d -p /run/tmp -t ca_dir-XXXX)"
+  readonly CA_TMPDIR
+
+  if is_ubuntu ; then mok_key=/var/lib/shim-signed/mok/MOK.priv
+                      mok_der=/var/lib/shim-signed/mok/MOK.der
+                 else mok_key=/var/lib/dkms/mok.key
+                      mok_der=/var/lib/dkms/mok.pub ; fi
+
+  configure_dkms_certs
+}
+
+
 function set_support_matrix() {
   # CUDA version and Driver version
   # https://docs.nvidia.com/deploy/cuda-compatibility/
@@ -615,25 +722,29 @@ function set_driver_version() {
 
 set_driver_version
 
-readonly DEFAULT_CUDNN8_VERSION="8.0.5.39"
-readonly DEFAULT_CUDNN9_VERSION="9.1.0.70"
+function set_cudnn_version() {
+  readonly DEFAULT_CUDNN8_VERSION="8.0.5.39"
+  readonly DEFAULT_CUDNN9_VERSION="9.1.0.70"
 
-# Parameters for NVIDIA-provided cuDNN library
-readonly DEFAULT_CUDNN_VERSION=${CUDNN_FOR_CUDA["${CUDA_VERSION}"]}
-CUDNN_VERSION=$(get_metadata_attribute 'cudnn-version' "${DEFAULT_CUDNN_VERSION}")
+  # Parameters for NVIDIA-provided cuDNN library
+  readonly DEFAULT_CUDNN_VERSION=${CUDNN_FOR_CUDA["${CUDA_VERSION}"]}
+  CUDNN_VERSION=$(get_metadata_attribute 'cudnn-version' "${DEFAULT_CUDNN_VERSION}")
+  # The minimum cuDNN version supported by rocky is ${DEFAULT_CUDNN8_VERSION}
+  if is_rocky  && (version_le "${CUDNN_VERSION}" "${DEFAULT_CUDNN8_VERSION}") ; then
+    CUDNN_VERSION="${DEFAULT_CUDNN8_VERSION}"
+  elif (ge_ubuntu20 || ge_debian12) && [[ "${CUDNN_VERSION%%.*}" == "8" ]] ; then
+    # cuDNN v8 is not distribution for ubuntu20+, debian12
+    CUDNN_VERSION="${DEFAULT_CUDNN9_VERSION}"
+  elif (le_ubuntu18 || le_debian11) && [[ "${CUDNN_VERSION%%.*}" == "9" ]] ; then
+    # cuDNN v9 is not distributed for ubuntu18, debian10, debian11 ; fall back to 8
+    CUDNN_VERSION="8.8.0.121"
+  fi
+  readonly CUDNN_VERSION
+}
+set_cudnn_version
+
 function is_cudnn8() ( set +x ; [[ "${CUDNN_VERSION%%.*}" == "8" ]] ; )
 function is_cudnn9() ( set +x ; [[ "${CUDNN_VERSION%%.*}" == "9" ]] ; )
-# The minimum cuDNN version supported by rocky is ${DEFAULT_CUDNN8_VERSION}
-if is_rocky  && (version_le "${CUDNN_VERSION}" "${DEFAULT_CUDNN8_VERSION}") ; then
-  CUDNN_VERSION="${DEFAULT_CUDNN8_VERSION}"
-elif (ge_ubuntu20 || ge_debian12) && is_cudnn8 ; then
-  # cuDNN v8 is not distribution for ubuntu20+, debian12
-  CUDNN_VERSION="${DEFAULT_CUDNN9_VERSION}"
-elif (le_ubuntu18 || le_debian11) && is_cudnn9 ; then
-  # cuDNN v9 is not distributed for ubuntu18, debian10, debian11 ; fall back to 8
-  CUDNN_VERSION="8.8.0.121"
-fi
-readonly CUDNN_VERSION
 
 readonly DEFAULT_NCCL_VERSION=${NCCL_FOR_CUDA["${CUDA_VERSION}"]}
 readonly NCCL_VERSION=$(get_metadata_attribute 'nccl-version' ${DEFAULT_NCCL_VERSION})
@@ -816,7 +927,7 @@ function uninstall_cuda_keyring_pkg() {
 }
 
 function install_local_cuda_repo() {
-  if test -f "${workdir}/install-local-cuda-repo-complete" ; then return ; fi
+  if test -f "${workdir}/complete/install-local-cuda-repo" ; then return ; fi
 
   if [[ "${CUDA_LOCAL_REPO_INSTALLED}" == "1" ]]; then return ; fi
   CUDA_LOCAL_REPO_INSTALLED="1"
@@ -839,16 +950,16 @@ function install_local_cuda_repo() {
       -o /etc/apt/preferences.d/cuda-repository-pin-600
   fi
 
-  touch "${workdir}/install-local-cuda-repo-complete"
+  touch "${workdir}/complete/install-local-cuda-repo"
 }
 function uninstall_local_cuda_repo(){
   apt-get purge -yq "${CUDA_LOCAL_REPO_PKG_NAME}"
-  rm -f "${workdir}/install-local-cuda-repo-complete"
+  rm -f "${workdir}/complete/install-local-cuda-repo"
 }
 
 CUDNN_PKG_NAME=""
 function install_local_cudnn_repo() {
-  if test -f "${workdir}/install-local-cudnn-repo-complete" ; then return ; fi
+  if test -f "${workdir}/complete/install-local-cudnn-repo" ; then return ; fi
   pkgname="cudnn-local-repo-${shortname}-${CUDNN_VERSION%.*}"
   CUDNN_PKG_NAME="${pkgname}"
   local_deb_fn="${pkgname}_1.0-1_amd64.deb"
@@ -864,18 +975,18 @@ function install_local_cudnn_repo() {
 
   cp /var/cudnn-local-repo-*-${CUDNN_VERSION%.*}*/cudnn-local-*-keyring.gpg /usr/share/keyrings
 
-  touch "${workdir}/install-local-cudnn-repo-complete"
+  touch "${workdir}/complete/install-local-cudnn-repo"
 }
 
 function uninstall_local_cudnn_repo() {
   apt-get purge -yq "${CUDNN_PKG_NAME}"
-  rm -f "${workdir}/install-local-cudnn-repo-complete"
+  rm -f "${workdir}/complete/install-local-cudnn-repo"
 }
 
 CUDNN8_LOCAL_REPO_INSTALLED="0"
 CUDNN8_PKG_NAME=""
 function install_local_cudnn8_repo() {
-  if test -f "${workdir}/install-local-cudnn8-repo-complete" ; then return ; fi
+  if test -f "${workdir}/complete/install-local-cudnn8-repo" ; then return ; fi
 
   if   is_ubuntu ; then cudnn8_shortname="ubuntu2004"
   elif is_debian ; then cudnn8_shortname="debian11"
@@ -909,16 +1020,16 @@ function install_local_cudnn8_repo() {
   rm -f "${local_deb_fn}"
 
   cp "${cudnn_path}"/cudnn-local-*-keyring.gpg /usr/share/keyrings
-  touch "${workdir}/install-local-cudnn8-repo-complete"
+  touch "${workdir}/complete/install-local-cudnn8-repo"
 }
 
 function uninstall_local_cudnn8_repo() {
   apt-get purge -yq "${CUDNN8_PKG_NAME}"
-  rm -f "${workdir}/install-local-cudnn8-repo-complete"
+  rm -f "${workdir}/complete/install-local-cudnn8-repo"
 }
 
 function install_nvidia_nccl() {
-  if test -f "${workdir}/nccl-complete" ; then return ; fi
+  if test -f "${workdir}/complete/nccl" ; then return ; fi
 
   if is_cuda11 && is_debian12 ; then
     echo "NCCL cannot be compiled for CUDA 11 on ${_shortname}"
@@ -1009,14 +1120,14 @@ function install_nvidia_nccl() {
   fi
 
   popd
-  touch "${workdir}/nccl-complete"
+  touch "${workdir}/complete/nccl"
 }
 
 function is_src_nvidia() ( set +x ; [[ "${GPU_DRIVER_PROVIDER}" == "NVIDIA" ]] ; )
 function is_src_os()     ( set +x ; [[ "${GPU_DRIVER_PROVIDER}" == "OS" ]] ; )
 
 function install_nvidia_cudnn() {
-  if test -f "${workdir}/cudnn-complete" ; then return ; fi
+  if test -f "${workdir}/complete/cudnn" ; then return ; fi
   local major_version
   major_version="${CUDNN_VERSION%%.*}"
   local cudnn_pkg_version
@@ -1075,7 +1186,7 @@ function install_nvidia_cudnn() {
   ldconfig
 
   echo "NVIDIA cuDNN successfully installed for ${_shortname}."
-  touch "${workdir}/cudnn-complete"
+  touch "${workdir}/complete/cudnn"
 }
 
 function add_nonfree_components() {
@@ -1228,7 +1339,7 @@ function install_nvidia_userspace_runfile() {
   #
   # wget https://us.download.nvidia.com/XFree86/Linux-x86_64/560.35.03/NVIDIA-Linux-x86_64-560.35.03.run
   # sh ./NVIDIA-Linux-x86_64-560.35.03.run -x # this will allow you to review the contents of the package without installing it.
-  if test -f "${workdir}/userspace-complete" ; then return ; fi
+  if test -f "${workdir}/complete/userspace" ; then return ; fi
   local local_fn="${tmpdir}/userspace.run"
 
   cache_fetched_package "${USERSPACE_URL}" \
@@ -1296,12 +1407,12 @@ function install_nvidia_userspace_runfile() {
   fi
 
   rm -f "${local_fn}"
-  touch "${workdir}/userspace-complete"
+  touch "${workdir}/complete/userspace"
   sync
 }
 
 function install_cuda_runfile() {
-  if test -f "${workdir}/cuda-complete" ; then return ; fi
+  if test -f "${workdir}/complete/cuda" ; then return ; fi
   local local_fn="${tmpdir}/cuda.run"
 
   cache_fetched_package "${NVIDIA_CUDA_URL}" \
@@ -1310,7 +1421,7 @@ function install_cuda_runfile() {
 
   execute_with_retries bash "${local_fn}" --toolkit --no-opengl-libs --silent --tmpdir="${tmpdir}"
   rm -f "${local_fn}"
-  touch "${workdir}/cuda-complete"
+  touch "${workdir}/complete/cuda"
   sync
 }
 
@@ -1348,7 +1459,7 @@ function load_kernel_module() {
 }
 
 function install_cuda(){
-  if test -f "${workdir}/cuda-repo-complete" ; then return ; fi
+  if test -f "${workdir}/complete/cuda-repo" ; then return ; fi
 
   if ( ge_debian12 && is_src_os ) ; then
     echo "installed with the driver on ${_shortname}"
@@ -1361,7 +1472,7 @@ function install_cuda(){
   # Includes CUDA packages
   add_repo_cuda
 
-  touch "${workdir}/cuda-repo-complete"
+  touch "${workdir}/complete/cuda-repo"
 }
 
 function install_nvidia_container_toolkit() {
@@ -1384,7 +1495,7 @@ function install_nvidia_container_toolkit() {
 
 # Install NVIDIA GPU driver provided by NVIDIA
 function install_nvidia_gpu_driver() {
-  if test -f "${workdir}/gpu-driver-complete" ; then return ; fi
+  if test -f "${workdir}/complete/gpu-driver" ; then return ; fi
 
   if ( ge_debian12 && is_src_os ) ; then
     add_nonfree_components
@@ -1406,11 +1517,11 @@ function install_nvidia_gpu_driver() {
   build_driver_from_github
 
   echo "NVIDIA GPU driver provided by NVIDIA was installed successfully"
-  touch "${workdir}/gpu-driver-complete"
+  touch "${workdir}/complete/gpu-driver"
 }
 
 function install_ops_agent(){
-  if test -f "${workdir}/ops-agent-complete" ; then return ; fi
+  if test -f "${workdir}/complete/ops-agent" ; then return ; fi
 
   mkdir -p /opt/google
   cd /opt/google
@@ -1418,7 +1529,40 @@ function install_ops_agent(){
   curl -sSO https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
   execute_with_retries bash add-google-cloud-ops-agent-repo.sh --also-install
 
-  touch "${workdir}/ops-agent-complete"
+  touch "${workdir}/complete/ops-agent"
+}
+
+# Collects 'gpu_utilization' and 'gpu_memory_utilization' metrics
+function install_gpu_monitoring_agent() {
+  download_gpu_monitoring_agent
+  install_gpu_monitoring_agent_dependency
+  start_gpu_monitoring_agent_service
+}
+
+function download_gpu_monitoring_agent(){
+  if is_rocky ; then
+    execute_with_retries "dnf -y -q install git"
+  else
+    execute_with_retries "apt-get install git -y"
+  fi
+  mkdir -p /opt/google
+  chmod 777 /opt/google
+  cd /opt/google
+  test -d compute-gpu-monitoring || \
+    execute_with_retries "git clone https://github.com/GoogleCloudPlatform/compute-gpu-monitoring.git"
+}
+
+function install_gpu_monitoring_agent_dependency(){
+  cd /opt/google/compute-gpu-monitoring/linux
+  python3 -m venv venv
+  venv/bin/pip install wheel
+  venv/bin/pip install -Ur requirements.txt
+}
+
+function start_gpu_monitoring_agent_service(){
+  cp /opt/google/compute-gpu-monitoring/linux/systemd/google_gpu_monitoring_agent_venv.service /lib/systemd/system
+  systemctl daemon-reload
+  systemctl --no-reload --now enable /lib/systemd/system/google_gpu_monitoring_agent_venv.service
 }
 
 # Collects 'gpu_utilization' and 'gpu_memory_utilization' metrics
@@ -1481,10 +1625,32 @@ function configure_gpu_exclusive_mode() {
 
 function fetch_mig_scripts() {
   mkdir -p /usr/local/yarn-mig-scripts
-  sudo chmod 755 /usr/local/yarn-mig-scripts
+  chmod 755 /usr/local/yarn-mig-scripts
   wget -P /usr/local/yarn-mig-scripts/ https://raw.githubusercontent.com/NVIDIA/spark-rapids-examples/branch-22.10/examples/MIG-Support/yarn-unpatched/scripts/nvidia-smi
   wget -P /usr/local/yarn-mig-scripts/ https://raw.githubusercontent.com/NVIDIA/spark-rapids-examples/branch-22.10/examples/MIG-Support/yarn-unpatched/scripts/mig2gpu.sh
-  sudo chmod 755 /usr/local/yarn-mig-scripts/*
+  chmod 755 /usr/local/yarn-mig-scripts/*
+}
+
+function install_spark_rapids() {
+  # Update SPARK RAPIDS config
+  readonly DEFAULT_SPARK_RAPIDS_VERSION="24.08.1"
+  readonly SPARK_RAPIDS_VERSION=$(get_metadata_attribute 'spark-rapids-version' ${DEFAULT_SPARK_RAPIDS_VERSION})
+  readonly DEFAULT_XGBOOST_VERSION="1.7.6" # try 2.1.1
+  readonly XGBOOST_VERSION=$(get_metadata_attribute 'xgboost-version' ${DEFAULT_XGBOOST_VERSION})
+
+  local -r rapids_repo_url='https://repo1.maven.org/maven2/ai/rapids'
+  local -r nvidia_repo_url='https://repo1.maven.org/maven2/com/nvidia'
+  local -r dmlc_repo_url='https://repo.maven.apache.org/maven2/ml/dmlc'
+
+  wget -nv --timeout=30 --tries=5 --retry-connrefused \
+    "${dmlc_repo_url}/xgboost4j-spark-gpu_2.12/${XGBOOST_VERSION}/xgboost4j-spark-gpu_2.12-${XGBOOST_VERSION}.jar" \
+    -P /usr/lib/spark/jars/
+  wget -nv --timeout=30 --tries=5 --retry-connrefused \
+    "${dmlc_repo_url}/xgboost4j-gpu_2.12/${XGBOOST_VERSION}/xgboost4j-gpu_2.12-${XGBOOST_VERSION}.jar" \
+    -P /usr/lib/spark/jars/
+  wget -nv --timeout=30 --tries=5 --retry-connrefused \
+    "${nvidia_repo_url}/rapids-4-spark_2.12/${SPARK_RAPIDS_VERSION}/rapids-4-spark_2.12-${SPARK_RAPIDS_VERSION}.jar" \
+    -P /usr/lib/spark/jars/
 }
 
 function configure_gpu_script() {
@@ -1523,9 +1689,9 @@ EOF
   chmod a+rx "${gpus_resources_script}"
 
   local spark_defaults_conf="/etc/spark/conf.dist/spark-defaults.conf"
-  if version_ge "${SPARK_VERSION}" "3.0" ; then
-    local gpu_count
-    gpu_count="$(lspci | grep NVIDIA | wc -l)"
+  local gpu_count
+  gpu_count="$(lspci | grep NVIDIA | wc -l)"
+  if version_ge "${gpu_count}" "1" ; then
     local executor_cores
     executor_cores="$(nproc | perl -MPOSIX -pe '$_ = POSIX::floor( $_ * 0.75 ); $_-- if $_ % 2')"
     local executor_memory
@@ -1540,8 +1706,9 @@ EOF
 # query explain output won't show GPU operator, if the user has doubts
 # they can uncomment the line before seeing the GPU plan explain;
 # having AQE enabled gives user the best performance.
-spark.executor.resource.gpu.discoveryScript=${gpus_resources_script}
 spark.executor.resource.gpu.amount=${gpu_count}
+spark.plugins=com.nvidia.spark.SQLPlugin
+spark.executor.resource.gpu.discoveryScript=${gpus_resources_script}
 spark.executor.cores=${executor_cores}
 spark.executor.memory=${executor_memory_gb}G
 spark.dynamicAllocation.enabled=false
@@ -1601,7 +1768,7 @@ function nvsmi() {
 }
 
 function install_build_dependencies() {
-  if test -f "${workdir}/build-dependencies-complete" ; then return ; fi
+  if test -f "${workdir}/complete/build-dependencies" ; then return ; fi
 
   if is_debuntu ; then
     if is_ubuntu22 && is_cuda12 ; then
@@ -1639,7 +1806,7 @@ function install_build_dependencies() {
 
     execute_with_retries "${dnf_cmd}"
   fi
-  touch "${workdir}/build-dependencies-complete"
+  touch "${workdir}/complete/build-dependencies"
 }
 
 function install_dependencies() {
@@ -1652,7 +1819,6 @@ function prepare_gpu_env(){
   # Verify SPARK compatability
   RAPIDS_RUNTIME=$(get_metadata_attribute 'rapids-runtime' 'SPARK')
 
-  readonly DEFAULT_XGBOOST_VERSION="1.7.6" # try 2.1.1
   nvsmi_works="0"
 
   if   is_cuda11 ; then gcc_ver="11"
@@ -1726,115 +1892,7 @@ function enable_mig() {
   nvidia-smi -mig 1
 }
 
-
-function configure_dkms_certs() {
-  if test -v PSN && [[ -z "${PSN}" ]]; then
-      echo "No signing secret provided.  skipping";
-      return 0
-  fi
-
-  mkdir -p "${CA_TMPDIR}"
-
-  # If the private key exists, verify it
-  if [[ -f "${CA_TMPDIR}/db.rsa" ]]; then
-    echo "Private key material exists"
-
-    local expected_modulus_md5sum
-    expected_modulus_md5sum=$(get_metadata_attribute modulus_md5sum)
-    if [[ -n "${expected_modulus_md5sum}" ]]; then
-      modulus_md5sum="${expected_modulus_md5sum}"
-
-      # Verify that cert md5sum matches expected md5sum
-      if [[ "${modulus_md5sum}" != "$(openssl rsa -noout -modulus -in "${CA_TMPDIR}/db.rsa" | openssl md5 | awk '{print $2}')" ]]; then
-        echo "unmatched rsa key"
-      fi
-
-      # Verify that key md5sum matches expected md5sum
-      if [[ "${modulus_md5sum}" != "$(openssl x509 -noout -modulus -in ${mok_der} | openssl md5 | awk '{print $2}')" ]]; then
-        echo "unmatched x509 cert"
-      fi
-    else
-      modulus_md5sum="$(openssl rsa -noout -modulus -in "${CA_TMPDIR}/db.rsa" | openssl md5 | awk '{print $2}')"
-    fi
-    ln -sf "${CA_TMPDIR}/db.rsa" "${mok_key}"
-
-    return
-  fi
-
-  # Retrieve cloud secrets keys
-  local sig_priv_secret_name
-  sig_priv_secret_name="${PSN}"
-  local sig_pub_secret_name
-  sig_pub_secret_name="$(get_metadata_attribute public_secret_name)"
-  local sig_secret_project
-  sig_secret_project="$(get_metadata_attribute secret_project)"
-  local sig_secret_version
-  sig_secret_version="$(get_metadata_attribute secret_version)"
-
-  # If metadata values are not set, do not write mok keys
-  if [[ -z "${sig_priv_secret_name}" ]]; then return 0 ; fi
-
-  # Write private material to volatile storage
-  gcloud secrets versions access "${sig_secret_version}" \
-         --project="${sig_secret_project}" \
-         --secret="${sig_priv_secret_name}" \
-      | dd status=none of="${CA_TMPDIR}/db.rsa"
-
-  # Write public material to volatile storage
-  gcloud secrets versions access "${sig_secret_version}" \
-         --project="${sig_secret_project}" \
-         --secret="${sig_pub_secret_name}" \
-      | base64 --decode \
-      | dd status=none of="${CA_TMPDIR}/db.der"
-
-  local mok_directory="$(dirname "${mok_key}")"
-  mkdir -p "${mok_directory}"
-
-  # symlink private key and copy public cert from volatile storage to DKMS directory
-  ln -sf "${CA_TMPDIR}/db.rsa" "${mok_key}"
-  cp  -f "${CA_TMPDIR}/db.der" "${mok_der}"
-
-  modulus_md5sum="$(openssl rsa -noout -modulus -in "${mok_key}" | openssl md5 | awk '{print $2}')"
-}
-
-function clear_dkms_key {
-  if [[ -z "${PSN}" ]]; then
-      echo "No signing secret provided.  skipping" >&2
-      return 0
-  fi
-  rm -rf "${CA_TMPDIR}" "${mok_key}"
-}
-
-function check_secure_boot() {
-  local SECURE_BOOT="disabled"
-  SECURE_BOOT=$(mokutil --sb-state|awk '{print $2}')
-
-  PSN="$(get_metadata_attribute private_secret_name)"
-  readonly PSN
-
-  if [[ "${SECURE_BOOT}" == "enabled" ]] && le_debian11 ; then
-    echo "Error: Secure Boot is not supported on Debian before image 2.2. Please disable Secure Boot while creating the cluster."
-    exit 1
-  elif [[ "${SECURE_BOOT}" == "enabled" ]] && [[ -z "${PSN}" ]]; then
-    echo "Secure boot is enabled, but no signing material provided."
-    echo "Please either disable secure boot or provide signing material as per"
-    echo "https://github.com/GoogleCloudDataproc/custom-images/tree/master/examples/secure-boot"
-    return 1
-  fi
-
-  CA_TMPDIR="$(mktemp -u -d -p /run/tmp -t ca_dir-XXXX)"
-  readonly CA_TMPDIR
-
-  if is_ubuntu ; then mok_key=/var/lib/shim-signed/mok/MOK.priv
-                      mok_der=/var/lib/shim-signed/mok/MOK.der
-                 else mok_key=/var/lib/dkms/mok.key
-                      mok_der=/var/lib/dkms/mok.pub ; fi
-
-  configure_dkms_certs
-}
-
-
-function main() {
+function setup_gpu_yarn() {
   # This configuration should be run on all nodes
   # regardless if they have attached GPUs
   configure_yarn_resources
@@ -1860,47 +1918,18 @@ function main() {
     # if mig is enabled drivers would have already been installed
     if [[ $IS_MIG_ENABLED -eq 0 ]]; then
       install_nvidia_gpu_driver
-      install_nvidia_container_toolkit
       install_cuda
       load_kernel_module
 
-      if [[ -n ${CUDNN_VERSION} ]]; then
-        install_nvidia_nccl
-        install_nvidia_cudnn
-      fi
       #Install GPU metrics collection in Stackdriver if needed
       if [[ "${INSTALL_GPU_AGENT}" == "true" ]]; then
-        #install_ops_agent
-	install_gpu_agent
+        install_gpu_agent
+#        install_gpu_monitoring_agent
         echo 'GPU metrics agent successfully deployed.'
       else
-        echo 'GPU metrics agent will not be installed.'
+        echo 'GPU metrics agent has not been installed.'
       fi
-
-      # for some use cases, the kernel module needs to be removed before first use of nvidia-smi
-      for module in nvidia_uvm nvidia_drm nvidia_modeset nvidia ; do
-        rmmod ${module} > /dev/null 2>&1 || echo "unable to rmmod ${module}"
-      done
-
-      MIG_GPU_LIST="$(nvsmi -L | grep -e MIG -e P100 -e H100 -e A100 || echo -n "")"
-      if test -n "$(nvsmi -L)" ; then
-	# cache the result of the gpu query
-        ADDRS=$(nvsmi --query-gpu=index --format=csv,noheader | perl -e 'print(join(q{,},map{chomp; qq{"$_"}}<STDIN>))')
-        echo "{\"name\": \"gpu\", \"addresses\":[$ADDRS]}" | tee "/var/run/nvidia-gpu-index.txt"
-      fi
-      NUM_MIG_GPUS="$(test -n "${MIG_GPU_LIST}" && echo "${MIG_GPU_LIST}" | wc -l || echo "0")"
-      if [[ "${NUM_MIG_GPUS}" -gt "0" ]] ; then
-        # enable MIG on every GPU
-	for GPU_ID in $(echo ${MIG_GPU_LIST} | awk -F'[: ]' -e '{print $2}') ; do
-	  nvsmi -i "${GPU_ID}" --multi-instance-gpu 1
-	done
-
-        NVIDIA_SMI_PATH='/usr/local/yarn-mig-scripts/'
-        MIG_MAJOR_CAPS="$(grep nvidia-caps /proc/devices | cut -d ' ' -f 1)"
-        fetch_mig_scripts
-      else
-        configure_gpu_exclusive_mode
-      fi
+      configure_gpu_exclusive_mode
     fi
 
     configure_yarn_nodemanager
@@ -1910,11 +1939,32 @@ function main() {
     configure_yarn_nodemanager
     configure_gpu_script
   fi
+}
+
+
+function main() {
+  setup_gpu_yarn
+  if [[ -n ${CUDNN_VERSION} ]]; then
+    install_nvidia_nccl
+    install_nvidia_cudnn
+  fi
+  install_nvidia_container_toolkit
+
+  if [[ "${RAPIDS_RUNTIME}" == "SPARK" ]]; then
+    install_spark_rapids
+    configure_gpu_script
+    echo "RAPIDS initialized with Spark runtime"
+  elif [[ "${RAPIDS_RUNTIME}" == "DASK" ]]; then
+    # we are not currently tooled for installing dask in this action.
+    echo "RAPIDS recognizes DASK runtime - currently supported using dask/dask.sh or rapids/rapids.sh"
+  else
+    echo "Unrecognized RAPIDS Runtime: ${RAPIDS_RUNTIME}"
+  fi
 
   # Restart YARN services if they are running already
   for svc in resourcemanager nodemanager; do
-    if [[ $(systemctl show hadoop-yarn-${svc}.service -p SubState --value) == 'running' ]]; then
-      systemctl restart hadoop-yarn-${svc}.service
+    if [[ "$(systemctl show hadoop-yarn-${svc}.service -p SubState --value)" == 'running' ]]; then
+      systemctl restart "hadoop-yarn-${svc}.service"
     fi
   done
 }
@@ -2044,14 +2094,14 @@ function prepare_to_install(){
   readonly bdcfg="/usr/local/bin/bdconfig"
   export DEBIAN_FRONTEND=noninteractive
 
-  mkdir -p "${workdir}"
+  mkdir -p "${workdir}/complete"
   trap exit_handler EXIT
   set_proxy
   mount_ramdisk
 
   readonly install_log="${tmpdir}/install.log"
 
-  if test -f "${workdir}/prepare-complete" ; then return ; fi
+  if test -f "${workdir}/complete/prepare" ; then return ; fi
 
   repair_old_backports
 
@@ -2079,7 +2129,7 @@ function prepare_to_install(){
   screen -d -m -LUS keep-running-df \
     bash -c "while [[ -f /run/keep-running-df ]] ; do df / | tee -a /run/disk-usage.log ; sleep 5s ; done"
 
-  touch "${workdir}/prepare-complete"
+  touch "${workdir}/complete/prepare"
 }
 
 prepare_to_install
