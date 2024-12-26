@@ -67,7 +67,7 @@ esac
 
 eval "$(bash examples/secure-boot/create-key-pair.sh)"
 metadata="dask-runtime=standalone"
-metadata="${metadata},rapids-runtime=RAPIDS"
+metadata="${metadata},rapids-runtime=SPARK"
 metadata="${metadata},cuda-version=${CUDA_VERSION}"
 metadata="${metadata},creating-image=c9h"
 metadata="${metadata},rapids-mirror-disk=rapids-mirror-${region}"
@@ -159,7 +159,7 @@ time generate_from_dataproc_version "${dataproc_version}"
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="spark-pre-init"
 customization_script="examples/secure-boot/spark-rapids.sh"
-#time generate_from_dataproc_version "${dataproc_version}"
+time generate_from_dataproc_version "${dataproc_version}"
 
 ## Execute spark-rapids/mig.sh init action on base image
 PURPOSE="mig-pre-init"
@@ -184,7 +184,7 @@ disk_size_gb="45"
 # Install dask with rapids on base image
 PURPOSE="rapids-pre-init"
 customization_script="examples/secure-boot/rapids.sh"
-time generate_from_base_purpose "cuda-pre-init"
+#time generate_from_base_purpose "cuda-pre-init"
 
 ## Install dask without rapids on base image
 #PURPOSE="dask-pre-init"
