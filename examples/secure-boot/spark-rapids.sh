@@ -70,8 +70,6 @@ function define_os_comparison_functions() {
   done
 }
 
-define_os_comparison_functions
-
 function is_debuntu()  ( set +x ;  is_debian || is_ubuntu ; )
 
 function os_vercat()   ( set +x
@@ -477,15 +475,6 @@ function os_add_repo() {
                   else dnf_add_repo "${repo_name}" "${signing_key_url}" "${repo_data}" "${4:-yes}" "${kr_path}" "${6:-}" ; fi
 }
 
-
-readonly _shortname="$(os_id)$(os_version|perl -pe 's/(\d+).*/$1/')"
-
-# Dataproc configurations
-readonly HADOOP_CONF_DIR='/etc/hadoop/conf'
-readonly HIVE_CONF_DIR='/etc/hive/conf'
-readonly SPARK_CONF_DIR='/etc/spark/conf'
-
-
 function configure_dkms_certs() {
   if test -v PSN && [[ -z "${PSN}" ]]; then
       echo "No signing secret provided.  skipping";
@@ -592,6 +581,169 @@ function check_secure_boot() {
   configure_dkms_certs
 }
 
+function prepare_common_env() {
+  define_os_comparison_functions
+
+  # Verify OS compatability and Secure boot state
+  check_os
+  check_secure_boot
+
+  readonly _shortname="$(os_id)$(os_version|perl -pe 's/(\d+).*/$1/')"
+
+  # Dataproc configurations
+  readonly HADOOP_CONF_DIR='/etc/hadoop/conf'
+  readonly HIVE_CONF_DIR='/etc/hive/conf'
+  readonly SPARK_CONF_DIR='/etc/spark/conf'
+
+  OS_NAME="$(lsb_release -is | tr '[:upper:]' '[:lower:]')"
+  readonly OS_NAME
+
+  # node role
+  ROLE="$(get_metadata_attribute dataproc-role)"
+  readonly ROLE
+
+  workdir=/opt/install-dpgce
+  tmpdir=/tmp/
+  temp_bucket="$(get_metadata_attribute dataproc-temp-bucket)"
+  readonly temp_bucket
+  readonly pkg_bucket="gs://${temp_bucket}/dpgce-packages"
+  uname_r=$(uname -r)
+  readonly uname_r
+  readonly bdcfg="/usr/local/bin/bdconfig"
+  export DEBIAN_FRONTEND=noninteractive
+
+  mkdir -p "${workdir}/complete"
+  trap exit_handler EXIT
+  set_proxy
+  mount_ramdisk
+
+  readonly install_log="${tmpdir}/install.log"
+
+  if test -f "${workdir}/complete/prepare.common" ; then return ; fi
+
+  repair_old_backports
+
+  if is_debuntu ; then
+    clean_up_sources_lists
+    apt-get update -qq
+    apt-get -y clean
+    apt-get -o DPkg::Lock::Timeout=60 -y autoremove
+    if ge_debian12 ; then
+    apt-mark unhold systemd libsystemd0 ; fi
+  else
+    dnf clean all
+  fi
+
+  # zero free disk space
+  if [[ -n "$(get_metadata_attribute creating-image)" ]]; then ( set +e
+    time dd if=/dev/zero of=/zero status=none ; sync ; sleep 3s ; rm -f /zero
+  ) fi
+
+  install_dependencies
+
+  # Monitor disk usage in a screen session
+  df / > "/run/disk-usage.log"
+  touch "/run/keep-running-df"
+  screen -d -m -LUS keep-running-df \
+    bash -c "while [[ -f /run/keep-running-df ]] ; do df / | tee -a /run/disk-usage.log ; sleep 5s ; done"
+
+  touch "${workdir}/complete/prepare.common"
+}
+
+function common_exit_handler() {
+  # Purge private key material until next grant
+  clear_dkms_key
+
+  set +ex
+  echo "Exit handler invoked"
+
+  # Clear pip cache
+  pip cache purge || echo "unable to purge pip cache"
+
+  # If system memory was sufficient to mount memory-backed filesystems
+  if [[ "${tmpdir}" == "/mnt/shm" ]] ; then
+    # remove the tmpfs pip cache-dir
+    pip config unset global.cache-dir || echo "unable to unset global pip cache"
+
+    # Clean up shared memory mounts
+    for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm /tmp ; do
+      if ( grep -q "^tmpfs ${shmdir}" /proc/mounts && ! grep -q "^tmpfs ${shmdir}" /etc/fstab ) ; then
+        umount -f ${shmdir}
+      fi
+    done
+
+    # restart services stopped during preparation stage
+    # systemctl list-units | perl -n -e 'qx(systemctl start $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
+  fi
+
+  if is_debuntu ; then
+    # Clean up OS package cache
+    apt-get -y -qq clean
+    apt-get -y -qq -o DPkg::Lock::Timeout=60 autoremove
+    # re-hold systemd package
+    if ge_debian12 ; then
+    apt-mark hold systemd libsystemd0 ; fi
+    hold_nvidia_packages
+  else
+    dnf clean all
+  fi
+
+  # print disk usage statistics for large components
+  if is_ubuntu ; then
+    du -hs \
+      /usr/lib/{pig,hive,hadoop,jvm,spark,google-cloud-sdk,x86_64-linux-gnu} \
+      /usr/lib \
+      /opt/nvidia/* \
+      /opt/conda/miniconda3 | sort -h
+  elif is_debian ; then
+    du -x -hs \
+      /usr/lib/{pig,hive,hadoop,jvm,spark,google-cloud-sdk,x86_64-linux-gnu,} \
+      /var/lib/{docker,mysql,} \
+      /opt/nvidia/* \
+      /opt/{conda,google-cloud-ops-agent,install-nvidia,} \
+      /usr/bin \
+      /usr \
+      /var \
+      / 2>/dev/null | sort -h
+  else
+    du -hs \
+      /var/lib/docker \
+      /usr/lib/{pig,hive,hadoop,firmware,jvm,spark,atlas,} \
+      /usr/lib64/google-cloud-sdk \
+      /opt/nvidia/* \
+      /opt/conda/miniconda3
+  fi
+
+  # Process disk usage logs from installation period
+  rm -f /run/keep-running-df
+  sync
+  sleep 5.01s
+  # compute maximum size of disk during installation
+  # Log file contains logs like the following (minus the preceeding #):
+#Filesystem     1K-blocks    Used Available Use% Mounted on
+#/dev/vda2        7096908 2611344   4182932  39% /
+  df / | tee -a "/run/disk-usage.log"
+
+  perl -e '@siz=( sort { $a => $b }
+                   map { (split)[2] =~ /^(\d+)/ }
+                  grep { m:^/: } <STDIN> );
+$max=$siz[0]; $min=$siz[-1]; $inc=$max-$min;
+print( "    samples-taken: ", scalar @siz, $/,
+       "maximum-disk-used: $max", $/,
+       "minimum-disk-used: $min", $/,
+       "     increased-by: $inc", $/ )' < "/run/disk-usage.log"
+
+  echo "exit_handler has completed"
+
+  # zero free disk space
+  if [[ -n "$(get_metadata_attribute creating-image)" ]]; then
+    dd if=/dev/zero of=/zero
+    sync
+    sleep 3s
+    rm -f /zero
+  fi
+}
+
 
 function set_support_matrix() {
   # CUDA version and Driver version
@@ -660,7 +812,23 @@ function set_cuda_version() {
   fi
 
   if ( ! test -v DEFAULT_CUDA_VERSION ) ; then
-    DEFAULT_CUDA_VERSION='12.4'
+    DEFAULT_CUDA_VERSION='12.4.1'
+  fi
+  # EXCEPTIONS
+  # Change default CUDA version for Ubuntu 18 (Cuda 12.1.1 - Driver v530.30.02 is the latest version supported by Ubuntu 18)
+  case "${DATAPROC_IMAGE_VERSION}" in
+    "2.0" ) DEFAULT_CUDA_VERSION="12.1.1" ;;
+    "2.1" ) DEFAULT_CUDA_VERSION="12.4.1" ;;
+    "2.2" ) DEFAULT_CUDA_VERSION="12.6.2" ;;
+    *   )
+      echo "unrecognized Dataproc image version"
+      exit 1
+      ;;
+  esac
+
+  if le_ubuntu18 ; then
+    DEFAULT_CUDA_VERSION="12.1.1"
+    CUDA_VERSION_MAJOR="${CUDA_VERSION%.*}"  #12.1
   fi
   readonly DEFAULT_CUDA_VERSION
 
@@ -676,8 +844,6 @@ function set_cuda_version() {
   readonly CUDA_FULL_VERSION
 
 }
-
-set_cuda_version
 
 function is_cuda12() ( set +x ; [[ "${CUDA_VERSION%%.*}" == "12" ]] ; )
 function le_cuda12() ( set +x ; version_le "${CUDA_VERSION%%.*}" "12" ; )
@@ -734,8 +900,6 @@ function set_driver_version() {
   fi
 }
 
-set_driver_version
-
 function set_cudnn_version() {
   readonly DEFAULT_CUDNN8_VERSION="8.0.5.39"
   readonly DEFAULT_CUDNN9_VERSION="9.1.0.70"
@@ -755,54 +919,29 @@ function set_cudnn_version() {
   fi
   readonly CUDNN_VERSION
 }
-set_cudnn_version
+
 
 function is_cudnn8() ( set +x ; [[ "${CUDNN_VERSION%%.*}" == "8" ]] ; )
 function is_cudnn9() ( set +x ; [[ "${CUDNN_VERSION%%.*}" == "9" ]] ; )
 
-readonly DEFAULT_NCCL_VERSION=${NCCL_FOR_CUDA["${CUDA_VERSION}"]}
-readonly NCCL_VERSION=$(get_metadata_attribute 'nccl-version' ${DEFAULT_NCCL_VERSION})
-
-# Parameters for NVIDIA-provided Debian GPU driver
-readonly DEFAULT_USERSPACE_URL="https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
-
-readonly USERSPACE_URL=$(get_metadata_attribute 'gpu-driver-url' "${DEFAULT_USERSPACE_URL}")
-
-USERSPACE_FILENAME="$(echo ${USERSPACE_URL} | perl -pe 's{^.+/}{}')"
-readonly USERSPACE_FILENAME
-
+function set_cuda_repo_shortname() {
 # Short name for urls
-if is_ubuntu22  ; then
-    # at the time of writing 20241125 there is no ubuntu2204 in the index of repos at
-    # https://developer.download.nvidia.com/compute/machine-learning/repos/
-    # use packages from previous release until such time as nvidia
-    # release ubuntu2204 builds
-
-    shortname="$(os_id)$(os_vercat)"
-    nccl_shortname="ubuntu2004"
-elif ge_rocky9 ; then
-    # use packages from previous release until such time as nvidia
-    # release rhel9 builds
-
-    shortname="rhel9"
-    nccl_shortname="rhel8"
-elif is_rocky ; then
+# https://developer.download.nvidia.com/compute/cuda/repos/${shortname}
+  if is_rocky ; then
     shortname="$(os_id | sed -e 's/rocky/rhel/')$(os_vercat)"
-    nccl_shortname="${shortname}"
-else
+  else
     shortname="$(os_id)$(os_vercat)"
-    nccl_shortname="${shortname}"
-fi
+  fi
+}
 
-# Parameters for NVIDIA-provided package repositories
-readonly NVIDIA_BASE_DL_URL='https://developer.download.nvidia.com/compute'
-readonly NVIDIA_REPO_URL="${NVIDIA_BASE_DL_URL}/cuda/repos/${shortname}/x86_64"
+function set_nv_urls() {
+  # Parameters for NVIDIA-provided package repositories
+  readonly NVIDIA_BASE_DL_URL='https://developer.download.nvidia.com/compute'
+  readonly NVIDIA_REPO_URL="${NVIDIA_BASE_DL_URL}/cuda/repos/${shortname}/x86_64"
 
-# Parameters for NVIDIA-provided NCCL library
-readonly DEFAULT_NCCL_REPO_URL="${NVIDIA_BASE_DL_URL}/machine-learning/repos/${nccl_shortname}/x86_64/nvidia-machine-learning-repo-${nccl_shortname}_1.0.0-1_amd64.deb"
-NCCL_REPO_URL=$(get_metadata_attribute 'nccl-repo-url' "${DEFAULT_NCCL_REPO_URL}")
-readonly NCCL_REPO_URL
-readonly NCCL_REPO_KEY="${NVIDIA_BASE_DL_URL}/machine-learning/repos/${nccl_shortname}/x86_64/7fa2af80.pub" # 3bf863cc.pub
+  # Parameter for NVIDIA-provided Rocky Linux GPU driver
+  readonly NVIDIA_ROCKY_REPO_URL="${NVIDIA_REPO_URL}/cuda-${shortname}.repo"
+}
 
 function set_cuda_runfile_url() {
   local MAX_DRIVER_VERSION
@@ -886,11 +1025,7 @@ function set_cuda_runfile_url() {
   fi
 }
 
-set_cuda_runfile_url
-
-# Parameter for NVIDIA-provided Rocky Linux GPU driver
-readonly NVIDIA_ROCKY_REPO_URL="${NVIDIA_REPO_URL}/cuda-${shortname}.repo"
-
+function set_cudnn_tarball_url() {
 CUDNN_TARBALL="cudnn-${CUDA_VERSION}-linux-x64-v${CUDNN_VERSION}.tgz"
 CUDNN_TARBALL_URL="${NVIDIA_BASE_DL_URL}/redist/cudnn/v${CUDNN_VERSION%.*}/${CUDNN_TARBALL}"
 if ( version_ge "${CUDNN_VERSION}" "8.3.1.22" ); then
@@ -910,22 +1045,11 @@ if ( version_ge "${CUDA_VERSION}" "12.0" ); then
 fi
 readonly CUDNN_TARBALL
 readonly CUDNN_TARBALL_URL
+}
 
-# Whether to install NVIDIA-provided or OS-provided GPU driver
-GPU_DRIVER_PROVIDER=$(get_metadata_attribute 'gpu-driver-provider' 'NVIDIA')
-readonly GPU_DRIVER_PROVIDER
-
-# Whether to install GPU monitoring agent that sends GPU metrics to Stackdriver
-INSTALL_GPU_AGENT=$(get_metadata_attribute 'install-gpu-agent' 'false')
-readonly INSTALL_GPU_AGENT
-
-NVIDIA_SMI_PATH='/usr/bin'
-MIG_MAJOR_CAPS=0
-IS_MIG_ENABLED=0
-
-CUDA_KEYRING_PKG_INSTALLED="0"
 function install_cuda_keyring_pkg() {
-  if [[ "${CUDA_KEYRING_PKG_INSTALLED}" == "1" ]]; then return ; fi
+  if ( test -v CUDA_KEYRING_PKG_INSTALLED &&
+       [[ "${CUDA_KEYRING_PKG_INSTALLED}" == "1" ]] ); then return ; fi
   local kr_ver=1.1
   curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
     "${NVIDIA_REPO_URL}/cuda-keyring_${kr_ver}-1_all.deb" \
@@ -971,7 +1095,6 @@ function uninstall_local_cuda_repo(){
   rm -f "${workdir}/complete/install-local-cuda-repo"
 }
 
-CUDNN_PKG_NAME=""
 function install_local_cudnn_repo() {
   if test -f "${workdir}/complete/install-local-cudnn-repo" ; then return ; fi
   pkgname="cudnn-local-repo-${shortname}-${CUDNN_VERSION%.*}"
@@ -997,8 +1120,6 @@ function uninstall_local_cudnn_repo() {
   rm -f "${workdir}/complete/install-local-cudnn-repo"
 }
 
-CUDNN8_LOCAL_REPO_INSTALLED="0"
-CUDNN8_PKG_NAME=""
 function install_local_cudnn8_repo() {
   if test -f "${workdir}/complete/install-local-cudnn8-repo" ; then return ; fi
 
@@ -1043,6 +1164,9 @@ function uninstall_local_cudnn8_repo() {
 }
 
 function install_nvidia_nccl() {
+  readonly DEFAULT_NCCL_VERSION=${NCCL_FOR_CUDA["${CUDA_VERSION}"]}
+  readonly NCCL_VERSION=$(get_metadata_attribute 'nccl-version' ${DEFAULT_NCCL_VERSION})
+
   if test -f "${workdir}/complete/nccl" ; then return ; fi
 
   if is_cuda11 && is_debian12 ; then
@@ -1342,6 +1466,13 @@ function build_driver_from_packages() {
 }
 
 function install_nvidia_userspace_runfile() {
+  # Parameters for NVIDIA-provided Debian GPU driver
+  readonly DEFAULT_USERSPACE_URL="https://download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
+
+  readonly USERSPACE_URL=$(get_metadata_attribute 'gpu-driver-url' "${DEFAULT_USERSPACE_URL}")
+
+  USERSPACE_FILENAME="$(echo ${USERSPACE_URL} | perl -pe 's{^.+/}{}')"
+  readonly USERSPACE_FILENAME
 
   # This .run file contains NV's OpenGL implementation as well as
   # nvidia optimized implementations of the gtk+ 2,3 stack(s) not
@@ -1831,10 +1962,33 @@ function install_dependencies() {
 }
 
 function prepare_gpu_env(){
+  nvsmi_works="0"
+  NVIDIA_SMI_PATH='/usr/bin'
+  MIG_MAJOR_CAPS=0
+  IS_MIG_ENABLED=0
+  CUDNN_PKG_NAME=""
+  CUDNN8_PKG_NAME=""
+  CUDA_LOCAL_REPO_INSTALLED="0"
+
+  # Whether to install NVIDIA-provided or OS-provided GPU driver
+  GPU_DRIVER_PROVIDER=$(get_metadata_attribute 'gpu-driver-provider' 'NVIDIA')
+  readonly GPU_DRIVER_PROVIDER
+
+  # Whether to install GPU monitoring agent that sends GPU metrics to Stackdriver
+  INSTALL_GPU_AGENT=$(get_metadata_attribute 'install-gpu-agent' 'false')
+  readonly INSTALL_GPU_AGENT
+
   # Verify SPARK compatability
   RAPIDS_RUNTIME=$(get_metadata_attribute 'rapids-runtime' 'SPARK')
+  readonly RAPIDS_RUNTIME
 
-  nvsmi_works="0"
+  set_cuda_version
+  set_driver_version
+  set_cuda_repo_shortname
+  set_nv_urls
+  set_cuda_runfile_url
+  set_cudnn_version
+  set_cudnn_tarball_url
 
   if   is_cuda11 ; then gcc_ver="11"
   elif is_cuda12 ; then gcc_ver="12" ; fi
@@ -1956,6 +2110,16 @@ function setup_gpu_yarn() {
   fi
 }
 
+function gpu_exit_handler() {
+  if [[ "${tmpdir}" == "/mnt/shm" ]] ; then
+    for shmdir in /var/cudnn-local ; do
+      if ( grep -q "^tmpfs ${shmdir}" /proc/mounts && ! grep -q "^tmpfs ${shmdir}" /etc/fstab ) ; then
+        umount -f ${shmdir}
+      fi
+    done
+  fi
+}
+
 
 function main() {
   setup_gpu_yarn
@@ -1980,169 +2144,17 @@ function main() {
 }
 
 function exit_handler() {
-  # Purge private key material until next grant
-  clear_dkms_key
-
-  set +ex
-  echo "Exit handler invoked"
-
-  # Clear pip cache
-  pip cache purge || echo "unable to purge pip cache"
-
-  # If system memory was sufficient to mount memory-backed filesystems
-  if [[ "${tmpdir}" == "/mnt/shm" ]] ; then
-    # remove the tmpfs pip cache-dir
-    pip config unset global.cache-dir || echo "unable to unset global pip cache"
-
-    # Clean up shared memory mounts
-    for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm /tmp /var/cudnn-local ; do
-      if ( grep -q "^tmpfs ${shmdir}" /proc/mounts && ! grep -q "^tmpfs ${shmdir}" /etc/fstab ) ; then
-        umount -f ${shmdir}
-      fi
-    done
-
-    # restart services stopped during preparation stage
-    # systemctl list-units | perl -n -e 'qx(systemctl start $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
-  fi
-
-  if is_debuntu ; then
-    # Clean up OS package cache
-    apt-get -y -qq clean
-    apt-get -y -qq -o DPkg::Lock::Timeout=60 autoremove
-    # re-hold systemd package
-    if ge_debian12 ; then
-    apt-mark hold systemd libsystemd0 ; fi
-    hold_nvidia_packages
-  else
-    dnf clean all
-  fi
-
-  # print disk usage statistics for large components
-  if is_ubuntu ; then
-    du -hs \
-      /usr/lib/{pig,hive,hadoop,jvm,spark,google-cloud-sdk,x86_64-linux-gnu} \
-      /usr/lib \
-      /opt/nvidia/* \
-      /usr/local/cuda-1?.? \
-      /opt/conda/miniconda3 | sort -h
-  elif is_debian ; then
-    du -x -hs \
-      /usr/lib/{pig,hive,hadoop,jvm,spark,google-cloud-sdk,x86_64-linux-gnu} \
-      /var/lib/{docker,mysql,} \
-      /usr/lib \
-      /opt/nvidia/* \
-      /usr/local/cuda-1?.? \
-      /opt/{conda,google-cloud-ops-agent,install-nvidia,} \
-      /usr/bin \
-      /usr \
-      /var \
-      / 2>/dev/null | sort -h
-  else
-    du -hs \
-      /var/lib/docker \
-      /usr/lib/{pig,hive,hadoop,firmware,jvm,spark,atlas} \
-      /usr/lib64/google-cloud-sdk \
-      /usr/lib \
-      /opt/nvidia/* \
-      /usr/local/cuda-1?.? \
-      /opt/conda/miniconda3
-  fi
-
-  # Process disk usage logs from installation period
-  rm -f /run/keep-running-df
-  sync
-  sleep 5.01s
-  # compute maximum size of disk during installation
-  # Log file contains logs like the following (minus the preceeding #):
-#Filesystem     1K-blocks    Used Available Use% Mounted on
-#/dev/vda2        7096908 2611344   4182932  39% /
-  df / | tee -a "/run/disk-usage.log"
-
-  perl -e '@siz=( sort { $a => $b }
-                   map { (split)[2] =~ /^(\d+)/ }
-                  grep { m:^/: } <STDIN> );
-$max=$siz[0]; $min=$siz[-1]; $inc=$max-$min;
-print( "    samples-taken: ", scalar @siz, $/,
-       "maximum-disk-used: $max", $/,
-       "minimum-disk-used: $min", $/,
-       "     increased-by: $inc", $/ )' < "/run/disk-usage.log"
-
-  echo "exit_handler has completed"
-
-  # zero free disk space
-  if [[ -n "$(get_metadata_attribute creating-image)" ]]; then
-    dd if=/dev/zero of=/zero
-    sync
-    sleep 3s
-    rm -f /zero
-  fi
-
+  gpu_exit_handler
+  common_exit_handler
   return 0
 }
 
-# Fetch instance roles and runtime
-readonly MASTER=$(/usr/share/google/get_metadata_value attributes/dataproc-master)
-
 function prepare_to_install(){
-  # Verify OS compatability and Secure boot state
-  check_os
-  check_secure_boot
-
+  prepare_common_env
   prepare_gpu_env
 
-  OS_NAME="$(lsb_release -is | tr '[:upper:]' '[:lower:]')"
-  readonly OS_NAME
-
-  # node role
-  ROLE="$(get_metadata_attribute dataproc-role)"
-  readonly ROLE
-
-  workdir=/opt/install-dpgce
-  tmpdir=/tmp/
-  temp_bucket="$(get_metadata_attribute dataproc-temp-bucket)"
-  readonly temp_bucket
-  readonly pkg_bucket="gs://${temp_bucket}/dpgce-packages"
-  uname_r=$(uname -r)
-  readonly uname_r
-  readonly bdcfg="/usr/local/bin/bdconfig"
-  export DEBIAN_FRONTEND=noninteractive
-
-  mkdir -p "${workdir}/complete"
-  trap exit_handler EXIT
-  set_proxy
-  mount_ramdisk
-
-  readonly install_log="${tmpdir}/install.log"
-
-  if test -f "${workdir}/complete/prepare" ; then return ; fi
-
-  repair_old_backports
-
-  if is_debuntu ; then
-    clean_up_sources_lists
-    apt-get update -qq
-    apt-get -y clean
-    apt-get -o DPkg::Lock::Timeout=60 -y autoremove
-    if ge_debian12 ; then
-    apt-mark unhold systemd libsystemd0 ; fi
-  else
-    dnf clean all
-  fi
-
-  # zero free disk space
-  if [[ -n "$(get_metadata_attribute creating-image)" ]]; then ( set +e
-    time dd if=/dev/zero of=/zero status=none ; sync ; sleep 3s ; rm -f /zero
-  ) fi
-
-  install_dependencies
-
-  # Monitor disk usage in a screen session
-  df / > "/run/disk-usage.log"
-  touch "/run/keep-running-df"
-  screen -d -m -LUS keep-running-df \
-    bash -c "while [[ -f /run/keep-running-df ]] ; do df / | tee -a /run/disk-usage.log ; sleep 5s ; done"
-
-  touch "${workdir}/complete/prepare"
+  # Fetch instance roles and runtime
+  readonly MASTER=$(/usr/share/google/get_metadata_value attributes/dataproc-master)
 }
 
 prepare_to_install
