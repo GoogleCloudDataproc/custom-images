@@ -51,18 +51,18 @@ else
   dataproc_version="${IMAGE_VERSION}"
 fi
 
-CUDA_VERSION="12.4"
+CUDA_VERSION="12.1.1"
 # base image -> cuda
 case "${dataproc_version}" in
-  "2.0-debian10" ) echo -n '' ;;
-  "2.0-rocky8"   ) echo -n '' ;;
-  "2.0-ubuntu18" ) echo -n '' ;;
-  "2.1-debian11" ) echo -n '' ;;
-  "2.1-rocky8"   ) echo -n '' ;;
-  "2.1-ubuntu20" ) echo -n '' ;;
-  "2.2-debian12" ) CUDA_VERSION=12.6 ;;
-  "2.2-rocky9"   ) CUDA_VERSION=12.6 ;;
-  "2.2-ubuntu22" ) CUDA_VERSION=12.6 ;;
+  "2.0-debian10" ) CUDA_VERSION="12.1.1" ;;
+  "2.0-rocky8"   ) CUDA_VERSION="12.1.1" ;;
+  "2.0-ubuntu18" ) CUDA_VERSION="12.1.1" ;;
+  "2.1-debian11" ) CUDA_VERSION="12.4.1" ;;
+  "2.1-rocky8"   ) CUDA_VERSION="12.4.1" ;;
+  "2.1-ubuntu20" ) CUDA_VERSION="12.4.1" ;;
+  "2.2-debian12" ) CUDA_VERSION="12.6.2" ;;
+  "2.2-rocky9"   ) CUDA_VERSION="12.6.2" ;;
+  "2.2-ubuntu22" ) CUDA_VERSION="12.6.2" ;;
 esac
 
 eval "$(bash examples/secure-boot/create-key-pair.sh)"
