@@ -30,7 +30,7 @@ _VERSION_REGEX = re.compile(r"^\d+\.\d+\.\d+(-RC\d+)?(-[a-z]+\d+)?$")
 _FULL_IMAGE_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/([^/]+)$")
 _FULL_IMAGE_FAMILY_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/family/([^/]+)$")
 _LATEST_FROM_MINOR_VERSION = re.compile(r"^(\d+)\.(\d+)-((?:debian|ubuntu|rocky)\d+)$")
-_VALID_COMPONENTS = ["HIVE_WEBHCAT", "JUPYTER", "ZEPPELIN", "TRINO", "RANGER", "SOLR", "FLINK", "DOCKER", "HUDI", "ICEBERG"]
+_VALID_COMPONENTS = ["HIVE_WEBHCAT", "ZEPPELIN", "TRINO", "RANGER", "SOLR", "FLINK", "DOCKER", "HUDI", "ICEBERG", "PIG"]
 
 def _version_regex_type(s):
   """Check if version string matches regex."""
