@@ -92,7 +92,7 @@ function cleanup() {
   rm ./init_actions.sh ./run.sh
 }
 
-function is_2.3() {
+function is_version_at_least_2_3() {
   if echo "${DATAPROC_BASE_IMAGE}" | grep -q "2-3"; then
     return 0 # True
   else
@@ -101,7 +101,7 @@ function is_2.3() {
 }
 
 function run_startup_custom_script() {
-  if is_2.3 && [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
+  if is_version_at_least_2_3 && [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
     source "${BDUTIL_DIR}/startup_optional_components.sh"
   fi
 }
