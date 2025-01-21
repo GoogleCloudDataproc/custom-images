@@ -32,8 +32,7 @@ CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sou
 # get time to wait for stdout to flush
 SHUTDOWN_TIMER_IN_SEC=$(/usr/share/google/get_metadata_value attributes/shutdown-timer-in-sec)
 
-USER_DATAPROC_COMPONENTS=$(/usr/share/google/get_metadata_value attributes/optional-components)
-USER_DATAPROC_COMPONENTS=$(echo "$USER_DATAPROC_COMPONENTS" | tr '[:upper:]' '[:lower:]' | tr '.' ',')
+USER_DATAPROC_COMPONENTS=$( /usr/share/google/get_metadata_value attributes/optional-components | tr '[:upper:]' '[:lower:]' | tr '.' ',' )
 BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
 DATAPROC_BASE_IMAGE=$(/usr/share/google/get_metadata_value attributes/dataproc-base-image)
 
@@ -92,16 +91,8 @@ function cleanup() {
   rm ./init_actions.sh ./run.sh
 }
 
-function is_version_at_least_2_3() {
-  if echo "${DATAPROC_BASE_IMAGE}" | grep -q "2-3"; then
-    return 0 # True
-  else
-    return 1 # False
-  fi
-}
-
 function run_startup_custom_script() {
-  if is_version_at_least_2_3 && [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
+  if echo "${DATAPROC_BASE_IMAGE}" | grep -q "2-3" && [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
     source "${BDUTIL_DIR}/startup_optional_components.sh"
   fi
 }

@@ -30,7 +30,7 @@ _VERSION_REGEX = re.compile(r"^\d+\.\d+\.\d+(-RC\d+)?(-[a-z]+\d+)?$")
 _FULL_IMAGE_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/([^/]+)$")
 _FULL_IMAGE_FAMILY_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/family/([^/]+)$")
 _LATEST_FROM_MINOR_VERSION = re.compile(r"^(\d+)\.(\d+)-((?:debian|ubuntu|rocky)\d+)$")
-_VALID_COMPONENTS = ["HIVE_WEBHCAT", "ZEPPELIN", "TRINO", "RANGER", "SOLR", "FLINK", "DOCKER", "HUDI", "ICEBERG", "PIG"]
+_VALID_OPTIONAL_COMPONENTS = ["HIVE_WEBHCAT", "ZEPPELIN", "TRINO", "RANGER", "SOLR", "FLINK", "DOCKER", "HUDI", "ICEBERG", "PIG"]
 
 def _version_regex_type(s):
   """Check if version string matches regex."""
@@ -53,9 +53,9 @@ def _full_image_family_uri_regex_type(s):
 def _validate_components(s):
     components = s.split(',')
     for component in components:
-        if component not in _VALID_COMPONENTS:
-            raise argparse.ArgumentTypeError("Invalid component selected.")
-    return ','.join(components)
+        if component not in _VALID_OPTIONAL_COMPONENTS:
+            raise argparse.ArgumentTypeError("Invalid optional component selected.")
+    return s
 
 def parse_args(args):
   """Parses command-line arguments."""
