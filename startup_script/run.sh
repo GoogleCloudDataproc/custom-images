@@ -35,8 +35,6 @@ SHUTDOWN_TIMER_IN_SEC=$(/usr/share/google/get_metadata_value attributes/shutdown
 USER_DATAPROC_COMPONENTS=$( /usr/share/google/get_metadata_value attributes/optional-components | tr '[:upper:]' '[:lower:]' | tr '.' ',' || echo "")
 BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
 DATAPROC_VERSION=$(/usr/share/google/get_metadata_value attributes/dataproc-version | cut -c1-3 | tr '-' '.' || echo "")
-DATAPROC_IMAGE_URI=$(/usr/share/google/get_metadata_value attributes/base-image-uri || echo "")
-PROJECT_ID=$(/usr/share/google/get_metadata_value attributes/project-id)
 
 ready=""
 
@@ -93,18 +91,8 @@ function cleanup() {
   rm ./init_actions.sh ./run.sh
 }
 
-function extract_version_from_base_uri() {
-  local version
-  version=$(gcloud compute images describe "$DATAPROC_IMAGE_URI" --project="$PROJECT_ID" \
-    --format="json(labels)" | jq -r '.labels["goog-dataproc-version"]' | cut -c1-3 | tr '-' '.')
-  echo "$version"
-}
-
 function is_version_at_least() {
   local -r VERSION=$1
-  if [[ -z "$DATAPROC_VERSION" ]]; then
-    DATAPROC_VERSION=$(extract_version_from_base_uri)
-  fi
   if [[ $(echo "$DATAPROC_VERSION >= $VERSION" | bc -l) -eq 1 ]]; then
     return 0
   else

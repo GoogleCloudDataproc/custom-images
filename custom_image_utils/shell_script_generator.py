@@ -314,9 +314,6 @@ class Generator:
     if self.args["dataproc_version"]:
       dataproc_version = self.args["dataproc_version"]
       metadata_flag_template += ',dataproc-version="{}"'.format(dataproc_version)
-    elif self.args["base_image_uri"]:
-      base_image_uri = self.args["base_image_uri"]
-      metadata_flag_template += ',base-image-uri="{}"'.format(base_image_uri)
     if self.args["metadata"]:
       metadata_flag_template += ",{metadata}"
     self.args["metadata_flag"] = metadata_flag_template.format(**self.args)
