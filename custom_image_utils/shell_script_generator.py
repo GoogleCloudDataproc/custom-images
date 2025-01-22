@@ -306,7 +306,7 @@ class Generator:
     metadata_flag_template = (
         "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},"
         "custom-sources-path={custom_sources_path},"
-        "dataproc-base-image={dataproc_base_image}"
+        "dataproc-version={dataproc_version}"
     )
     if self.args["optional_components"]:
       optional_components = self.args["optional_components"].replace(',', '.')

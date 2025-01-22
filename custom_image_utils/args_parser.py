@@ -66,11 +66,11 @@ def parse_args(args):
       type=str,
       required=True,
       help="""The image name for the Dataproc custom image.""")
-  image_args = required_args.add_mutually_exclusive_group()
-  image_args.add_argument(
+  required_args.add_argument(
       "--dataproc-version",
       type=_version_regex_type,
       help=constants.version_help_text)
+  image_args = required_args.add_mutually_exclusive_group()
   image_args.add_argument(
       "--base-image-uri",
       type=_full_image_uri_regex_type,

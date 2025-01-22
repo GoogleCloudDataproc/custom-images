@@ -34,7 +34,8 @@ SHUTDOWN_TIMER_IN_SEC=$(/usr/share/google/get_metadata_value attributes/shutdown
 
 USER_DATAPROC_COMPONENTS=$( /usr/share/google/get_metadata_value attributes/optional-components | tr '[:upper:]' '[:lower:]' | tr '.' ',' )
 BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
-DATAPROC_BASE_IMAGE=$(/usr/share/google/get_metadata_value attributes/dataproc-base-image)
+DATAPROC_VERSION=$(/usr/share/google/get_metadata_value attributes/dataproc-version | cut -c1-3)
+echo "DATAPROC_VERSION" + "$DATAPROC_VERSION"
 
 ready=""
 
@@ -91,8 +92,17 @@ function cleanup() {
   rm ./init_actions.sh ./run.sh
 }
 
+function is_version_at_least() {
+  local -r VERSION=$1
+  if [[ $(echo "$DATAPROC_VERSION >= $VERSION" | bc -l) -eq 1 ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
 function run_startup_custom_script() {
-  if echo "${DATAPROC_BASE_IMAGE}" | grep -q "2-3" && [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
+  if is_version_at_least "2.2" && [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
     source "${BDUTIL_DIR}/startup_optional_components.sh"
   fi
 }
