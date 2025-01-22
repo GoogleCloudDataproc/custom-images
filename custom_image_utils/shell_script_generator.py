@@ -305,8 +305,7 @@ class Generator:
         **self.args) if self.args["storage_location"] else ""
     metadata_flag_template = (
         "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},"
-        "custom-sources-path={custom_sources_path},"
-        "project-id={project_id}"
+        "custom-sources-path={custom_sources_path}"
     )
     if self.args["optional_components"]:
       optional_components = self.args["optional_components"].replace(',', '.')

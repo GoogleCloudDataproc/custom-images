@@ -101,7 +101,7 @@ function is_version_at_least() {
 }
 
 function run_startup_custom_script() {
-  if is_version_at_least "2.2" && [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
+  if is_version_at_least "2.3" && [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
     source "${BDUTIL_DIR}/startup_optional_components.sh"
   fi
 }
