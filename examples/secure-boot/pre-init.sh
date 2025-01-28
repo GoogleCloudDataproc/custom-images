@@ -70,9 +70,8 @@ metadata="dask-runtime=standalone"
 metadata="${metadata},rapids-runtime=SPARK"
 metadata="${metadata},cuda-version=${CUDA_VERSION}"
 metadata="${metadata},creating-image=c9h"
-metadata="${metadata},rapids-mirror-disk=rapids-mirror-${region}"
-metadata="${metadata},rapids-mirror-host=10.42.79.42"
 metadata="${metadata},dataproc-temp-bucket=${TEMP_BUCKET}"
+metadata="${metadata},include-pytorch=1"
 
 function create_h100_instance() {
   python generate_custom_image.py \
