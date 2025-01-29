@@ -19,7 +19,7 @@ import subprocess
 
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
-_LOG.setLevel(logging.INFO)
+_LOG.setLevel(logging.WARN)
 
 
 def _set_custom_image_label(image_name, version, project_id):

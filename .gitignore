@@ -10,3 +10,18 @@ __pycache__
 
 # MacOS folder files
 .DS_Store
+
+# Emacs
+*~
+\#*#
+.\#*
+
+# secure-boot certificate store
+tls/
+tls-*/
+
+# Screen session logs
+screenlog.*
+
+# environment configuration file
+env.json

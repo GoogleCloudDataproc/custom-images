@@ -22,7 +22,7 @@ import tempfile
 
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
-_LOG.setLevel(logging.INFO)
+_LOG.setLevel(logging.WARN)
 
 _expiration_notification_text = """\
 

@@ -1,4 +1,4 @@
-# Copyright 2019 Google Inc. All Rights Reserved.
+# Copyright 2019,2020,2021,2024 Google LLC. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the 'License');
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ from custom_image_utils import constants
 _VERSION_REGEX = re.compile(r"^\d+\.\d+\.\d+(-RC\d+)?(-[a-z]+\d+)?$")
 _FULL_IMAGE_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/([^/]+)$")
 _FULL_IMAGE_FAMILY_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/family/([^/]+)$")
-_LATEST_FROM_MINOR_VERSION = re.compile(r"^(\d+)\.(\d+)-((?:debian|ubuntu|centos)\d+)$")
+_LATEST_FROM_MINOR_VERSION = re.compile(r"^(\d+)\.(\d+)-((?:debian|ubuntu|rocky)\d+)$")
 
 def _version_regex_type(s):
   """Check if version string matches regex."""
@@ -223,5 +223,13 @@ def parse_args(args):
       "--dry-run",
       action="store_true",
       help="""(Optional) Only generates script without creating image.""")
+  parser.add_argument(
+      "--trusted-cert",
+      type=str,
+      required=False,
+      default="tls/db.der",
+      help="""(Optional) Inserts the specified DER-format certificate into
+      the custom image's EFI boot sector for use with secure boot.""")
+
 
   return parser.parse_args(args)
