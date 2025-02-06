@@ -100,9 +100,9 @@ function is_version_at_least() {
   fi
 }
 
-function run_startup_custom_script() {
+function run_install_optional_components_script() {
   if is_version_at_least "2.3" && [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
-    source "${BDUTIL_DIR}/startup_optional_components.sh"
+    source "${BDUTIL_DIR}/install_optional_components.sh"
   fi
 }
 
@@ -110,7 +110,7 @@ function main() {
   wait_until_ready
 
   if [[ "${ready}" == "true" ]]; then
-    run_startup_custom_script
+    run_install_optional_components_script
     run_custom_script
     cleanup
   fi

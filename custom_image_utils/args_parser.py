@@ -243,7 +243,7 @@ def parse_args(args):
       type=_validate_components,
       required=False,
       help="""Optional Components to be installed with the image. 
-      Can be a comma-separated list of components, e.g., TRINO,JUPYTER."""
+      Can be a comma-separated list of components, e.g., TRINO,ZEPPELIN."""
   )
 
 
