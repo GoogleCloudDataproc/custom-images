@@ -101,9 +101,10 @@ function is_version_at_least() {
 }
 
 function run_install_optional_components_script() {
-  if is_version_at_least "2.3" && [[ -n "$USER_DATAPROC_COMPONENTS" ]]; then
-    source "${BDUTIL_DIR}/install_optional_components.sh"
+  if ! is_version_at_least "2.3" || [[ -z "$USER_DATAPROC_COMPONENTS" ]]; then
+    return
   fi
+  source "${BDUTIL_DIR}/install_optional_components.sh"
 }
 
 function main() {

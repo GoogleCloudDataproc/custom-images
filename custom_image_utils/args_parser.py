@@ -50,12 +50,12 @@ def _full_image_family_uri_regex_type(s):
     raise argparse.ArgumentTypeError("Invalid image family URI: {}.".format(s))
   return s
 
-def _validate_components(s):
-    components = s.split(',')
+def _validate_components(optional_components):
+    components = optional_components.split(',')
     for component in components:
         if component not in _VALID_OPTIONAL_COMPONENTS:
             raise argparse.ArgumentTypeError("Invalid optional component selected.")
-    return s
+    return optional_components
 
 def parse_args(args):
   """Parses command-line arguments."""
@@ -243,7 +243,8 @@ def parse_args(args):
       type=_validate_components,
       required=False,
       help="""Optional Components to be installed with the image. 
-      Can be a comma-separated list of components, e.g., TRINO,ZEPPELIN."""
+      Can be a comma-separated list of components, e.g., TRINO,ZEPPELIN.
+      (Only supported for Dataproc Images 2.3 and above)"""
   )
 
 
