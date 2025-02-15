@@ -20,13 +20,18 @@ set -e
 
 IMAGE_VERSION="$1"
 if [[ -z "${IMAGE_VERSION}" ]] ; then
-export IMAGE_VERSION="$(jq -r .IMAGE_VERSION        env.json)" ; fi
-export PROJECT_ID="$(jq    -r .PROJECT_ID           env.json)"
-export PURPOSE="$(jq       -r .PURPOSE              env.json)"
-export BUCKET="$(jq        -r .BUCKET               env.json)"
-export TEMP_BUCKET="$(jq   -r .TEMP_BUCKET          env.json)"
-export ZONE="$(jq          -r .ZONE                 env.json)"
-export SUBNET="$(jq        -r .SUBNET               env.json)"
+export IMAGE_VERSION="$(jq    -r .IMAGE_VERSION        env.json)" ; fi
+export PROJECT_ID="$(jq       -r .PROJECT_ID           env.json)"
+export PURPOSE="$(jq          -r .PURPOSE              env.json)"
+export BUCKET="$(jq           -r .BUCKET               env.json)"
+export TEMP_BUCKET="$(jq      -r .TEMP_BUCKET          env.json)"
+export ZONE="$(jq             -r .ZONE                 env.json)"
+export SUBNET="$(jq           -r .SUBNET               env.json)"
+export HIVE_NAME="$(jq        -r .HIVE_INSTANCE_NAME   env.json)"
+export HIVEDB_PW_URI="$(jq    -r .DB_HIVE_PASSWORD_URI env.json)"
+export KMS_KEY_URI="$(jq      -r .KMS_KEY_URI          env.json)"
+export PRINCIPAL_USER="$(jq   -r .PRINCIPAL            env.json)"
+export PRINCIPAL_DOMAIN="$(jq -r .DOMAIN               env.json)"
 
 export region="$(echo "${ZONE}" | perl -pe 's/-[a-z]+$//')"
 
@@ -36,7 +41,8 @@ disk_size_gb="30" # greater than or equal to 30
 SA_NAME="sa-${PURPOSE}"
 GSA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-gcloud config set project ${PROJECT_ID}
+gcloud config set project "${PROJECT_ID}"
+gcloud config set account "${PRINCIPAL_USER}@${PRINCIPAL_DOMAIN}"
 
 #gcloud auth login
 
@@ -51,8 +57,7 @@ else
   dataproc_version="${IMAGE_VERSION}"
 fi
 
-CUDA_VERSION="12.1.1"
-# base image -> cuda
+CUDA_VERSION="12.4.1"
 case "${dataproc_version}" in
   "2.0-debian10" ) CUDA_VERSION="12.1.1" ;;
   "2.0-rocky8"   ) CUDA_VERSION="12.1.1" ;;
@@ -60,14 +65,13 @@ case "${dataproc_version}" in
   "2.1-debian11" ) CUDA_VERSION="12.4.1" ;;
   "2.1-rocky8"   ) CUDA_VERSION="12.4.1" ;;
   "2.1-ubuntu20" ) CUDA_VERSION="12.4.1" ;;
-  "2.2-debian12" ) CUDA_VERSION="12.6.2" ;;
-  "2.2-rocky9"   ) CUDA_VERSION="12.6.2" ;;
-  "2.2-ubuntu22" ) CUDA_VERSION="12.6.2" ;;
+  "2.2-debian12" ) CUDA_VERSION="12.6.3" ;;
+  "2.2-rocky9"   ) CUDA_VERSION="12.6.3" ;;
+  "2.2-ubuntu22" ) CUDA_VERSION="12.6.3" ;;
 esac
 
 eval "$(bash examples/secure-boot/create-key-pair.sh)"
-metadata="dask-runtime=standalone"
-metadata="${metadata},rapids-runtime=SPARK"
+metadata="rapids-runtime=SPARK"
 metadata="${metadata},cuda-version=${CUDA_VERSION}"
 metadata="${metadata},creating-image=c9h"
 metadata="${metadata},dataproc-temp-bucket=${TEMP_BUCKET}"
@@ -75,8 +79,8 @@ metadata="${metadata},include-pytorch=1"
 
 function create_h100_instance() {
   python generate_custom_image.py \
-    --machine-type         "a3-highgpu-8g" \
-    --accelerator          "type=nvidia-h100-80gb,count=8" \
+    --machine-type         "a3-highgpu-2g" \
+    --accelerator          "type=nvidia-h100-80gb,count=2" \
     $*
 }
 
@@ -89,7 +93,7 @@ function create_t4_instance() {
 
 function generate() {
   local extra_args="$*"
-  local image_name="${PURPOSE}-${dataproc_version/\./-}-${timestamp}"
+  local image_name="${PURPOSE}-${dataproc_version//\./-}-${timestamp}"
 
   local image="$(jq -r ".[] | select(.name == \"${image_name}\").name" "${tmpdir}/images.json")"
 
@@ -112,8 +116,14 @@ function generate() {
     gcloud -q compute instances delete "${image_name}-install" \
       --zone "${custom_image_zone}"
   fi
+
+  if [[ "${customization_script}" =~ "cloud-sql-proxy.sh" ]] ; then
+    metadata="${metadata},hive-metastore-instance=${PROJECT_ID}:${region}:${HIVE_NAME}"
+    metadata="${metadata},db-hive-password-uri=${HIVEDB_PW_URI}"
+    metadata="${metadata},kms-key-uri=${KMS_KEY_URI}"
+  fi
+  
   set -xe
-#  create_h100_instance \
   create_t4_instance \
     --image-name           "${image_name}" \
     --customization-script "${customization_script}" \
@@ -135,35 +145,40 @@ function generate_from_base_purpose() {
   generate --base-image-uri "https://www.googleapis.com/compute/v1/projects/${PROJECT_ID}/global/images/${1}-${dataproc_version/\./-}-${timestamp}"
 }
 
-# base image -> cuda
+# base image -> tensorflow
 case "${dataproc_version}" in
-  "2.0-debian10" ) disk_size_gb="32" ;; # 29.30G 28.29G       0 100% / # cuda-pre-init-2-0-debian10
-  "2.0-rocky8"   ) disk_size_gb="32" ;; # 29.79G 28.94G   0.85G  98% / # cuda-pre-init-2-0-rocky8
-  "2.0-ubuntu18" ) disk_size_gb="32" ;; # 28.89G 27.64G   1.24G  96% / # cuda-pre-init-2-0-ubuntu18
-  "2.1-debian11" ) disk_size_gb="34" ;; # 31.26G 30.74G       0 100% / # cuda-pre-init-2-1-debian11
-  "2.1-rocky8"   ) disk_size_gb="36" ;; # 33.79G 32.00G   1.80G  95% / # cuda-pre-init-2-1-rocky8
-  "2.1-ubuntu20" ) disk_size_gb="34" ;; # 30.83G 30.35G   0.46G  99% / # cuda-pre-init-2-1-ubuntu20
-  "2.2-debian12" ) disk_size_gb="36" ;; # 33.23G 32.71G       0 100% / # cuda-pre-init-2-2-debian12
-  "2.2-rocky9"   ) disk_size_gb="37" ;; # 34.79G 33.16G   1.64G  96% / # cuda-pre-init-2-2-rocky9
-  "2.2-ubuntu22" ) disk_size_gb="39" ;; # 33.74G 32.94G   0.78G  98% / # cuda-pre-init-2-2-ubuntu22
+  "2.0-debian10" ) disk_size_gb="42" ;; #  41.11G  36.28G     3.04G  93% / # tf-pre-init
+  "2.0-rocky8"   ) disk_size_gb="45" ;; #  44.79G  38.94G     5.86G  87% / # tf-pre-init
+  "2.0-ubuntu18" ) disk_size_gb="41" ;; #  39.55G  35.39G     4.14G  90% / # tf-pre-init
+  "2.1-debian11" ) disk_size_gb="46" ;; #  45.04G  39.31G     3.78G  92% / # tf-pre-init
+  "2.1-rocky8"   ) disk_size_gb="49" ;; #  48.79G  41.78G     7.01G  86% / # tf-pre-init
+  "2.1-ubuntu20" ) disk_size_gb="46" ;; #  44.40G  39.92G     4.46G  90% / # tf-pre-init
+  "2.2-debian12" ) disk_size_gb="47" ;; #  46.03G  40.76G     3.28G  93% / # tf-pre-init
+  "2.2-rocky9"   ) disk_size_gb="47" ;; #  46.79G  40.85G     5.94G  88% / # tf-pre-init
+  "2.2-ubuntu22" ) disk_size_gb="47" ;; #  45.37G  40.56G     4.79G  90% / # tf-pre-init
 esac
 
-disk_size_gb="40" # greater than or equal to 40
+#disk_size_gb="60" # greater than or equal to 40
 
-# Install GPU drivers + cuda on dataproc base image
-PURPOSE="cuda-pre-init"
+# Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
+PURPOSE="tf-pre-init"
 customization_script="examples/secure-boot/install_gpu_driver.sh"
 time generate_from_dataproc_version "${dataproc_version}"
 
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="spark-pre-init"
 customization_script="examples/secure-boot/spark-rapids.sh"
-time generate_from_dataproc_version "${dataproc_version}"
+echo time generate_from_dataproc_version "${dataproc_version}"
+
+## Execute spark-rapids/spark-rapids.sh init action on base image
+PURPOSE="cloud-sql-proxy"
+customization_script="examples/secure-boot/cloud-sql-proxy.sh"
+echo time generate_from_dataproc_version "${dataproc_version}"
 
 ## Execute spark-rapids/mig.sh init action on base image
 PURPOSE="mig-pre-init"
 customization_script="examples/secure-boot/mig.sh"
-#time generate_from_dataproc_version "${dataproc_version}"
+echo time generate_from_dataproc_version "${dataproc_version}"
 
 # cuda image -> rapids
 case "${dataproc_version}" in

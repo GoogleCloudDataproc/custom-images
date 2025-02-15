@@ -15,6 +15,17 @@
 #
 # This script creates a custom image pre-loaded with cuda
 
+# To run the script, the following will bootstrap
+#
+# git clone git@github.com:GoogleCloudDataproc/custom-images
+# cd custom-images
+# git checkout 2025.01
+# cp examples/secure-boot/env.json.sample env.json
+# vi env.json
+# docker build -f Dockerfile -t custom-image-builder:latest .
+# time docker run -it custom-images-builder:latest bash examples/secure-boot/build-current-images.sh
+
+
 set -ex
 
 function execute_with_retries() (
@@ -130,7 +141,7 @@ configure_service_account
 session_name="build-current-images"
 
 readonly timestamp="$(date +%F-%H-%M)"
-#readonly timestamp="2024-12-23-22-02"
+#readonly timestamp="2025-02-15-03-29"
 export timestamp
 
 export tmpdir=/tmp/${timestamp};
@@ -148,7 +159,7 @@ function find_disk_usage() {
   for workflow_log in $(grep -Hl "Customization script" /tmp/custom-image-*/logs/workflow.log) ; do
     startup_log=$(echo "${workflow_log}" | sed -e 's/workflow.log/startup-script.log/')
     grep -v '^\['  "${startup_log}" \
-      | grep -A8 'Filesystem.*Avail' \
+      | grep -A7 'Filesystem.*Avail' \
       | perl examples/secure-boot/genline.pl "${workflow_log}"
   done
 }

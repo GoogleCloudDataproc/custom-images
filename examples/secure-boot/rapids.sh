@@ -433,7 +433,7 @@ function install_dask_rapids() {
 
   output=$(gsutil ls "${gcs_tarball}" 2>&1 || echo '')
   if echo "${output}" | grep -q "${gcs_tarball}" ; then
-    gcloud storage cat "${gcs_tarball}" | tar -C / -xJv
+    time gcloud storage cat "${gcs_tarball}" | tar -C / -xJ
     return
   fi
 
@@ -496,7 +496,7 @@ function install_dask_rapids() {
     sync
     if [[ "$retval" == "0" ]] ; then
       is_installed="1"
-      tar cv "${DASK_CONDA_ENV}" | xz -cze | dd of="${local_tarball}" status=progress
+      tar c "${DASK_CONDA_ENV}" | xz -cze | dd of="${local_tarball}" status=progress
       gcloud storage cp "${local_tarball}" "${gcs_tarball}"
       rm "${local_tarball}"
       break
@@ -613,9 +613,16 @@ print( "maximum-disk-used: $max", $/ );' < "${tmpdir}/disk-usage.log"
 )
 
 function prepare_to_install(){
-  readonly DEFAULT_CUDA_VERSION="12.4"
-  CUDA_VERSION=$(get_metadata_attribute 'cuda-version' ${DEFAULT_CUDA_VERSION})
+  local -r workdir=/opt/install-dask-rapids
+  mkdir -p "${workdir}"
+  local -r nvidia_smi_xml="${workdir}/nvidia-smi.xml"
+  nvidia-smi -q -x --dtd > "${nvidia_smi_xml}"
+
+  CUDA_VERSION="$(/opt/conda/miniconda3/bin/xmllint --xpath '//nvidia_smi_log/cuda_version/text()' "${nvidia_smi_xml}")"
+  DRIVER_VERSION="$(/opt/conda/miniconda3/bin/xmllint --xpath '//nvidia_smi_log/driver_version/text()' "${nvidia_smi_xml}")"
+
   readonly CUDA_VERSION
+  readonly DRIVER_VERSION
 
   readonly ROLE=$(get_metadata_attribute dataproc-role)
   readonly MASTER=$(get_metadata_attribute dataproc-master)
@@ -669,9 +676,9 @@ function prepare_to_install(){
 
   # Monitor disk usage in a screen session
   if is_debuntu ; then
-      apt-get install -y -qq screen
+      apt-get install -y -qq screen libxml-xpath-perl
   else
-      dnf -y -q install screen
+      dnf -y -q install screen "perl(XML::LibXML)"
   fi
   df -h / | tee "${tmpdir}/disk-usage.log"
   touch "${tmpdir}/keep-running-df"
