@@ -30,6 +30,7 @@ _VERSION_REGEX = re.compile(r"^\d+\.\d+\.\d+(-RC\d+)?(-[a-z]+\d+)?$")
 _FULL_IMAGE_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/([^/]+)$")
 _FULL_IMAGE_FAMILY_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/family/([^/]+)$")
 _LATEST_FROM_MINOR_VERSION = re.compile(r"^(\d+)\.(\d+)-((?:debian|ubuntu|rocky)\d+)$")
+_VALID_OPTIONAL_COMPONENTS = ["HIVE_WEBHCAT", "ZEPPELIN", "TRINO", "RANGER", "SOLR", "FLINK", "DOCKER", "HUDI", "ICEBERG", "PIG"]
 
 def _version_regex_type(s):
   """Check if version string matches regex."""
@@ -47,7 +48,14 @@ def _full_image_family_uri_regex_type(s):
   """Check if the partial image family uri string matches regex."""
   if not _FULL_IMAGE_FAMILY_URI.match(s):
     raise argparse.ArgumentTypeError("Invalid image family URI: {}.".format(s))
-  return s  
+  return s
+
+def _validate_components(optional_components):
+    components = optional_components.split(',')
+    for component in components:
+        if component not in _VALID_OPTIONAL_COMPONENTS:
+            raise argparse.ArgumentTypeError("Invalid optional component selected.")
+    return optional_components
 
 def parse_args(args):
   """Parses command-line arguments."""
@@ -75,7 +83,7 @@ def parse_args(args):
       "--base-image-family",
       type=_full_image_family_uri_regex_type,
       help="""The source image family URI. The latest non-depracated image associated with the family will be used.
-      """)      
+      """)
   required_args.add_argument(
       "--customization-script",
       type=str,
@@ -228,7 +236,15 @@ def parse_args(args):
       type=str,
       required=False,
       default="tls/db.der",
-      help="""(Optional) Pass an empty string to this argument to
-      disable support for shielded-secure-boot.""")
+      help="""(Optional) Inserts the specified DER-format certificate into
+      the custom image's EFI boot sector for use with secure boot.""")
+  parser.add_argument(
+      "--optional-components",
+      type=_validate_components,
+      required=False,
+      help="""Optional Components to be installed with the image.
+      Can be a comma-separated list of components, e.g., TRINO,ZEPPELIN.
+      (Only supported for Dataproc Images 2.3 and above)"""
+  )
 
   return parser.parse_args(args)

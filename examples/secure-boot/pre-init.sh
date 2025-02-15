@@ -20,20 +20,20 @@ set -e
 
 IMAGE_VERSION="$1"
 if [[ -z "${IMAGE_VERSION}" ]] ; then
-export IMAGE_VERSION="$(jq    -r .IMAGE_VERSION        env.json)" ; fi
-export PROJECT_ID="$(jq       -r .PROJECT_ID           env.json)"
-export PURPOSE="$(jq          -r .PURPOSE              env.json)"
-export BUCKET="$(jq           -r .BUCKET               env.json)"
-export TEMP_BUCKET="$(jq      -r .TEMP_BUCKET          env.json)"
-export ZONE="$(jq             -r .ZONE                 env.json)"
-export SUBNET="$(jq           -r .SUBNET               env.json)"
-export HIVE_NAME="$(jq        -r .HIVE_INSTANCE_NAME   env.json)"
-export HIVEDB_PW_URI="$(jq    -r .DB_HIVE_PASSWORD_URI env.json)"
-export KMS_KEY_URI="$(jq      -r .KMS_KEY_URI          env.json)"
-export PRINCIPAL_USER="$(jq   -r .PRINCIPAL            env.json)"
-export PRINCIPAL_DOMAIN="$(jq -r .DOMAIN               env.json)"
+IMAGE_VERSION="$(jq    -r .IMAGE_VERSION        env.json)" ; fi
+PROJECT_ID="$(jq       -r .PROJECT_ID           env.json)"
+PURPOSE="$(jq          -r .PURPOSE              env.json)"
+BUCKET="$(jq           -r .BUCKET               env.json)"
+TEMP_BUCKET="$(jq      -r .TEMP_BUCKET          env.json)"
+ZONE="$(jq             -r .ZONE                 env.json)"
+SUBNET="$(jq           -r .SUBNET               env.json)"
+HIVE_NAME="$(jq        -r .HIVE_INSTANCE_NAME   env.json)"
+HIVEDB_PW_URI="$(jq    -r .DB_HIVE_PASSWORD_URI env.json)"
+KMS_KEY_URI="$(jq      -r .KMS_KEY_URI          env.json)"
+PRINCIPAL_USER="$(jq   -r .PRINCIPAL            env.json)"
+PRINCIPAL_DOMAIN="$(jq -r .DOMAIN               env.json)"
 
-export region="$(echo "${ZONE}" | perl -pe 's/-[a-z]+$//')"
+region="$(echo "${ZONE}" | perl -pe 's/-[a-z]+$//')"
 
 custom_image_zone="${ZONE}"
 disk_size_gb="30" # greater than or equal to 30
@@ -43,8 +43,6 @@ GSA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 gcloud config set project "${PROJECT_ID}"
 gcloud config set account "${PRINCIPAL_USER}@${PRINCIPAL_DOMAIN}"
-
-#gcloud auth login
 
 # If no OS family specified, default to debian
 if [[ "${IMAGE_VERSION}" != *-* ]] ; then
@@ -133,6 +131,7 @@ function generate() {
     --disk-size            "${disk_size_gb}" \
     --gcs-bucket           "${BUCKET}" \
     --subnet               "${SUBNET}" \
+    --optional-components  "DOCKER,PIG" \
     --shutdown-instance-timer-sec=30 \
     --no-smoke-test \
     ${extra_args}
