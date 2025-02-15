@@ -32,6 +32,10 @@ CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sou
 # get time to wait for stdout to flush
 SHUTDOWN_TIMER_IN_SEC=$(/usr/share/google/get_metadata_value attributes/shutdown-timer-in-sec)
 
+USER_DATAPROC_COMPONENTS=$( /usr/share/google/get_metadata_value attributes/optional-components | tr '[:upper:]' '[:lower:]' | tr '.' ',' || echo "")
+BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
+DATAPROC_VERSION=$(/usr/share/google/get_metadata_value attributes/dataproc-version | cut -c1-3 | tr '-' '.' || echo "")
+
 ready=""
 
 function wait_until_ready() {
@@ -87,10 +91,27 @@ function cleanup() {
   rm ./init_actions.sh ./run.sh
 }
 
+function is_version_at_least() {
+  local -r VERSION=$1
+  if [[ $(echo "$DATAPROC_VERSION >= $VERSION" | bc -l) -eq 1 ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+function run_install_optional_components_script() {
+  if ! is_version_at_least "2.3" || [[ -z "$USER_DATAPROC_COMPONENTS" ]]; then
+    return
+  fi
+  source "${BDUTIL_DIR}/install_optional_components.sh"
+}
+
 function main() {
   wait_until_ready
 
   if [[ "${ready}" == "true" ]]; then
+    run_install_optional_components_script
     run_custom_script
     cleanup
   fi
