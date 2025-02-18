@@ -43,7 +43,7 @@ class TestArgsParser(unittest.TestCase):
         base_image_uri="None",
         customization_script="'{}'".format(customization_script),
         dataproc_version="None",
-        disk_size="40",
+        disk_size="20",
         dry_run=False,
         extra_sources="{}",
         family="'dataproc-custom-image'",

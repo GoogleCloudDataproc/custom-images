@@ -20,6 +20,8 @@
 set -euxo pipefail
 
 function os_id()       { grep '^ID=' /etc/os-release | cut -d= -f2 | xargs ; }
+function os_version()  ( set +x ;  grep '^VERSION_ID=' /etc/os-release | cut -d= -f2 | xargs ; )
+
 function is_ubuntu()   { [[ "$(os_id)" == 'ubuntu' ]] ; }
 function is_ubuntu18() { is_ubuntu && [[ "$(os_version)" == '18.04'* ]] ; }
 function is_debian()   { [[ "$(os_id)" == 'debian' ]] ; }
@@ -419,6 +421,22 @@ EOF
 }
 
 function install_dask_rapids() {
+  local -r _shortname="$(os_id)$(os_version|perl -pe 's/(\d+).*/$1/')"
+  local -r workdir=/opt/install-dask-rapids
+  mkdir -p "${workdir}"
+  temp_bucket="$(get_metadata_attribute dataproc-temp-bucket)"
+  readonly temp_bucket
+  local -r pkg_bucket="gs://${temp_bucket}/dpgce-packages"
+  local -r build_tarball="conda_dask-rapids${RAPIDS_VERSION}_cuda${CUDA_VERSION%%.*}_${_shortname}.tar.xz"
+  local -r local_tarball="${tmpdir}/${build_tarball}"
+  local -r gcs_tarball="${pkg_bucket}/${_shortname}/${build_tarball}"
+
+  output=$(gsutil ls "${gcs_tarball}" 2>&1 || echo '')
+  if echo "${output}" | grep -q "${gcs_tarball}" ; then
+    time gcloud storage cat "${gcs_tarball}" | tar -C / -xJ
+    return
+  fi
+
   if is_cuda12 ; then
     local python_spec="python>=3.11"
     local cuda_spec="cuda-version>=12,<13"
@@ -478,6 +496,9 @@ function install_dask_rapids() {
     sync
     if [[ "$retval" == "0" ]] ; then
       is_installed="1"
+      tar c "${DASK_CONDA_ENV}" | xz -cze | dd of="${local_tarball}" status=progress
+      gcloud storage cp "${local_tarball}" "${gcs_tarball}"
+      rm "${local_tarball}"
       break
     fi
     "${conda}" config --set channel_priority flexible
@@ -575,7 +596,7 @@ function exit_handler() (
   # Log file contains logs like the following (minus the preceeding #):
 #Filesystem      Size  Used Avail Use% Mounted on
 #/dev/vda2       6.8G  2.5G  4.0G  39% /
-  df -h / | tee -a "${tmpdir}/disk-usage.log"
+  df / | tee -a "${tmpdir}/disk-usage.log"
   perl -e '$max=( sort
                    map { (split)[2] =~ /^(\d+)/ }
                   grep { m:^/: } <STDIN> )[-1];
@@ -592,9 +613,16 @@ print( "maximum-disk-used: $max", $/ );' < "${tmpdir}/disk-usage.log"
 )
 
 function prepare_to_install(){
-  readonly DEFAULT_CUDA_VERSION="12.4"
-  CUDA_VERSION=$(get_metadata_attribute 'cuda-version' ${DEFAULT_CUDA_VERSION})
+  local -r workdir=/opt/install-dask-rapids
+  mkdir -p "${workdir}"
+  local -r nvidia_smi_xml="${workdir}/nvidia-smi.xml"
+  nvidia-smi -q -x --dtd > "${nvidia_smi_xml}"
+
+  CUDA_VERSION="$(/opt/conda/miniconda3/bin/xmllint --xpath '//nvidia_smi_log/cuda_version/text()' "${nvidia_smi_xml}")"
+  DRIVER_VERSION="$(/opt/conda/miniconda3/bin/xmllint --xpath '//nvidia_smi_log/driver_version/text()' "${nvidia_smi_xml}")"
+
   readonly CUDA_VERSION
+  readonly DRIVER_VERSION
 
   readonly ROLE=$(get_metadata_attribute dataproc-role)
   readonly MASTER=$(get_metadata_attribute dataproc-master)
@@ -648,9 +676,9 @@ function prepare_to_install(){
 
   # Monitor disk usage in a screen session
   if is_debuntu ; then
-      apt-get install -y -qq screen
+      apt-get install -y -qq screen libxml-xpath-perl
   else
-      dnf -y -q install screen
+      dnf -y -q install screen "perl(XML::LibXML)"
   fi
   df -h / | tee "${tmpdir}/disk-usage.log"
   touch "${tmpdir}/keep-running-df"

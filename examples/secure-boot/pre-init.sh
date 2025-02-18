@@ -373,4 +373,3 @@ esac
 PURPOSE="pytorch"
 customization_script="examples/secure-boot/pytorch.sh"
 echo time generate_from_base_purpose "tf"
-
