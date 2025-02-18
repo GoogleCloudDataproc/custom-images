@@ -44,6 +44,20 @@ function execute_with_retries() (
   return 1
 )
 
+function gsutil() {{
+  ${gsutil_cmd} "$*"
+}}
+
+function prepare() {{
+  # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
+  # used as a more performant replacement for `gsutil`
+  gsutil_cmd="gcloud storage"
+  gcloud_sdk_version="$(gcloud --version | awk -F'SDK ' '/Google Cloud SDK/ {print $2}')"
+  if version_lt "${gcloud_sdk_version}" "402.0.0" ; then
+    gsutil_cmd="$(which gsutil) -o GSUtil:check_hashes=never"
+  fi
+}}
+
 function exit_handler() {{
   echo 'Cleaning up before exiting.'
 
@@ -264,6 +278,7 @@ function main() {{
   touch /tmp/{run_id}/image_created
 }}
 
+prepare
 trap exit_handler EXIT
 mkdir -p {log_dir}
 main "$@" 2>&1 | tee {log_dir}/workflow.log

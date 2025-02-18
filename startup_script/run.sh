@@ -38,13 +38,21 @@ DATAPROC_VERSION=$(/usr/share/google/get_metadata_value attributes/dataproc-vers
 
 ready=""
 
+# With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
+# used as a more performant replacement for `gsutil`
+gsutil_cmd="gcloud"
+gcloud_sdk_version="$(gcloud --version | awk -F'SDK ' '/Google Cloud SDK/ {print $2}')"
+if version_lt "${gcloud_sdk_version}" "402.0.0" ; then
+  gsutil_cmd="gsutil"
+fi
+
 function wait_until_ready() {
   # For Ubuntu, wait until /snap is mounted, so that gsutil is unavailable.
   if [[ $(. /etc/os-release && echo "${ID}") == ubuntu ]]; then
     for i in {0..10}; do
       sleep 5
 
-      if command -v gsutil >/dev/null; then
+      if command -v "${gsutil_cmd}" >/dev/null; then
         ready="true"
         break
       fi
