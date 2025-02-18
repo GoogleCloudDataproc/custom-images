@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Copyright 2024 Google LLC and contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,9 +14,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# This script creates a custom image pre-loaded with cuda
+# This script creates a custom image pre-loaded with
+#
+# GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch + ipykernel + numba
+
+# To run the script, the following will bootstrap
+#
+# git clone git@github.com:GoogleCloudDataproc/custom-images
+# cd custom-images
+# git checkout 2025.02
+# cp examples/secure-boot/env.json.sample env.json
+# vi env.json
+# docker build -f Dockerfile -t custom-image-builder:latest .
+# time docker run -it custom-images-builder:latest bash examples/secure-boot/build-current-images.sh
+
 
 set -ex
+
+function execute_with_retries() (
+  set +x
+  local -r cmd="$*"
+  local install_log="${tmpdir}/install.log"
+
+  for ((i = 0; i < 3; i++)); do
+    set -x
+    eval "$cmd" > "${install_log}" 2>&1 && retval=$? || { retval=$? ; cat "${install_log}" ; }
+    set +x
+    if [[ $retval == 0 ]] ; then return 0 ; fi
+    sleep 5
+  done
+  return 1
+)
 
 function configure_service_account() {
   # Create service account
@@ -30,42 +59,72 @@ function configure_service_account() {
   if [[ -d tls ]] ; then mv tls "tls-$(date +%s)" ; fi
   eval "$(bash examples/secure-boot/create-key-pair.sh)"
 
-  # Grant service account access to bucket
-  gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/storage.objectViewer" > /dev/null 2>&1
+    --role="roles/dataproc.worker" \
+    --condition=None
 
-  # Grant the service account access to list secrets for the project
-  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.viewer" > /dev/null 2>&1
+  # Grant the service account access to buckets in this project
+  # TODO: this is over-broad and should be limited only to the buckets
+  # used by these clusters
+  for storage_object_role in 'User' 'Creator' 'Viewer' ; do
+    execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+      --member="serviceAccount:${GSA}" \
+      --role="roles/storage.object${storage_object_role}" \
+      --condition=None
+  done
 
-  # Grant service account permission to access the private secret
-  gcloud secrets add-iam-policy-binding "${private_secret_name}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.secretAccessor" > /dev/null 2>&1
+  for secret in "${public_secret_name}" "${private_secret_name}" ; do
+    for sm_role in 'viewer' 'secretAccessor' ; do
+      # Grant the service account permission to list the secret
+      execute_with_retries gcloud secrets -q add-iam-policy-binding "${secret}" \
+        --member="serviceAccount:${GSA}" \
+        --role="roles/secretmanager.${sm_role}" \
+        --condition=None
+    done
+  done
 
-  # Grant service account permission to access the public secret
-  gcloud secrets add-iam-policy-binding "${public_secret_name}" \
+  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.secretAccessor" > /dev/null 2>&1
+    --role=roles/compute.instanceAdmin.v1 \
+    --condition=None
+
+  execute_with_retries gcloud iam service-accounts add-iam-policy-binding "${GSA}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/iam.serviceAccountUser \
+    --condition=None
 }
 
 function revoke_bindings() {
-  # Revoke permission to access the private secret
-  gcloud secrets remove-iam-policy-binding "${private_secret_name}" \
+  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.secretAccessor" > /dev/null 2>&1
+    --role="roles/dataproc.worker"
 
-  # Revoke access to bucket
-  gcloud storage buckets remove-iam-policy-binding "gs://${BUCKET}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/storage.objectViewer" > /dev/null 2>&1
+  # Revoke the service account's access to buckets in this project
+  for storage_object_role in 'User' 'Creator' 'Viewer' ; do
+    execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+      --member="serviceAccount:${GSA}" \
+      --role="roles/storage.object${storage_object_role}"
+  done
 
-  # Revoke access to list secrets for the project
-  gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
+  for secret in "${public_secret_name}" "${private_secret_name}" ; do
+    # Revoke the service account's permission to list and access the secret
+    for sm_role in 'viewer' 'secretAccessor' ; do
+      execute_with_retries gcloud secrets -q remove-iam-policy-binding "${secret}" \
+        --member="serviceAccount:${GSA}" \
+        --role="roles/secretmanager.${sm_role}" \
+        --condition=None
+    done
+  done
+
+
+  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${GSA}" \
-    --role="roles/secretmanager.viewer" > /dev/null 2>&1
+    --role=roles/compute.instanceAdmin.v1
+
+  execute_with_retries gcloud iam service-accounts remove-iam-policy-binding "${GSA}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/iam.serviceAccountUser
 }
 
 export PROJECT_ID="$(jq    -r .PROJECT_ID    env.json)"
@@ -85,49 +144,27 @@ configure_service_account
 session_name="build-current-images"
 
 readonly timestamp="$(date +%F-%H-%M)"
-#readonly timestamp="2024-10-24-04-21"
+#readonly timestamp="2025-02-15-03-29"
 export timestamp
 
 export tmpdir=/tmp/${timestamp};
-mkdir ${tmpdir}
+mkdir -p ${tmpdir}
 export ZONE="$(jq -r .ZONE env.json)"
 gcloud compute instances list --zones "${ZONE}" --format json > ${tmpdir}/instances.json
 gcloud compute images    list                   --format json > ${tmpdir}/images.json
 
 # Run generation scripts simultaneously for each dataproc image version
-screen -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
+screen -L -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
 
-# tail -n 3 /tmp/custom-image-*/logs/workflow.log
-# tail -n 3 /tmp/custom-image-*/logs/startup-script.log
-# tail -n 3 /tmp/custom-image-${PURPOSE}-2-*/logs/workflow.log
 function find_disk_usage() {
-  test -f /tmp/genline.pl || cat > /tmp/genline.pl<<'EOF'
-#!/usr/bin/perl -w
-use strict;
-
-my $fn = $ARGV[0];
-my( $config ) = ( $fn =~ /custom-image-(.*-(debian|rocky|ubuntu)\d+)-\d+/ );
-
-my @raw_lines = <STDIN>;
-my( $l ) = grep { m: /dev/.*/\s*$: } @raw_lines;
-my( $stats ) = ( $l =~ m:\s*/dev/\S+\s+(.*?)\s*$: );
-
-my( $dp_version ) = ($config =~ /-pre-init-(.+)/);
-$dp_version =~ s/-/./;
-
-my($max) = map { / maximum-disk-used: (\d+)/ } @raw_lines;
-$max+=3;
-my $i_dp_version = sprintf(q{%-15s}, qq{"$dp_version"});
-
-print( qq{  $i_dp_version) disk_size_gb="$max" ;; # $stats # $config}, $/ );
-EOF
-  for f in $(grep -l 'Customization script suc' /tmp/custom-image-*/logs/workflow.log|sed -e 's/workflow.log/startup-script.log/')
-  do
-    grep -A20 'Filesystem.*Avail' $f | perl /tmp/genline.pl $f
+  #  grep maximum-disk-used /tmp/custom-image-*/logs/startup-script.log
+  grep -H 'Customization script' /tmp/custom-image-*/logs/workflow.log
+  for workflow_log in $(grep -Hl "Customization script" /tmp/custom-image-*/logs/workflow.log) ; do
+    startup_log=$(echo "${workflow_log}" | sed -e 's/workflow.log/startup-script.log/')
+    grep -v '^\['  "${startup_log}" \
+      | grep -A7 'Filesystem.*Avail' \
+      | perl examples/secure-boot/genline.pl "${workflow_log}"
   done
 }
-
-# sleep 8m ; grep 'Customization script' /tmp/custom-image-*/logs/workflow.log
-# grep maximum-disk-used /tmp/custom-image-*/logs/startup-script.log
 
 revoke_bindings

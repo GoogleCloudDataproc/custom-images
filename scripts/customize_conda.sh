@@ -47,8 +47,10 @@ set -euxo pipefail
 # The following example extracts config file from your environment, copies it to
 # your GCS bucket and uses it to create a cluster.
 #
+# For gcloud SDK < 402, use `gsutil` instead of `gcloud storage`
+#
 #   conda env export --name=<env-name> > environment.yaml
-#   gsutil cp environment.yaml gs://<bucket-directory-path>/environment.yaml
+#   gcloud storage cp environment.yaml gs://<bucket-directory-path>/environment.yaml
 #   python generate_custom_image.py \
 #    --image-name <image-name> \
 #    --dataproc-version "1.5.34-debian10" \
@@ -112,6 +114,16 @@ function validate_conda_component() {
     exit 1
   fi
 }
+
+# With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
+# used as a more performant replacement for `gsutil`
+gsutil_cmd="gcloud storage"
+gcloud_sdk_version="$(gcloud --version | awk -F'SDK ' '/Google Cloud SDK/ {print $2}')"
+if version_lt "${gcloud_sdk_version}" "402.0.0" ; then
+  gsutil_cmd="$(which gsutil) -o GSUtil:check_hashes=never"
+fi
+
+function gsutil() { ${gsutil_cmd} "$*" ; }
 
 function customize_with_config_file() {
   local -r conda_bin_dir=$1
