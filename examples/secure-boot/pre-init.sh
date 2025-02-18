@@ -147,13 +147,13 @@ function generate_from_base_purpose() {
 # base image -> tensorflow
 case "${dataproc_version}" in
   "2.0-debian10" ) disk_size_gb="42" ;; #  41.11G  36.28G     3.04G  93% / # tf-pre-init
-  "2.0-rocky8"   ) disk_size_gb="45" ;; #  44.79G  38.94G     5.86G  87% / # tf-pre-init
+  "2.0-rocky8"   ) disk_size_gb="45" ;; #  44.79G  38.43G     6.36G  86% / # tf-pre-init
   "2.0-ubuntu18" ) disk_size_gb="41" ;; #  39.55G  35.39G     4.14G  90% / # tf-pre-init
   "2.1-debian11" ) disk_size_gb="46" ;; #  45.04G  39.31G     3.78G  92% / # tf-pre-init
-  "2.1-rocky8"   ) disk_size_gb="49" ;; #  48.79G  41.78G     7.01G  86% / # tf-pre-init
+  "2.1-rocky8"   ) disk_size_gb="48" ;; #  48.79G  41.73G     7.06G  86% / # tf-pre-init
   "2.1-ubuntu20" ) disk_size_gb="46" ;; #  44.40G  39.92G     4.46G  90% / # tf-pre-init
   "2.2-debian12" ) disk_size_gb="47" ;; #  46.03G  40.76G     3.28G  93% / # tf-pre-init
-  "2.2-rocky9"   ) disk_size_gb="47" ;; #  46.79G  40.85G     5.94G  88% / # tf-pre-init
+  "2.2-rocky9"   ) disk_size_gb="47" ;; #  46.79G  40.86G     5.93G  88% / # tf-pre-init
   "2.2-ubuntu22" ) disk_size_gb="47" ;; #  45.37G  40.56G     4.79G  90% / # tf-pre-init
 esac
 
