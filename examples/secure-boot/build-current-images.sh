@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Copyright 2024 Google LLC and contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,13 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# This script creates a custom image pre-loaded with cuda
+# This script creates a custom image pre-loaded with
+#
+# GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch + ipykernel + numba
 
 # To run the script, the following will bootstrap
 #
 # git clone git@github.com:GoogleCloudDataproc/custom-images
 # cd custom-images
-# git checkout 2025.01
+# git checkout 2025.02
 # cp examples/secure-boot/env.json.sample env.json
 # vi env.json
 # docker build -f Dockerfile -t custom-image-builder:latest .
