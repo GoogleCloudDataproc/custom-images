@@ -172,9 +172,7 @@ esac
 
 # Install secure-boot certs without customization
 PURPOSE="secure-boot"
-null_customization_script="examples/secure-boot/no-customization.sh"
-echo "#!/bin/bash\necho 'no customization performed'\n" > "${null_customization_script}"
-customization_script="${null_customization_script}"
+null_customization_script="${null_customization_script}"
 time generate_from_dataproc_version "${dataproc_version}"
 
 # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image

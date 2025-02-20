@@ -88,7 +88,7 @@ function test_element_in_array {{
   local test_element="$1" ; shift
   local -a test_array=("$@")
 
-  for item in "${{test_array[@]}}"; do
+  for item in ${{test_array[@]}} ; do
     if [[ "${{item}}" == "${{test_element}}" ]]; then return 0 ; fi
   done
   return 1
