@@ -38,6 +38,11 @@ DATAPROC_VERSION=$(/usr/share/google/get_metadata_value attributes/dataproc-vers
 
 ready=""
 
+function version_ge() ( set +x ;  [ "$1" = "$(echo -e "$1\n$2" | sort -V | tail -n1)" ] ; )
+function version_gt() ( set +x ;  [ "$1" = "$2" ] && return 1 || version_ge $1 $2 ; )
+function version_le() ( set +x ;  [ "$1" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ] ; )
+function version_lt() ( set +x ;  [ "$1" = "$2" ] && return 1 || version_le $1 $2 ; )
+
 # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
 # used as a more performant replacement for `gsutil`
 gsutil_cmd="gcloud"
