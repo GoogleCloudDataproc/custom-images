@@ -40,9 +40,13 @@ print( "     samples-taken: ", scalar @siz, $/,
 }
 
 # Monitor disk usage in a screen session
-df / > "/run/disk-usage.log"
+df / | tee "/run/disk-usage.log"
 touch "/run/keep-running-df"
 screen -d -m -LUS keep-running-df \
   bash -c "while [[ -f /run/keep-running-df ]] ; do df / | tee -a /run/disk-usage.log ; sleep 5s ; done"
 
 trap exit_handler EXIT
+
+sleep 30s
+
+echo "exit handler will be triggered after this operation."
