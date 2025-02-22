@@ -219,6 +219,7 @@ function main() {{
     execute_with_retries gcloud compute images delete -q {image_name}-install --project={project_id}
   fi
 
+  echo "Monitor startup logs in {log_dir}/startup-script.log"
   echo 'Waiting for customization script to finish and VM shutdown.'
   execute_with_retries gcloud compute instances tail-serial-port-output {image_name}-install \
       --project={project_id} \
@@ -307,15 +308,35 @@ class Generator:
         "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},"
         "custom-sources-path={custom_sources_path}"
     )
+    if self.args["zone"]:
+      region = "-".join(self.args["zone"].split("-")[:-1])
+      metadata_flag_template += ',dataproc-region="{}"'.format(region)
     if self.args["optional_components"]:
-      optional_components = self.args["optional_components"].replace(',', '.')
-      metadata_flag_template += ',optional-components="{}"'.format(optional_components)
+      optional_components = self.args["optional_components"].split(',')
+      # convert to component names used inside image and join to set as metadata value
+      optional_image_components = '.'.join(self._get_optional_to_image_components(optional_components))
+      metadata_flag_template += ',optional-components="{}"'.format(optional_image_components)
     if self.args["dataproc_version"]:
       dataproc_version = self.args["dataproc_version"]
-      metadata_flag_template += ',dataproc-version="{}"'.format(dataproc_version)
+      metadata_flag_template += ',dataproc_dataproc_version="{}"'.format(dataproc_version)
     if self.args["metadata"]:
       metadata_flag_template += ",{metadata}"
     self.args["metadata_flag"] = metadata_flag_template.format(**self.args)
+
+  def _get_optional_to_image_components(self, optional_components):
+    """Get the equivalent component names in the image for user provided optional components."""
+    # Add new component here, if component name inside image scripts is different.
+    optional_to_image_component_map = {
+      "DOCKER": "DOCKER-CE",
+      "HIVE_WEBHCAT": "HIVE-WEBHCAT-SERVER",
+      "SOLR": "SOLR-SERVER",
+    }
+    optional_image_components = []
+    for component in optional_components:
+      image_component = optional_to_image_component_map.get(component, component)
+      optional_image_components.append(image_component)
+
+    return optional_image_components
 
   def generate(self, args):
     self._init_args(args)
