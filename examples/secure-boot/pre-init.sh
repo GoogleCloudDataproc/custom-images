@@ -48,6 +48,7 @@ metadata="${metadata},cuda-version=12.4"
 # If no OS family specified, default to debian
 if [[ "${IMAGE_VERSION}" != *-* ]] ; then
   case "${IMAGE_VERSION}" in
+    "2.3" ) dataproc_version="${IMAGE_VERSION}-debian12" ;;
     "2.2" ) dataproc_version="${IMAGE_VERSION}-debian12" ;;
     "2.1" ) dataproc_version="${IMAGE_VERSION}-debian11" ;;
     "2.0" ) dataproc_version="${IMAGE_VERSION}-debian10" ;;
@@ -109,6 +110,9 @@ case "${dataproc_version}" in
   "2.2-debian12" ) disk_size_gb="38" ;; # 40G   35G  3.3G  92% / # cuda-pre-init-2-2-debian12
   "2.2-rocky9"   ) disk_size_gb="40" ;; # 42G   36G  5.9G  86% / # cuda-pre-init-2-2-rocky9
   "2.2-ubuntu22" ) disk_size_gb="38" ;; # 40G   35G  4.8G  88% / # cuda-pre-init-2-2-ubuntu22
+  "2.3-debian12" ) disk_size_gb="38" ;; # 40G   35G  3.3G  92% / # cuda-pre-init-2-3-debian12
+  "2.3-rocky9"   ) disk_size_gb="40" ;; # 42G   36G  5.9G  86% / # cuda-pre-init-2-3-rocky9
+  "2.3-ubuntu22" ) disk_size_gb="38" ;; # 40G   35G  4.8G  88% / # cuda-pre-init-2-3-ubuntu22
 esac
 
 # Install GPU drivers + cuda on dataproc base image
@@ -127,6 +131,9 @@ case "${dataproc_version}" in
   "2.2-debian12" ) disk_size_gb="48" ;; # 51G   45G  3.8G  93% / # rapids-pre-init-2-2-debian12
   "2.2-rocky9"   ) disk_size_gb="49" ;; # 53G   46G  7.2G  87% / # rapids-pre-init-2-2-rocky9
   "2.2-ubuntu22" ) disk_size_gb="48" ;; # 50G   45G  5.6G  89% / # rapids-pre-init-2-2-ubuntu22
+  "2.3-debian12" ) disk_size_gb="48" ;; # 51G   45G  3.8G  93% / # rapids-pre-init-2-3-debian12
+  "2.3-rocky9"   ) disk_size_gb="49" ;; # 53G   46G  7.2G  87% / # rapids-pre-init-2-3-rocky9
+  "2.3-ubuntu22" ) disk_size_gb="48" ;; # 50G   45G  5.6G  89% / # rapids-pre-init-2-3-ubuntu22
 esac
 
 #disk_size_gb="50"
