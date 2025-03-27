@@ -67,6 +67,24 @@ function configure_service_account() {
   # Grant the service account access to buckets in this project
   # TODO: this is over-broad and should be limited only to the buckets
   # used by these clusters
+
+  gsutil iam ch "serviceAccount:${GSA}:roles/storage.objectViewer" "gs://${BUCKET}"
+
+  # KMS_KEY_URI =~ m:projects/.../locations/.../keyRings/.../cryptoKeys/...:
+  (
+    eval "$(echo "${KMS_KEY_URI}" | perl -e '$l=<STDIN>; $l =~ m:([^/]+)/([^/]+)/([^/]+)/([^/]+)/([^/]+)/([^/]+)/([^/]+)/([^/]+):; print(join($/, ("$1=$2", "$3=$4", "$5=$6", "$7=$8")), $/)')"
+    gcloud kms keys add-iam-policy-binding "${cryptoKeys}" \
+      --location "${locations}" \
+      --keyring "${keyRings}" \
+      --member "serviceAccount:${GSA}" \
+      --role "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  )
+
+  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+    --member="serviceAccount:${GSA}" \
+    --role=roles/cloudkms.cryptoKeyDecrypter \
+
+
   for storage_object_role in 'User' 'Creator' 'Viewer' ; do
     execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
       --member="serviceAccount:${GSA}" \
@@ -130,6 +148,7 @@ function revoke_bindings() {
 export PROJECT_ID="$(jq    -r .PROJECT_ID    env.json)"
 export PURPOSE="$(jq       -r .PURPOSE       env.json)"
 export BUCKET="$(jq        -r .BUCKET        env.json)"
+export KMS_KEY_URI="$(jq   -r .KMS_KEY_URI   env.json)"
 
 SA_NAME="sa-${PURPOSE}"
 GSA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -143,8 +162,9 @@ configure_service_account
 # screen session name
 session_name="build-current-images"
 
-readonly timestamp="$(date +%F-%H-%M)"
+#readonly timestamp="$(date +%F-%H-%M)"
 #readonly timestamp="2025-02-15-03-29"
+readonly timestamp="2025-03-20-19-43"
 export timestamp
 
 export tmpdir=/tmp/${timestamp};
