@@ -57,6 +57,7 @@ fi
 
 CUDA_VERSION="12.4.1"
 case "${dataproc_version}" in
+  "1.5-debian10" ) CUDA_VERSION="11.5.2" ;;
   "2.0-debian10" ) CUDA_VERSION="12.1.1" ;;
   "2.0-rocky8"   ) CUDA_VERSION="12.1.1" ;;
   "2.0-ubuntu18" ) CUDA_VERSION="12.1.1" ;;
@@ -97,7 +98,7 @@ function create_unaccelerated_instance() {
 
 function generate() {
   local extra_args="$*"
-  local image_name="${PURPOSE}-${dataproc_version//\./-}-${timestamp}"
+  local image_name="${PURPOSE}-${timestamp}-${dataproc_version//\./-}"
 
   local image="$(jq -r ".[] | select(.name == \"${image_name}\").name" "${tmpdir}/images.json")"
 
@@ -157,6 +158,7 @@ function generate_from_base_purpose() {
 
 # base image -> tensorflow
 case "${dataproc_version}" in
+  "1.5-debian10" ) disk_size_gb="42" ;; #
   "2.0-debian10" ) disk_size_gb="42" ;; #  41.11G  36.28G     3.04G  93% / # tf-pre-init
   "2.0-rocky8"   ) disk_size_gb="45" ;; #  44.79G  38.43G     6.36G  86% / # tf-pre-init
   "2.0-ubuntu18" ) disk_size_gb="41" ;; #  39.55G  35.39G     4.14G  90% / # tf-pre-init
@@ -183,7 +185,7 @@ time generate_from_base_purpose "secure-boot"
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="spark-pre-init"
 customization_script="examples/secure-boot/spark-rapids.sh"
-time generate_from_base_purpose "tf-pre-init"
+echo time generate_from_base_purpose "tf-pre-init"
 
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="cloud-sql-proxy"
