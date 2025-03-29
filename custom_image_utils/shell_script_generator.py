@@ -41,20 +41,18 @@ function execute_with_retries() (
   return 1
 )
 
-function gsutil() {{ ${{gsutil_cmd}} $* ; }}
-
-function version_ge() ( set +x ;  [ "$1" = "$(echo -e "$1\n$2" | sort -V | tail -n1)" ] ; )
-function version_gt() ( set +x ;  [ "$1" = "$2" ] && return 1 || version_ge $1 $2 ; )
-function version_le() ( set +x ;  [ "$1" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ] ; )
-function version_lt() ( set +x ;  [ "$1" = "$2" ] && return 1 || version_le $1 $2 ; )
+function version_le(){{ [[ "$1" = "$(echo -e "$1\n$2"|sort -V|head -n1)" ]]; }}
+function version_lt(){{ [[ "$1" = "$2" ]]&& return 1 || version_le "$1" "$2";}}
 
 function prepare() {{
   # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
   # used as a more performant replacement for `gsutil`
   gsutil_cmd="gcloud storage"
+  rsync_cmd="${{gsutil_cmd}} rsync"
   gcloud_sdk_version="$(gcloud --version | awk -F'SDK ' '/Google Cloud SDK/ {{print $2}}')"
   if version_lt "${{gcloud_sdk_version}}" "402.0.0" ; then
     gsutil_cmd="$(which gsutil) -o GSUtil:check_hashes=never"
+    rsync_cmd="${{gsutil_cmd}} -m rsync"
   fi
 }}
 
@@ -71,7 +69,7 @@ function exit_handler() {{
   fi
 
   echo 'Uploading local logs to GCS bucket.'
-  gsutil rsync -r {log_dir}/ {gcs_log_dir}/
+  ${{rsync_cmd}} -r {log_dir}/ {gcs_log_dir}/
 
   if [[ -f /tmp/{run_id}/image_created ]]; then
     echo -e "${{GREEN}}Workflow succeeded${{NC}}, check logs at {log_dir}/ or {gcs_log_dir}/"
@@ -123,7 +121,7 @@ function main() {{
   declare -a sources_k=({sources_map_k})
   declare -a sources_v=({sources_map_v})
   for i in "${{!sources_k[@]}}"; do
-    gsutil cp "${{sources_v[i]}}" "{custom_sources_path}/${{sources_k[i]}}" > /dev/null 2>&1
+    ${{gsutil_cmd}} cp "${{sources_v[i]}}" "{custom_sources_path}/${{sources_k[i]}}" > /dev/null 2>&1
   done
 
   local cert_args=""
