@@ -130,6 +130,7 @@ function revoke_bindings() {
 export PROJECT_ID="$(jq    -r .PROJECT_ID    env.json)"
 export PURPOSE="$(jq       -r .PURPOSE       env.json)"
 export BUCKET="$(jq        -r .BUCKET        env.json)"
+export SECRET_NAME="$(jq   -r .SECRET_NAME   env.json)"
 
 SA_NAME="sa-${PURPOSE}"
 GSA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"

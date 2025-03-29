@@ -29,6 +29,7 @@ ZONE="$(jq             -r .ZONE                 env.json)"
 SUBNET="$(jq           -r .SUBNET               env.json)"
 HIVE_NAME="$(jq        -r .HIVE_INSTANCE_NAME   env.json)"
 HIVEDB_PW_URI="$(jq    -r .DB_HIVE_PASSWORD_URI env.json)"
+SECRET_NAME="$(jq      -r .SECRET_NAME          env.json)"
 KMS_KEY_URI="$(jq      -r .KMS_KEY_URI          env.json)"
 PRINCIPAL_USER="$(jq   -r .PRINCIPAL            env.json)"
 PRINCIPAL_DOMAIN="$(jq -r .DOMAIN               env.json)"
@@ -57,6 +58,7 @@ fi
 
 CUDA_VERSION="12.4.1"
 case "${dataproc_version}" in
+  "1.5-debian10" ) CUDA_VERSION="11.5.2" ;;
   "2.0-debian10" ) CUDA_VERSION="12.1.1" ;;
   "2.0-rocky8"   ) CUDA_VERSION="12.1.1" ;;
   "2.0-ubuntu18" ) CUDA_VERSION="12.1.1" ;;
@@ -89,9 +91,15 @@ function create_t4_instance() {
     $*
 }
 
+function create_unaccelerated_instance() {
+  python generate_custom_image.py \
+    --machine-type         "n1-standard-32" \
+    $*
+}
+
 function generate() {
   local extra_args="$*"
-  local image_name="${PURPOSE}-${dataproc_version//\./-}-${timestamp}"
+  local image_name="${PURPOSE}-${timestamp}-${dataproc_version//\./-}"
 
   local image="$(jq -r ".[] | select(.name == \"${image_name}\").name" "${tmpdir}/images.json")"
 
@@ -115,14 +123,19 @@ function generate() {
       --zone "${custom_image_zone}"
   fi
 
-  if [[ "${customization_script}" =~ "cloud-sql-proxy.sh" ]] ; then
+  create_function="create_t4_instance"
+
+  if [[ "${customization_script}" =~ "cloud-sql-proxy.sh" \
+     || "${customization_script}" =~ "dask.sh" \
+     || "${customization_script}" =~ "no-customization.sh" ]] ; then
     metadata="${metadata},hive-metastore-instance=${PROJECT_ID}:${region}:${HIVE_NAME}"
     metadata="${metadata},db-hive-password-uri=${HIVEDB_PW_URI}"
     metadata="${metadata},kms-key-uri=${KMS_KEY_URI}"
+    create_function="create_unaccelerated_instance"
   fi
-  
+
   set -xe
-  create_t4_instance \
+  "${create_function}" \
     --image-name           "${image_name}" \
     --customization-script "${customization_script}" \
     --service-account      "${GSA}" \
@@ -146,6 +159,7 @@ function generate_from_base_purpose() {
 
 # base image -> tensorflow
 case "${dataproc_version}" in
+  "1.5-debian10" ) disk_size_gb="42" ;; #
   "2.0-debian10" ) disk_size_gb="42" ;; #  41.11G  36.28G     3.04G  93% / # tf-pre-init
   "2.0-rocky8"   ) disk_size_gb="45" ;; #  44.79G  38.43G     6.36G  86% / # tf-pre-init
   "2.0-ubuntu18" ) disk_size_gb="41" ;; #  39.55G  35.39G     4.14G  90% / # tf-pre-init
@@ -159,25 +173,30 @@ esac
 
 #disk_size_gb="60" # greater than or equal to 40
 
+# Install secure-boot certs without customization
+PURPOSE="secure-boot"
+customization_script="examples/secure-boot/no-customization.sh"
+time generate_from_dataproc_version "${dataproc_version}"
+
 # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
 PURPOSE="tf-pre-init"
 customization_script="examples/secure-boot/install_gpu_driver.sh"
-time generate_from_dataproc_version "${dataproc_version}"
+time generate_from_base_purpose "secure-boot"
 
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="spark-pre-init"
 customization_script="examples/secure-boot/spark-rapids.sh"
-echo time generate_from_dataproc_version "${dataproc_version}"
+echo time generate_from_base_purpose "tf-pre-init"
 
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="cloud-sql-proxy"
 customization_script="examples/secure-boot/cloud-sql-proxy.sh"
-echo time generate_from_dataproc_version "${dataproc_version}"
+time generate_from_base_purpose "secure-boot"
 
 ## Execute spark-rapids/mig.sh init action on base image
 PURPOSE="mig-pre-init"
 customization_script="examples/secure-boot/mig.sh"
-echo time generate_from_dataproc_version "${dataproc_version}"
+echo time generate_from_base_purpose "tf-pre-init"
 
 # cuda image -> rapids
 case "${dataproc_version}" in
@@ -192,16 +211,18 @@ case "${dataproc_version}" in
   "2.2-ubuntu22" ) disk_size_gb="46" ;; # 42.46G 41.97G   0.48G  99% / # rapids-pre-init-2-2-ubuntu22
 esac
 
-disk_size_gb="45"
+#disk_size_gb="45"
 
 # Install dask with rapids on base image
 PURPOSE="rapids-pre-init"
 customization_script="examples/secure-boot/rapids.sh"
+time generate_from_base_purpose "tf-pre-init"
 #time generate_from_base_purpose "cuda-pre-init"
 
 ## Install dask without rapids on base image
-#PURPOSE="dask-pre-init"
-#customization_script="examples/secure-boot/dask.sh"
+PURPOSE="dask-pre-init"
+customization_script="examples/secure-boot/dask.sh"
+time generate_from_base_purpose "secure-boot"
 #time generate_from_base_purpose "cuda-pre-init"
 
 # cuda image -> pytorch

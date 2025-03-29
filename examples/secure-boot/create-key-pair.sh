@@ -40,8 +40,8 @@ function create_key () {
     local PRIVATE_KEY="tls/${EFI_VAR_NAME}.rsa"
     local CACERT="tls/${EFI_VAR_NAME}.pem"
     local CACERT_DER="tls/${EFI_VAR_NAME}.der"
-    CA_KEY_SECRET_NAME="efi-${EFI_VAR_NAME}-priv-key-${ITERATION}"
-    CA_CERT_SECRET_NAME="efi-${EFI_VAR_NAME}-pub-key-${ITERATION}"
+    CA_KEY_SECRET_NAME="${CA_KEY_SECRET_NAME:-efi-${EFI_VAR_NAME}-priv-key-${ITERATION}}"
+    CA_CERT_SECRET_NAME="${CA_CERT_SECRET_NAME:-efi-${EFI_VAR_NAME}-pub-key-${ITERATION}}"
     # If the secrets exist in secret manager, populate the tls/ directory
     if [[ ! -f "${PRIVATE_KEY}" ]] && gcloud secrets describe "${CA_CERT_SECRET_NAME}" > /dev/null ; then
       mkdir -p tls
