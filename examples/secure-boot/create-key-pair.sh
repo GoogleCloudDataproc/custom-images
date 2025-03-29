@@ -74,6 +74,7 @@ function create_key () {
     fi
 
     if [[ -f "${PRIVATE_KEY}" ]]; then
+        echo "key already exists.  Skipping generation." >&2
         modulus_md5sum="$(cat tls/modulus-md5sum.txt)"
         return
     fi

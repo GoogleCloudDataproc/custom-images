@@ -131,7 +131,7 @@ function generate() {
   if [[ -n "${instance}" ]]; then
     # if previous run ended without cleanup...
     echo "cleaning up instance from previous run"
-    gcloud -q compute instances delete "${image_name}-install"
+    gcloud -q compute instances delete "${image_name}-install" --zone "${ZONE}"
   fi
 
   create_function="create_unaccelerated_instance"
@@ -373,3 +373,4 @@ esac
 PURPOSE="pytorch"
 customization_script="examples/secure-boot/pytorch.sh"
 echo time generate_from_base_purpose "tf"
+

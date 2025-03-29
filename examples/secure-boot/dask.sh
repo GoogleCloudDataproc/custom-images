@@ -517,8 +517,8 @@ function main() {
   echo "Dask for ${DASK_RUNTIME} successfully initialized."
 }
 
-function exit_handler() {
-  set +ex
+function exit_handler() (
+  set +e
   echo "Exit handler invoked"
 
   # Free conda cache
@@ -527,30 +527,16 @@ function exit_handler() {
   # Clear pip cache
   pip cache purge || echo "unable to purge pip cache"
 
-  # If system memory was sufficient to mount memory-backed filesystems
-  if [[ "${tmpdir}" == "/mnt/shm" ]] ; then
-    # Stop hadoop services
-    systemctl list-units | perl -n -e 'qx(systemctl stop $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
+  # remove the tmpfs conda pkgs_dirs
+  if [[ -d /mnt/shm ]] ; then /opt/conda/miniconda3/bin/conda config --remove pkgs_dirs /mnt/shm ; fi
 
-    # remove the tmpfs conda pkgs_dirs
-    /opt/conda/miniconda3/bin/conda config --remove pkgs_dirs /mnt/shm || echo "unable to remove pkgs_dirs conda config"
-
-    # remove the tmpfs pip cache-dir
-    pip config unset global.cache-dir || echo "unable to unset global pip cache"
-
-    # Clean up shared memory mounts
-    for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm ; do
-      if grep -q "^tmpfs ${shmdir}" /proc/mounts ; then
-        rm -rf ${shmdir}/*
-        sync
-        sleep 3s
-        execute_with_retries umount -f ${shmdir}
-      fi
-    done
-
-    umount -f /tmp
-    systemctl list-units | perl -n -e 'qx(systemctl start $1) if /^.*? ((hadoop|knox|hive|mapred|yarn|hdfs)\S*).service/'
-  fi
+  # Clean up shared memory mounts
+  for shmdir in /var/cache/apt/archives /var/cache/dnf /mnt/shm ; do
+    if grep -q "^tmpfs ${shmdir}" /proc/mounts ; then
+      rm -rf ${shmdir}/*
+      umount -f ${shmdir}
+    fi
+  done
 
   # Clean up OS package cache ; re-hold systemd package
   if is_debuntu ; then
@@ -560,62 +546,36 @@ function exit_handler() {
     dnf clean all
   fi
 
-  # print disk usage statistics for large components
-  if is_ubuntu ; then
-    du -hs \
-      /usr/lib/{pig,hive,hadoop,jvm,spark,google-cloud-sdk,x86_64-linux-gnu} \
-      /usr/lib \
-      /opt/nvidia/* \
-      /usr/local/cuda-1?.? \
-      /opt/conda/miniconda3
-  elif is_debian ; then
-    du -hs \
-      /usr/lib/{pig,hive,hadoop,jvm,spark,google-cloud-sdk,x86_64-linux-gnu} \
-      /usr/lib \
-      /usr/local/cuda-1?.? \
-      /opt/conda/miniconda3
-  else
-    du -hs \
-      /var/lib/docker \
-      /usr/lib/{pig,hive,hadoop,firmware,jvm,spark,atlas} \
-      /usr/lib64/google-cloud-sdk \
-      /usr/lib \
-      /opt/nvidia/* \
-      /usr/local/cuda-1?.? \
-      /opt/conda/miniconda3
+  # print disk usage statistics
+  if is_debuntu ; then
+    # Rocky doesn't have sort -h and fails when the argument is passed
+    du --max-depth 3 -hx / | sort -h | tail -10
   fi
 
   # Process disk usage logs from installation period
-  rm -f /run/keep-running-df
-  sync
-  sleep 5.01s
+  rm -f /tmp/keep-running-df
+  sleep 6s
   # compute maximum size of disk during installation
   # Log file contains logs like the following (minus the preceeding #):
-#Filesystem     1K-blocks    Used Available Use% Mounted on
-#/dev/vda2        7096908 2611344   4182932  39% /
-  df / | tee -a "/run/disk-usage.log"
-
-  perl -e '@siz=( sort { $a => $b }
-                   map { (split)[2] =~ /^(\d+)/ }
-                  grep { m:^/: } <STDIN> );
-$max=$siz[0]; $min=$siz[-1]; $inc=$max-$min;
-print( "    samples-taken: ", scalar @siz, $/,
-       "maximum-disk-used: $max", $/,
-       "minimum-disk-used: $min", $/,
-       "     increased-by: $inc", $/ )' < "/run/disk-usage.log"
+#Filesystem      Size  Used Avail Use% Mounted on
+#/dev/vda2       6.8G  2.5G  4.0G  39% /
+  df --si
+  perl -e '$max=( sort
+                 map { (split)[2] =~ /^(\d+)/ }
+                grep { m:^/: } <STDIN> )[-1];
+print( "maximum-disk-used: $max", $/ );' < /tmp/disk-usage.log
 
   echo "exit_handler has completed"
 
   # zero free disk space
   if [[ -n "$(get_metadata_attribute creating-image)" ]]; then
-    dd if=/dev/zero of=/zero
-    sync
-    sleep 3s
-    rm -f /zero
+    dd if=/dev/zero of=/zero ; sync ; rm -f /zero
   fi
 
   return 0
-}
+)
+
+trap exit_handler EXIT
 
 function prepare_to_install() {
   readonly DEFAULT_CUDA_VERSION="12.4"
@@ -641,8 +601,7 @@ function prepare_to_install() {
 
   free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
   # Write to a ramdisk instead of churning the persistent disk
-  if [[ ${free_mem} -ge 10500000 ]]; then
-    tmpdir=/mnt/shm
+  if [[ ${free_mem} -ge 5250000 ]]; then
     mkdir -p /mnt/shm
     mount -t tmpfs tmpfs /mnt/shm
 
@@ -659,22 +618,18 @@ function prepare_to_install() {
     else
       mount -t tmpfs tmpfs /var/cache/dnf
     fi
-  else
-    tmpdir=/tmp
   fi
-  install_log="/run/install.log"
-  trap exit_handler EXIT
 
   # Monitor disk usage in a screen session
   if is_debuntu ; then
       apt-get install -y -qq screen
-  else
+  elif is_rocky ; then
       dnf -y -q install screen
   fi
-  df / | tee "/run/disk-usage.log"
-  touch "/run/keep-running-df"
+  rm -f /tmp/disk-usage.log
+  touch /tmp/keep-running-df
   screen -d -m -US keep-running-df \
-    bash -c "while [[ -f /run/keep-running-df ]] ; do df / | tee -a /run/disk-usage.log ; sleep 5s ; done"
+    bash -c 'while [[ -f /tmp/keep-running-df ]] ; do df --si / | tee -a /tmp/disk-usage.log ; sleep 5s ; done'
 }
 
 prepare_to_install
