@@ -115,6 +115,9 @@ function validate_conda_component() {
   fi
 }
 
+function version_le(){ [[ "$1" = "$(echo -e "$1\n$2"|sort -V|head -n1)" ]]; }
+function version_lt(){ [[ "$1" = "$2" ]]&& return 1 || version_le "$1" "$2";}
+
 # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
 # used as a more performant replacement for `gsutil`
 gsutil_cmd="gcloud storage"
@@ -123,14 +126,12 @@ if version_lt "${gcloud_sdk_version}" "402.0.0" ; then
   gsutil_cmd="$(which gsutil) -o GSUtil:check_hashes=never"
 fi
 
-function gsutil() { ${gsutil_cmd} "$*" ; }
-
 function customize_with_config_file() {
   local -r conda_bin_dir=$1
   local -r conda_env_config_uri=$2
   local temp_config_file
   temp_config_file=$(mktemp /tmp/conda_env_XXX.yaml)
-  gsutil cp "${conda_env_config_uri}" "${temp_config_file}"
+  ${gsutil_cmd} cp "${conda_env_config_uri}" "${temp_config_file}"
   conda_env_name="$(grep 'name: ' "${temp_config_file}" | awk '{print $2}')"
   if [[ -z "${conda_env_name}" ]]; then
     conda_env_name="custom"
