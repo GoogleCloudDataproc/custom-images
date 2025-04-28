@@ -36,7 +36,7 @@ function execute_with_retries() (
 
   for ((i = 0; i < 3; i++)); do
     if eval "$cmd"; then return 0 ; fi
-    sleep 5
+    sleep 12
   done
   return 1
 )
@@ -50,7 +50,7 @@ function exit_handler() {{
         --project={project_id} --zone={zone} -q
   elif [[ -f /tmp/{run_id}/disk_created ]]; then
     echo 'Deleting disk.'
-    execute_with_retries gcloud compute ${{base_obj_type}} delete {image_name}-install --project={project_id} --zone={zone} -q
+    execute_with_retries gcloud compute ${{base_obj_type}} delete {image_name}-install --project={project_id} -q
   fi
 
   echo 'Uploading local logs to GCS bucket.'
@@ -221,6 +221,10 @@ function main() {{
 
   echo "Monitor startup logs in {log_dir}/startup-script.log"
   echo 'Waiting for customization script to finish and VM shutdown.'
+
+  # too many serial port output requests per minute occur if they all occur at once
+  sleep $(( ( RANDOM % 60 ) + 20 ))
+
   execute_with_retries gcloud compute instances tail-serial-port-output {image_name}-install \
       --project={project_id} \
       --zone={zone} \
