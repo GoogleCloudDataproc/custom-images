@@ -144,6 +144,9 @@ python generate_custom_image.py \
     be escaped, consider encoding the value, then decode it back in the
     customization script. See more information about VM metadata on
     https://cloud.google.com/sdk/gcloud/reference/compute/instances/create.
+*   **--optional-components**: List of optional components for 2.3+ DPGCE Images. This will install the 
+    optional components in the image. For eg. - SOLR,RANGER,TRINO,DOCKER,FLINK,HIVE_WEBHCAT,ZEPPELIN,HUDI,ICEBERG,PIG
+    is the list of valid optional components list.
 
 #### Overriding cluster properties with a custom image
 
