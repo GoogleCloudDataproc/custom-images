@@ -32,9 +32,15 @@ CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sou
 # get time to wait for stdout to flush
 SHUTDOWN_TIMER_IN_SEC=$(/usr/share/google/get_metadata_value attributes/shutdown-timer-in-sec)
 
-USER_DATAPROC_COMPONENTS=$( /usr/share/google/get_metadata_value attributes/optional-components | tr '[:upper:]' '[:lower:]' | tr '.' ',' || echo "")
-BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
-DATAPROC_VERSION=$(/usr/share/google/get_metadata_value attributes/dataproc-version | cut -c1-3 | tr '-' '.' || echo "")
+USER_DATAPROC_COMPONENTS=$( /usr/share/google/get_metadata_value attributes/optional-components | tr '[:upper:]' '[:lower:]' | tr '.' ' ' || echo "")
+DATAPROC_IMAGE_VERSION=$(/usr/share/google/get_metadata_value attributes/dataproc_dataproc_version | cut -c1-3 | tr '-' '.' || echo "")
+DATAPROC_IMAGE_TYPE=$(/usr/share/google/get_metadata_value attributes/dataproc_image_type || echo "standard")
+export REGION=$(/usr/share/google/get_metadata_value attributes/dataproc-region)
+[[ -n "${DATAPROC_IMAGE_TYPE}" ]] # Sanity validation
+export DATAPROC_IMAGE_TYPE
+[[ "${DATAPROC_IMAGE_VERSION}" =~ ^[0-9]+\.[0-9]+$ ]] # Sanity validation
+export DATAPROC_IMAGE_VERSION
+# Startup script that performs first boot configuration for Dataproc cluster.
 
 ready=""
 
@@ -93,7 +99,7 @@ function cleanup() {
 
 function is_version_at_least() {
   local -r VERSION=$1
-  if [[ $(echo "$DATAPROC_VERSION >= $VERSION" | bc -l) -eq 1 ]]; then
+  if [[ $(echo "$DATAPROC_IMAGE_VERSION >= $VERSION" | bc -l) -eq 1 ]]; then
     return 0
   else
     return 1
@@ -104,7 +110,31 @@ function run_install_optional_components_script() {
   if ! is_version_at_least "2.3" || [[ -z "$USER_DATAPROC_COMPONENTS" ]]; then
     return
   fi
-  source "${BDUTIL_DIR}/install_optional_components.sh"
+
+  (
+    export BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
+    # Install Optional components
+    set -Ee
+    source /etc/environment
+    source "${BDUTIL_DIR}/bdutil_env.sh"
+    source "${BDUTIL_DIR}/bdutil_helpers.sh"
+    source "${BDUTIL_DIR}/bdutil_metadata.sh"
+    source "${BDUTIL_DIR}/bdutil_misc.sh"
+    source "${BDUTIL_DIR}/components/components-helpers.sh"
+    set -x
+
+    export USER_DATAPROC_COMPONENTS=(${USER_DATAPROC_COMPONENTS})
+    source "${BDUTIL_DIR}/install_optional_components.sh"
+  )
+  # get return code
+  local RET_CODE=$?
+
+  # print failure message if install fails
+  if [[ $RET_CODE -ne 0 ]]; then
+    echo "BuildFailed: Dataproc optional component installation Failed. Please check logs."
+  else
+    echo "BuildSucceeded: Dataproc optional component installation Succeeded."
+  fi
 }
 
 function main() {
