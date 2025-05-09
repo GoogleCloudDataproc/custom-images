@@ -57,10 +57,10 @@ function exit_handler() {{
   gsutil -m rsync -r {log_dir}/ {gcs_log_dir}/
 
   if [[ -f /tmp/{run_id}/image_created ]]; then
-    echo -e "${{GREEN}}Workflow succeeded, check logs at {log_dir}/ or {gcs_log_dir}/${{NC}}"
+    echo -e "${{GREEN}}Workflow succeeded${{NC}}, check logs at {log_dir}/ or {gcs_log_dir}/"
     exit 0
   else
-    echo -e "${{RED}}Workflow failed, check logs at {log_dir}/ or {gcs_log_dir}/${{NC}}"
+    echo -e "${{RED}}Workflow failed${{NC}}, check logs at {log_dir}/ or {gcs_log_dir}/"
     exit 1
   fi
 }}
@@ -221,28 +221,27 @@ function main() {{
 
   echo "Monitor startup logs in {log_dir}/startup-script.log"
   echo 'Waiting for customization script to finish and VM shutdown.'
-
+  set -x
   # too many serial port output requests per minute occur if they all occur at once
   sleep $(( ( RANDOM % 60 ) + 20 ))
+
+  gcloud compute instances describe --format json {image_name}-install --zone {zone} | tee {log_dir}/instance.json
 
   execute_with_retries gcloud compute instances tail-serial-port-output {image_name}-install \
       --project={project_id} \
       --zone={zone} \
       --port=1 2>&1 \
-      | grep 'startup-script' \
+      | grep 'startup-script' | grep -v '^\\[' \
       | sed -e 's/ {image_name}-install.*startup-script://g' \
-      | dd bs=1 of={log_dir}/startup-script.log \
+      | dd bs=1 status=none of={log_dir}/startup-script.log \
       || true
   echo 'Checking customization script result.'
   date
-  if grep -q 'BuildFailed:' {log_dir}/startup-script.log; then
-    echo -e "${{RED}}Customization script failed.${{NC}}"
-    echo "See {log_dir}/startup-script.log for details"
-    exit 1
-  elif grep -q 'BuildSucceeded:' {log_dir}/startup-script.log; then
+  if grep -q 'BuildSucceeded:' {log_dir}/startup-script.log; then
     echo -e "${{GREEN}}Customization script succeeded.${{NC}}"
   else
-    echo 'Unable to determine the customization script result.'
+    echo -e "${{RED}}Customization script failed.${{NC}}"
+    echo "See {log_dir}/startup-script.log for details"
     exit 1
   fi
 
