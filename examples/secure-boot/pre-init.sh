@@ -41,11 +41,10 @@ gcloud config set account "${PRINCIPAL}"
 region="$(echo "${ZONE}" | perl -pe 's/-[a-z]+$//')"
 
 custom_image_zone="${ZONE}"
-disk_size_gb="30" # greater than or equal to 30
+disk_size_gb="30" # greater than or equal to 30 (32 for rocky8)
 
 SA_NAME="sa-${PURPOSE}"
 GSA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
-
 
 # If no OS family specified, default to debian
 if [[ "${IMAGE_VERSION}" != *-* ]] ; then
@@ -62,27 +61,22 @@ fi
 
 CUDA_VERSION="12.4.1"
 case "${dataproc_version}" in
-  "1.5-debian10" ) CUDA_VERSION="11.5.2" ; short_dp_ver=1.5-deb10 ;;
-  "2.0-debian10" ) CUDA_VERSION="12.1.1" ; short_dp_ver=2.0-deb10 ;;
-  "2.0-rocky8"   ) CUDA_VERSION="12.1.1" ; short_dp_ver=2.0-roc8 ;;
-  "2.0-ubuntu18" ) CUDA_VERSION="12.1.1" ; short_dp_ver=2.0-ubu18 ;;
-  "2.1-debian11" ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-deb11 ;;
-  "2.1-rocky8"   ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-roc8 ;;
-  "2.1-ubuntu20" ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-ubu20 ;;
-  "2.2-debian12" ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-deb12 ;;
-  "2.2-rocky9"   ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-roc9 ;;
-  "2.2-ubuntu22" ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-ubu22 ;;
-  "2.3-debian12" ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-deb12 ;;
-  "2.3-rocky9"   ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-roc9 ;;
-  "2.3-ubuntu22" ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-ubu22 ;;
+  "1.5-debian10"     ) CUDA_VERSION="11.5.2" ; short_dp_ver=1.5-deb10 ;;
+  "2.0-debian10"     ) CUDA_VERSION="12.1.1" ; short_dp_ver=2.0-deb10 ;;
+  "2.0-rocky8"       ) CUDA_VERSION="12.1.1" ; short_dp_ver=2.0-roc8 ; disk_size_gb="32";;
+  "2.0-ubuntu18"     ) CUDA_VERSION="12.1.1" ; short_dp_ver=2.0-ubu18 ;;
+  "2.1-debian11"     ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-deb11 ;;
+  "2.1-rocky8"       ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-roc8 ;;
+  "2.1-ubuntu20"     ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-ubu20 ;;
+  "2.2-debian12"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-deb12 ;;
+  "2.2-rocky9"       ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-roc9 ;;
+  "2.2-ubuntu22"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-ubu22 ;;
+  "2.2-ubuntu22-arm" ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-ubu22-arm ;;
+  "2.3-debian12"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-deb12 ;;
+  "2.3-rocky9"       ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-roc9 ;;
+  "2.3-ubuntu22"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-ubu22 ;;
+  "2.3-ml-ubuntu22"  ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-ml-ubu22 ;;
 esac
-
-eval "$(bash examples/secure-boot/create-key-pair.sh)"
-metadata="rapids-runtime=SPARK"
-metadata="${metadata},cuda-version=${CUDA_VERSION}"
-metadata="${metadata},invocation-type=custom-images"
-metadata="${metadata},dataproc-temp-bucket=${TEMP_BUCKET}"
-metadata="${metadata},include-pytorch=1"
 
 function create_h100_instance() {
   python generate_custom_image.py \
@@ -100,9 +94,11 @@ function create_t4_instance() {
 
 function create_unaccelerated_instance() {
   python generate_custom_image.py \
-    --machine-type         "n1-standard-32" \
+    --machine-type         "n1-standard-2" \
     $*
 }
+
+OPTIONAL_COMPONENTS_ARG=""
 
 function generate() {
   local extra_args="$*"
@@ -110,6 +106,9 @@ function generate() {
   local image_name="dataproc-${short_dp_ver//\./-}-${timestamp}-${PURPOSE}"
 
   local image="$(jq -r ".[] | select(.name == \"${image_name}\").name" "${tmpdir}/images.json")"
+
+  local metadata="invocation-type=custom-images"
+  metadata="${metadata},dataproc-temp-bucket=${TEMP_BUCKET}"
 
   if [[ -n "${image}" ]] ; then
     echo "Image already exists"
@@ -132,12 +131,38 @@ function generate() {
 
   create_function="create_t4_instance"
 
-  if [[ "${customization_script}" =~ "cloud-sql-proxy.sh" \
-     || "${customization_script}" =~ "dask.sh" \
-     || "${customization_script}" =~ "no-customization.sh" ]] ; then
+  if [[ "${customization_script}" =~ "cloud-sql-proxy.sh"  ]] ; then
     metadata="${metadata},hive-metastore-instance=${PROJECT_ID}:${region}:${HIVE_NAME}"
     metadata="${metadata},db-hive-password-uri=${HIVEDB_PW_URI}"
     metadata="${metadata},kms-key-uri=${KMS_KEY_URI}"
+  fi
+
+  if [[ "${customization_script}" =~ "install_gpu_driver.sh" \
+     || "${PURPOSE}" =~ "secure-boot" ]] ; then
+    eval "$(bash examples/secure-boot/create-key-pair.sh)"
+    metadata="${metadata},public_secret_name=${public_secret_name}"
+    metadata="${metadata},private_secret_name=${private_secret_name}"
+    metadata="${metadata},secret_project=${secret_project}"
+    metadata="${metadata},secret_version=${secret_version}"
+    metadata="${metadata},modulus_md5sum=${modulus_md5sum}"
+  fi
+
+  if [[ "${PURPOSE}" =~ "secure-boot" ]] ; then
+    create_function="create_unaccelerated_instance"
+  fi
+
+  if [[ "${customization_script}" =~ "install_gpu_driver.sh" ]] ; then
+    metadata="${metadata},cuda-version=${CUDA_VERSION}"
+    metadata="${metadata},include-pytorch=1"
+  fi
+
+  if [[ "${customization_script}" =~ "spark-rapids.sh" ]] ; then
+    metadata="${metadata},rapids-runtime=SPARK"
+  fi
+
+  if [[ "${customization_script}" =~ "dask.sh" \
+     || "${customization_script}" =~ "no-customization.sh" \
+     || "${PURPOSE}" =~ "secure-boot" ]] ; then
     create_function="create_unaccelerated_instance"
   fi
 
@@ -151,7 +176,7 @@ function generate() {
     --disk-size            "${disk_size_gb}" \
     --gcs-bucket           "${BUCKET}" \
     --subnet               "${SUBNET}" \
-    --optional-components  "DOCKER,PIG" \
+    ${OPTIONAL_COMPONENTS_ARG} \
     --shutdown-instance-timer-sec=30 \
     --no-smoke-test \
     ${extra_args}
@@ -183,28 +208,17 @@ function generate_from_prerelease_version() {
 }
 
 function generate_from_base_purpose() {
-  generate --base-image-uri "https://www.googleapis.com/compute/v1/projects/${PROJECT_ID}/global/images/${1}-${dataproc_version/\./-}-${timestamp}"
+#  local image_name="dataproc-${short_dp_ver//\./-}-${timestamp}-${PURPOSE}"
+# https://pantheon.corp.google.com/compute/imagesDetail/projects/cloud-dataproc-ci/global/images/dataproc-2-0-deb10-20250422-193049-secure-boot?project=cloud-dataproc-ci
+# https://www.googleapis.com/compute/v1/projects/dataproc-cloud-dataproc-ci/global/images/dataproc-2-0-deb10-20250422-193049-secure-boot
+# https://www.googleapis.com/compute/v1/projects/cloud-dataproc-ci/global/images/dataproc-2-0-deb10-20250422-193049-secure-bootprojects/dataproc-${PROJECT_ID}/global/images"
+#  local img_pfx="https://www.googleapis.com/compute/v1/projects/dataproc-${PROJECT_ID}/global/images"
+  local img_pfx="https://www.googleapis.com/compute/v1/projects/${PROJECT_ID}/global/images"
+  generate --base-image-uri "${img_pfx}/dataproc-${short_dp_ver/\./-}-${timestamp}-${1}"
+#  generate --base-image-uri "${img_pfx}/${1}-${dataproc_version/\./-}-${timestamp}"
 }
 
-# base image -> tensorflow
-disk_size_gb="42"
-case "${dataproc_version}" in
-  "1.5-debian10" ) disk_size_gb="42" ;; #
-  "2.0-debian10" ) disk_size_gb="42" ;; #  41.11G  36.28G     3.04G  93% / # tf-pre-init
-  "2.0-rocky8"   ) disk_size_gb="45" ;; #  44.79G  38.43G     6.36G  86% / # tf-pre-init
-  "2.0-ubuntu18" ) disk_size_gb="41" ;; #  39.55G  35.39G     4.14G  90% / # tf-pre-init
-  "2.1-debian11" ) disk_size_gb="46" ;; #  45.04G  39.31G     3.78G  92% / # tf-pre-init
-  "2.1-rocky8"   ) disk_size_gb="48" ;; #  48.79G  41.73G     7.06G  86% / # tf-pre-init
-  "2.1-ubuntu20" ) disk_size_gb="46" ;; #  44.40G  39.92G     4.46G  90% / # tf-pre-init
-  "2.2-debian12" ) disk_size_gb="47" ;; #  46.03G  40.76G     3.28G  93% / # tf-pre-init
-  "2.2-rocky9"   ) disk_size_gb="47" ;; #  46.79G  40.86G     5.93G  88% / # tf-pre-init
-  "2.2-ubuntu22" ) disk_size_gb="47" ;; #  45.37G  40.56G     4.79G  90% / # tf-pre-init
-  "2.3-debian12" ) disk_size_gb="42" ;;
-  "2.3-rocky9"   ) disk_size_gb="42" ;;
-  "2.3-ubuntu22" ) disk_size_gb="42" ;;
-esac
-
-#disk_size_gb="60" # greater than or equal to 40
+# base image -> secure-boot
 
 # Install secure-boot certs without customization
 PURPOSE="secure-boot"
@@ -212,6 +226,52 @@ customization_script="examples/secure-boot/no-customization.sh"
 #time generate_from_dataproc_version "${dataproc_version}"
 
 time generate_from_prerelease_version "${dataproc_version}"
+
+## run the installer for the DOCKER optional component
+PURPOSE="docker"
+OPTIONAL_COMPONENTS_ARG='--optional-components=DOCKER'
+customization_script="examples/secure-boot/no-customization.sh"
+time generate_from_base_purpose "secure-boot"
+
+## run the installer for the ZEPPELIN optional component
+PURPOSE="zeppelin"
+OPTIONAL_COMPONENTS_ARG='--optional-components=ZEPPELIN'
+customization_script="examples/secure-boot/no-customization.sh"
+time generate_from_base_purpose "secure-boot"
+
+## run the installer for the DOCKER,PIG optional components
+PURPOSE="docker-pig"
+OPTIONAL_COMPONENTS_ARG='--optional-components=PIG'
+customization_script="examples/secure-boot/no-customization.sh"
+time generate_from_base_purpose "docker"
+
+OPTIONAL_COMPONENTS_ARG=""
+
+## Execute spark-rapids/spark-rapids.sh init action on base image
+PURPOSE="cloud-sql-proxy"
+customization_script="examples/secure-boot/cloud-sql-proxy.sh"
+echo time generate_from_base_purpose "secure-boot"
+
+# secure-boot -> tensorflow
+
+case "${dataproc_version}" in
+# DP_IMG_VER       RECOMMENDED_DISK_SIZE   DSK_SZ  D_USED   D_FREE  D%F     DATE_SAMPLED
+  "2.0-debian10" ) disk_size_gb="36" ;; #  41.11G  30.66G    8.66G  78% / # 20250429-193537-tf
+  "2.0-rocky8"   ) disk_size_gb="49" ;; #  59.79G  41.86G   17.93G  71% / # 20250424-232955-tf
+  "2.0-ubuntu18" ) disk_size_gb="38" ;; #  42.46G  32.20G   10.24G  76% / # 20250429-193537-tf
+
+  "2.1-debian11" ) disk_size_gb="42" ;; #  58.82G  35.82G   20.50G  64% / # 20250429-193537-tf
+  "2.1-rocky8"   ) disk_size_gb="45" ;; #  59.79G  38.41G   21.39G  65% / # 20250429-193537-tf
+  "2.1-ubuntu20" ) disk_size_gb="49" ;; #  47.31G  41.80G    5.49G  89% / # 20250429-193537-tf
+
+  "2.2-debian12" ) disk_size_gb="51" ;; #  58.82G  43.88G   12.44G  78% / # 20250429-193537-tf
+  "2.2-rocky9"   ) disk_size_gb="51" ;; #  49.79G  43.51G    6.28G  88% / # 20250429-193537-tf
+  "2.2-ubuntu22" ) disk_size_gb="50" ;; #  48.28G  43.32G    4.94G  90% / # 20250429-193537-tf
+
+  "2.3-debian12" ) disk_size_gb="42" ;; #  42.09G  36.18G    4.08G  90% / # 20250429-193537-tf
+  "2.3-rocky9"   ) disk_size_gb="43" ;; #  44.79G  37.19G    7.61G  84% / # 20250429-193537-tf
+  "2.3-ubuntu22" ) disk_size_gb="42" ;; #  53.12G  36.15G   16.95G  69% / # 20250429-193537-tf
+esac
 
 # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
 PURPOSE="tf"
@@ -221,19 +281,14 @@ time generate_from_base_purpose "secure-boot"
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="spark"
 customization_script="examples/secure-boot/spark-rapids.sh"
-echo time generate_from_base_purpose "tf"
-
-## Execute spark-rapids/spark-rapids.sh init action on base image
-PURPOSE="cloud-sql-proxy"
-customization_script="examples/secure-boot/cloud-sql-proxy.sh"
-time generate_from_base_purpose "secure-boot"
+time generate_from_base_purpose "tf"
 
 ## Execute spark-rapids/mig.sh init action on base image
 PURPOSE="mig-pre-init"
 customization_script="examples/secure-boot/mig.sh"
 echo time generate_from_base_purpose "tf"
 
-# cuda image -> rapids
+# tf image -> rapids
 case "${dataproc_version}" in
   "2.0-debian10" ) disk_size_gb="41" ;; # 40.12G 37.51G   0.86G  98% / # rapids-pre-init-2-0-debian10
   "2.0-rocky8"   ) disk_size_gb="41" ;; # 38.79G 38.04G   0.76G  99% / # rapids-pre-init-2-0-rocky8
@@ -249,15 +304,15 @@ esac
 #disk_size_gb="45"
 
 # Install dask with rapids on base image
-PURPOSE="rapids-pre-init"
+PURPOSE="rapids"
 customization_script="examples/secure-boot/rapids.sh"
-time generate_from_base_purpose "tf-pre-init"
+echo time generate_from_base_purpose "tf"
 #time generate_from_base_purpose "cuda-pre-init"
 
 ## Install dask without rapids on base image
-PURPOSE="dask-pre-init"
+PURPOSE="dask"
 customization_script="examples/secure-boot/dask.sh"
-time generate_from_base_purpose "secure-boot"
+echo time generate_from_base_purpose "secure-boot"
 #time generate_from_base_purpose "cuda-pre-init"
 
 # cuda image -> pytorch
@@ -276,4 +331,5 @@ esac
 ## Install pytorch on base image
 PURPOSE="pytorch-pre-init"
 customization_script="examples/secure-boot/pytorch.sh"
-#time generate_from_base_purpose "cuda-pre-init"
+echo time generate_from_base_purpose "tf"
+

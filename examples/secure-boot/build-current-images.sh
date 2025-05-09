@@ -180,8 +180,6 @@ else
 fi
 
 readonly timestamp="$(date "+%Y%m%d-%H%M%S")"
-#readonly timestamp="$(date +%F-%H-%M)"
-#readonly timestamp="2025-04-15-23-04"
 export timestamp
 
 export tmpdir=/tmp/${timestamp};
@@ -202,11 +200,13 @@ screen -L -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
 function find_disk_usage() {
   #  grep maximum-disk-used /tmp/custom-image-*/logs/startup-script.log
   grep -H 'Customization script' /tmp/custom-image-*/logs/workflow.log
+  echo '# DP_IMG_VER       RECOMMENDED_DISK_SIZE   DSK_SZ  D_USED   D_FREE  D%F     PURPOSE'
+# workflow_log=/tmp/custom-image-dataproc-2-0-deb10-20250424-232955-tf-20250425-230559/logs/workflow.log
   for workflow_log in $(grep -Hl "Customization script" /tmp/custom-image-*/logs/workflow.log) ; do
-    startup_log=$(echo "${workflow_log}" | sed -e 's/workflow.log/startup-script.log/')
+    startup_log="${workflow_log/workflow/startup-script}"
     grep -v '^\['  "${startup_log}" \
-      | grep -A7 'Filesystem.*Avail' \
-      | perl examples/secure-boot/genline.pl "${workflow_log}"
+      | grep -A20 'Filesystem.*Avail' | tail -20 \
+      | perl examples/secure-boot/genline.pl "${startup_log}"
   done
 }
 
