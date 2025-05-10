@@ -154,6 +154,13 @@ def parse_args(args):
       If the default network does not exist in your project, please specify
       a valid network interface.""")
   parser.add_argument(
+      "--tags",
+      type=str,
+      required=False,
+      default="",
+      help="""(Optional) Network tags used to launch the VM instance that builds
+      the custom image.""")
+  parser.add_argument(
       "--subnetwork",
       type=str,
       required=False,
