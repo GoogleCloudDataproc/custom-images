@@ -194,7 +194,7 @@ def parse_args(args):
       "--disk-size",
       type=int,
       required=False,
-      default=40,
+      default=30,
       help=
       """(Optional) The size in GB of the disk attached to the VM instance
       that builds the custom image. If not specified, the default value of
@@ -242,7 +242,7 @@ def parse_args(args):
       "--optional-components",
       type=_validate_components,
       required=False,
-      help="""Optional Components to be installed with the image. 
+      help="""Optional Components to be installed with the image.
       Can be a comma-separated list of components, e.g., TRINO,ZEPPELIN.
       (Only supported for Dataproc Images 2.3 and above)"""
   )

@@ -25,3 +25,7 @@ screenlog.*
 
 # environment configuration file
 env.json
+
+# failed patches
+*.orig
+*.rej

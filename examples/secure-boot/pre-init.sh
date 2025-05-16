@@ -131,7 +131,7 @@ function generate() {
   if [[ -n "${instance}" ]]; then
     # if previous run ended without cleanup...
     echo "cleaning up instance from previous run"
-    gcloud -q compute instances delete "${image_name}-install"
+    gcloud -q compute instances delete "${image_name}-install" --zone "${ZONE}"
   fi
 
   create_function="create_unaccelerated_instance"
