@@ -47,7 +47,7 @@ function version_lt(){{ [[ "$1" = "$2" ]]&& return 1 || version_le "$1" "$2";}}
 function prepare() {{
   # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
   # used as a more performant replacement for `gsutil`
-  if gcloud >/dev/null && gcloud storage --help >/dev/null 2>&1; then
+  if gcloud --help >/dev/null 2>&1 && gcloud storage --help >/dev/null 2>&1; then
     gsutil_cmd="gcloud storage"
     rsync_cmd="${{gsutil_cmd}} rsync"
   else

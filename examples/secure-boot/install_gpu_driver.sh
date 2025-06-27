@@ -2079,7 +2079,7 @@ $(declare -f execute_with_retries)
 # --- Define gsutil/gcloud commands and curl args ---
 # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
 # used as a more performant replacement for `gsutil`
-if gcloud >/dev/null && gcloud storage --help >/dev/null 2>&1; then
+if gcloud --help >/dev/null 2>&1 && gcloud storage --help >/dev/null 2>&1; then
   gsutil_cmd="gcloud storage"
   gsutil_stat_cmd="gcloud storage objects describe"
 else
