@@ -2077,10 +2077,12 @@ $(declare -f cache_fetched_package)
 $(declare -f execute_with_retries)
 
 # --- Define gsutil/gcloud commands and curl args ---
-gsutil_cmd="gcloud storage"
-gsutil_stat_cmd="gcloud storage objects describe"
-gcloud_sdk_version="\$(gcloud --version | awk -F'SDK ' '/Google Cloud SDK/ {print \$2}' || echo '0.0.0')"
-if version_lt "\${gcloud_sdk_version}" "402.0.0" ; then
+# With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
+# used as a more performant replacement for `gsutil`
+if gcloud --help >/dev/null 2>&1 && gcloud storage --help >/dev/null 2>&1; then
+  gsutil_cmd="gcloud storage"
+  gsutil_stat_cmd="gcloud storage objects describe"
+else
   gsutil_cmd="gsutil -o GSUtil:check_hashes=never"
   gsutil_stat_cmd="gsutil stat"
 fi
