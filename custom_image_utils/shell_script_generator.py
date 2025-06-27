@@ -47,11 +47,11 @@ function version_lt(){{ [[ "$1" = "$2" ]]&& return 1 || version_le "$1" "$2";}}
 function prepare() {{
   # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
   # used as a more performant replacement for `gsutil`
-  gsutil_cmd="gcloud storage"
-  rsync_cmd="${{gsutil_cmd}} rsync"
-  gcloud_sdk_version="$(gcloud --version | awk -F'SDK ' '/Google Cloud SDK/ {{print $2}}')"
-  if version_lt "${{gcloud_sdk_version}}" "402.0.0" ; then
-    gsutil_cmd="$(which gsutil) -o GSUtil:check_hashes=never"
+  if gcloud >/dev/null && gcloud storage --help >/dev/null 2>&1; then
+    gsutil_cmd="gcloud storage"
+    rsync_cmd="${{gsutil_cmd}} rsync"
+  else
+    gsutil_cmd="gsutil -o GSUtil:check_hashes=never"
     rsync_cmd="${{gsutil_cmd}} -m rsync"
   fi
 }}

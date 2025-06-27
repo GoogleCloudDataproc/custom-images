@@ -49,11 +49,10 @@ function version_lt(){ [[ "$1" = "$2" ]]&& return 1 || version_le "$1" "$2";}
 
 # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
 # used as a more performant replacement for `gsutil`
-gsutil_cmd="gcloud storage"
-gcloud_sdk_version="$(gcloud --version | awk -F'SDK ' '/Google Cloud SDK/ {print $2}')"
-gsutil_cp_cmd="${gsutil_cmd} cp"
-
-if version_lt "${gcloud_sdk_version}" "402.0.0" ; then
+if gcloud >/dev/null && gcloud storage --help >/dev/null 2>&1; then
+  gsutil_cmd="gcloud storage"
+  gsutil_cp_cmd="${gsutil_cmd} cp"
+else
   gsutil_cmd="gsutil"
   gsutil_cp_cmd="${gsutil_cmd} -m cp"
 fi
