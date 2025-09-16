@@ -22,4 +22,5 @@ screen -L -t 2.2-ubuntu22     10 /bin/bash -x examples/secure-boot/pre-init.sh 2
 screen -L -t 2.3-debian12     12 /bin/bash -x examples/secure-boot/pre-init.sh 2.3-debian12
 screen -L -t 2.3-rocky9       13 /bin/bash -x examples/secure-boot/pre-init.sh 2.3-rocky9
 screen -L -t 2.3-ubuntu22     14 /bin/bash -x examples/secure-boot/pre-init.sh 2.3-ubuntu22
+screen -L -t 2.3-ubuntu22-arm 15 /bin/bash -x examples/secure-boot/pre-init.sh 2.3-ubuntu22-arm
 #screen -L -t 2.3-ml-ubuntu22  15 /bin/bash -x examples/secure-boot/pre-init.sh 2.3-ml-ubuntu22

@@ -80,6 +80,7 @@ case "${dataproc_version}" in
   "2.3-debian12"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-deb12 ;;
   "2.3-rocky9"       ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-roc9 ;;
   "2.3-ubuntu22"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-ubu22 ;;
+  "2.3-ubuntu22-arm" ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-ubu22-arm ;;
   "2.3-ml-ubuntu22"  ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-ml-ubu22 ; disk_size_gb="50";;
 esac
 
@@ -209,8 +210,7 @@ function generate_from_dataproc_version() { generate --dataproc-version "$1" ; }
 function generate_from_prerelease_version() {
   # base image -> tensorflow
   local img_pfx="https://www.googleapis.com/compute/v1/projects/cloud-dataproc/global/images"
-#  local src_timestamp="20250410-165100"
-  local src_timestamp="20250505-045100"
+  local src_timestamp="20250807-045100"
   case "${dataproc_version}" in
 #    "1.5-debian10"     ) image_uri="${img_pfx}/dataproc-1-5-deb10-${src_timestamp}-rc01"  ;;
 #    "1.5-debian10"     ) image_uri="${img_pfx}/dataproc-1-5-deb10-20200820-160220-rc01"  ;;
@@ -229,6 +229,7 @@ function generate_from_prerelease_version() {
     "2.3-debian12"     ) image_uri="${img_pfx}/dataproc-2-3-deb12-${src_timestamp}-rc01"  ;;
     "2.3-rocky9"       ) image_uri="${img_pfx}/dataproc-2-3-roc9-${src_timestamp}-rc01"   ;;
     "2.3-ubuntu22"     ) image_uri="${img_pfx}/dataproc-2-3-ubu22-${src_timestamp}-rc01"  ;;
+    "2.3-ubuntu22-arm" ) image_uri="${img_pfx}/dataproc-2-3-ubu22-arm-${src_timestamp}-rc01"  ;;
     "2.3-ml-ubuntu22"  ) image_uri="${img_pfx}/dataproc-2-3-ml-ubu22-${src_timestamp}-rc01"  ;;
   esac
   generate --base-image-uri "${image_uri}"
@@ -304,6 +305,7 @@ case "${dataproc_version}" in
   "2.3-debian12"     ) disk_size_gb="42" ;; #  41.11G  36.20G    3.12G  93% / # 20250507-083009-tf
   "2.3-rocky9"       ) disk_size_gb="44" ;; #  49.79G  37.82G   11.98G  76% / # 20250507-083009-tf
   "2.3-ubuntu22"     ) disk_size_gb="42" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
+  "2.3-ubuntu22-arm" ) disk_size_gb="42" ;;
   "2.3-ml-ubuntu22"  ) disk_size_gb="70" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
 
 esac
