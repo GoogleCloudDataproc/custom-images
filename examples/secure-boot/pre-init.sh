@@ -305,7 +305,7 @@ case "${dataproc_version}" in
   "2.3-debian12"     ) disk_size_gb="42" ;; #  41.11G  36.20G    3.12G  93% / # 20250507-083009-tf
   "2.3-rocky9"       ) disk_size_gb="44" ;; #  49.79G  37.82G   11.98G  76% / # 20250507-083009-tf
   "2.3-ubuntu22"     ) disk_size_gb="42" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
-  "2.3-ubuntu22-arm" ) disk_size_gb="42" ;;
+  "2.3-ubuntu22-arm" ) disk_size_gb="42" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
   "2.3-ml-ubuntu22"  ) disk_size_gb="70" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
 
 esac
