@@ -135,7 +135,7 @@ def _get_dataproc_image_path_by_version(version):
     # expand it to 1-5-\d+-debian10 so we can do a regexp on the minor version
     minor_version = parsed_version[1].split("-")[0]
     parsed_version[1] = parsed_version[1].replace("-", "-\d+-")
-    filter_arg = ("labels.goog-dataproc-version ~ ^{}-{} AND NOT name ~ -eap$"
+    filter_arg = ("labels.goog-dataproc-version ~ ^{}-{}$ AND NOT name ~ -eap$"
                   " AND status = READY").format(parsed_version[0],
                                                 parsed_version[1])
   else:
