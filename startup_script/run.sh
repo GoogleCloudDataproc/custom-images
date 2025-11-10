@@ -27,6 +27,8 @@
 
 set -x
 
+echo "DEBUG: Starting startup_script/run.sh"
+
 # get custom-sources-path
 CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sources-path)
 # get time to wait for stdout to flush
@@ -78,8 +80,9 @@ function wait_until_ready() {
 }
 
 function download_scripts() {
-
+  echo "DEBUG: Attempting to download scripts from ${CUSTOM_SOURCES_PATH}"
   ${gsutil_cp_cmd} -r "${CUSTOM_SOURCES_PATH}/*" ./
+  echo "DEBUG: gsutil exit code: $?"
 }
 
 function run_custom_script() {
@@ -88,7 +91,19 @@ function run_custom_script() {
     return 1
   fi
 
+  # Setup HTTP proxy if configured
+  if [[ -f ./gce-proxy-setup.sh ]] && /usr/share/google/get_metadata_value attributes/http-proxy >/dev/null 2>&1; then
+    echo "DEBUG: Running gce-proxy-setup.sh"
+    bash -x ./gce-proxy-setup.sh
+    if [[ $? -ne 0 ]]; then
+      echo "BuildFailed: gce-proxy-setup.sh failed."
+      return 1
+    fi
+    echo "DEBUG: Finished gce-proxy-setup.sh"
+  fi
+
   # run init actions
+  echo "DEBUG: Running init_actions.sh"
   bash -x ./init_actions.sh
 
   # get return code

@@ -269,3 +269,4 @@ def parse_args(args):
       parsed_args.machine_type = _X86_MACHINE_TYPE
 
   return parsed_args
+
