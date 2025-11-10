@@ -247,7 +247,11 @@ function main() {{
   # too many serial port output requests per minute occur if they all occur at once
   sleep $(( ( RANDOM % 60 ) + 20 ))
 
-  gcloud compute instances describe --format json {image_name}-install --zone {zone} | tee {log_dir}/instance.json
+  if (( DEBUG != 0 )); then
+    gcloud compute instances describe --format json {image_name}-install --project={project_id} --zone {zone} | tee {log_dir}/instance.json
+  else
+    gcloud compute instances describe --format json {image_name}-install --project={project_id} --zone {zone} > {log_dir}/instance.json
+  fi
 
   execute_with_retries gcloud compute instances tail-serial-port-output {image_name}-install \
       --project={project_id} \
@@ -300,6 +304,8 @@ class Generator:
         "run.sh": "startup_script/run.sh",
         "init_actions.sh": self.args["customization_script"]
     }
+    if self.args.get("metadata") and "http-proxy" in self.args["metadata"]:
+        all_sources["gce-proxy-setup.sh"] = "startup_script/gce-proxy-setup.sh"
     all_sources.update(self.args["extra_sources"])
 
     sources_map_items = tuple(enumerate(all_sources.items()))
@@ -329,8 +335,11 @@ class Generator:
     self.args[
       "storage_location_flag"] = "--storage-location={storage_location}".format(
         **self.args) if self.args["storage_location"] else ""
+    self.args[
+      "gce_startup_script_flag"] = "--metadata-from-file startup-script={gce_startup_script}".format(
+        **self.args) if self.args.get("gce_startup_script") else ""
     metadata_flag_template = (
-        "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},"
+        "--metadata=VmDnsSetting=ZonalOnly,shutdown-timer-in-sec={shutdown_timer_in_sec},"
         "custom-sources-path={custom_sources_path}"
     )
     if self.args["zone"]:

@@ -247,5 +247,4 @@ def parse_args(args):
       (Only supported for Dataproc Images 2.3 and above)"""
   )
 
-
   return parser.parse_args(args)

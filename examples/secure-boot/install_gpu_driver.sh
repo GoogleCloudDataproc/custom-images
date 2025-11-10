@@ -268,10 +268,47 @@ function set_driver_version() {
   export DRIVER_VERSION DRIVER
 
   gpu_driver_url="${nv_xf86_x64_base}/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
-  if ! curl ${curl_retry_args} --head "${gpu_driver_url}" | grep -E -q 'HTTP.*200' ; then
-    echo "No NVIDIA driver exists for DRIVER_VERSION=${DRIVER_VERSION}"
-    exit 1
+
+  # GCS Cache Check Logic
+  local driver_filename
+  driver_filename=$(basename "${gpu_driver_url}")
+  local gcs_cache_path="${pkg_bucket}/nvidia/${driver_filename}"
+
+  echo "Checking for cached NVIDIA driver at: ${gcs_cache_path}"
+
+  if ! gsutil -q stat "${gcs_cache_path}"; then
+    echo "Driver not found in GCS cache. Validating URL: ${gpu_driver_url}"
+    # Use curl to check if the URL is valid (HEAD request)
+    if curl -sSLfI --connect-timeout 10 --max-time 30 "${gpu_driver_url}" 2>/dev/null | grep -E -q 'HTTP.*200'; then
+      echo "NVIDIA URL is valid. Downloading to cache..."
+      local temp_driver_file="${tmpdir}/${driver_filename}"
+
+      # Download the file
+      echo "Downloading from ${gpu_driver_url} to ${temp_driver_file}"
+      if curl -sSLf -o "${temp_driver_file}" "${gpu_driver_url}"; then
+        echo "Download complete. Uploading to ${gcs_cache_path}"
+        # Upload to GCS
+        if gsutil cp "${temp_driver_file}" "${gcs_cache_path}"; then
+          echo "Successfully cached to GCS."
+          rm -f "${temp_driver_file}"
+        else
+          echo "ERROR: Failed to upload driver to GCS: ${gcs_cache_path}"
+          rm -f "${temp_driver_file}"
+          exit 1
+        fi
+      else
+        echo "ERROR: Failed to download driver from NVIDIA: ${gpu_driver_url}"
+        rm -f "${temp_driver_file}" # File might not exist if curl failed early
+        exit 1
+      fi
+    else
+      echo "ERROR: NVIDIA driver URL is not valid or accessible: ${gpu_driver_url}"
+      exit 1
+    fi
+  else
+    echo "Driver found in GCS cache: ${gcs_cache_path}"
   fi
+  # End of GCS Cache Check Logic
 }
 
 function set_cudnn_version() {
@@ -453,7 +490,12 @@ GPU_DRIVER_PROVIDER=$(get_metadata_attribute 'gpu-driver-provider' 'NVIDIA')
 readonly GPU_DRIVER_PROVIDER
 
 # Whether to install GPU monitoring agent that sends GPU metrics to Stackdriver
-INSTALL_GPU_AGENT=$(get_metadata_attribute 'install-gpu-agent' 'true')
+INSTALL_GPU_AGENT_METADATA=$(get_metadata_attribute 'install-gpu-agent' 'true')
+ENABLE_GPU_MONITORING_METADATA=$(get_metadata_attribute 'enable-gpu-monitoring' 'true')
+INSTALL_GPU_AGENT='true'
+if [[ "${INSTALL_GPU_AGENT_METADATA}" == "false" ]] || [[ "${ENABLE_GPU_MONITORING_METADATA}" == "false" ]] ; then
+  INSTALL_GPU_AGENT='false'
+fi
 readonly INSTALL_GPU_AGENT
 
 # Dataproc configurations
@@ -677,14 +719,19 @@ function install_nvidia_nccl() {
       # Ada:       SM_89,             compute_89
       # Hopper:    SM_90,SM_90a       compute_90,compute_90a
       # Blackwell: SM_100,            compute_100
-                      NVCC_GENCODE="-gencode=arch=compute_70,code=sm_70 -gencode=arch=compute_72,code=sm_72"
-      NVCC_GENCODE="${NVCC_GENCODE} -gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86"
+      local nvcc_gencode=("-gencode=arch=compute_70,code=sm_70" "-gencode=arch=compute_72,code=sm_72"
+                          "-gencode=arch=compute_80,code=sm_80" "-gencode=arch=compute_86,code=sm_86")
+
       if version_gt "${CUDA_VERSION}" "11.6" ; then
-        NVCC_GENCODE="${NVCC_GENCODE} -gencode=arch=compute_87,code=sm_87" ; fi
+        nvcc_gencode+=("-gencode=arch=compute_87,code=sm_87")
+      fi
       if version_ge "${CUDA_VERSION}" "11.8" ; then
-        NVCC_GENCODE="${NVCC_GENCODE} -gencode=arch=compute_89,code=sm_89" ; fi
+        nvcc_gencode+=("-gencode=arch=compute_89,code=sm_89")
+      fi
       if version_ge "${CUDA_VERSION}" "12.0" ; then
-        NVCC_GENCODE="${NVCC_GENCODE} -gencode=arch=compute_90,code=sm_90 -gencode=arch=compute_90a,code=compute_90a" ; fi
+        nvcc_gencode+=("-gencode=arch=compute_90,code=sm_90" "-gencode=arch=compute_90a,code=compute_90a")
+      fi
+      NVCC_GENCODE="${nvcc_gencode[*]}"
 
       if is_debuntu ; then
         # These packages are required to build .deb packages from source
@@ -846,12 +893,27 @@ function install_pytorch() {
     if test -d "${envpath}" ; then verb=install ; fi
     cudart_spec="cuda-cudart"
     if le_cuda11 ; then cudart_spec="cudatoolkit" ; fi
+    # disable ssl verification for debian10
+    local conda_path="${conda_root_path}/bin/mamba"
+
+    conda_pkg_list=(
+      "numba" "pytorch" "rapids" "pyspark" "cuda-version<=${CUDA_VERSION}" "${cudart_spec}"
+    )
+    
+    if le_debian10 ; then
+      "${conda_root_path}/bin/conda" config --set ssl_verify false
+
+      conda_pkg_list=("python=3.10" "numba" "pytorch" "rapids" "pyspark" "cudatoolkit<=12.4")
+
+      conda_path="${conda_root_path}/bin/conda"
+    fi
+    conda_pkg=$( IFS=' ' ; echo "${conda_pkg_list[*]}" )
+
 
     # Install pytorch and company to this environment
-    "${conda_root_path}/bin/mamba" "${verb}" -n "${env}" \
+    "${conda_path}" "${verb}" -n "${env}" \
       -c conda-forge -c nvidia -c rapidsai \
-      numba pytorch tensorflow[and-cuda] rapids pyspark \
-      "cuda-version<=${CUDA_VERSION}" "${cudart_spec}"
+      ${conda_pkg}
 
     # Install jupyter kernel in this environment
     "${envpath}/bin/python3" -m pip install ipykernel
@@ -876,6 +938,7 @@ function configure_dkms_certs() {
       echo "No signing secret provided.  skipping";
       return 0
   fi
+  if [[ -f "${mok_der}" ]] ; then return 0; fi
 
   mkdir -p "${CA_TMPDIR}"
 
@@ -988,7 +1051,14 @@ function add_repo_nvidia_container_toolkit() {
     # "${repo_name}" "${signing_key_url}" "${repo_data}" "${4:-yes}" "${kr_path}" "${6:-}"
     local -r repo_name="nvidia-container-toolkit"
     local -r kr_path="/usr/share/keyrings/${repo_name}.gpg"
+    GPG_PROXY_ARGS=""
+    if [[ -v HTTP_PROXY ]] ; then
+      GPG_PROXY="--keyserver-options http-proxy=${HTTP_PROXY}"
+    elif [[ -v http_proxy ]] ; then
+      GPG_PROXY="--keyserver-options http-proxy=${http_proxy}"
+    fi
     execute_with_retries gpg --keyserver keyserver.ubuntu.com \
+      ${GPG_PROXY_ARGS} \
       --no-default-keyring --keyring "${kr_path}" \
       --recv-keys "0xae09fe4bbd223a84b2ccfce3f60f4b3d7fa2af80" "0xeb693b3035cd5710e231e123a4b469963bf863cc" "0xc95b321b61e88c1809c4f759ddcae044f796ecb0"
     local -r repo_data="${nvctk_root}/stable/deb/\$(ARCH) /"
@@ -1013,7 +1083,13 @@ function add_repo_cuda() {
       echo "deb [signed-by=${kr_path}] https://developer.download.nvidia.com/compute/cuda/repos/${shortname}/x86_64/ /" \
       | sudo tee "${sources_list_path}"
 
-      gpg --keyserver keyserver.ubuntu.com \
+      GPG_PROXY_ARGS=""
+      if [[ -n "${HTTP_PROXY}" ]] ; then
+        GPG_PROXY="--keyserver-options http-proxy=${HTTP_PROXY}"
+      elif [[ -n "${http_proxy}" ]] ; then
+        GPG_PROXY="--keyserver-options http-proxy=${http_proxy}"
+      fi
+      execute_with_retries gpg --keyserver keyserver.ubuntu.com ${GPG_PROXY_ARGS} \
         --no-default-keyring --keyring "${kr_path}" \
         --recv-keys "0xae09fe4bbd223a84b2ccfce3f60f4b3d7fa2af80" "0xeb693b3035cd5710e231e123a4b469963bf863cc"
     else
@@ -1157,12 +1233,13 @@ function build_driver_from_packages() {
 
 function install_nvidia_userspace_runfile() {
   # Parameters for NVIDIA-provided Debian GPU driver
-  readonly DEFAULT_USERSPACE_URL="https://us.download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
+  local -r USERSPACE_RUNFILE="NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
 
-  readonly USERSPACE_URL=$(get_metadata_attribute 'gpu-driver-url' "${DEFAULT_USERSPACE_URL}")
+  local -r DEFAULT_USERSPACE_URL="https://us.download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/${USERSPACE_RUNFILE}"
 
-  USERSPACE_FILENAME="$(echo ${USERSPACE_URL} | perl -pe 's{^.+/}{}')"
-  readonly USERSPACE_FILENAME
+  local USERSPACE_URL
+  USERSPACE_URL="$(get_metadata_attribute 'gpu-driver-url' "${DEFAULT_USERSPACE_URL}")"
+  readonly USERSPACE_URL
 
   # This .run file contains NV's OpenGL implementation as well as
   # nvidia optimized implementations of the gtk+ 2,3 stack(s) not
@@ -1175,11 +1252,16 @@ function install_nvidia_userspace_runfile() {
   # wget https://us.download.nvidia.com/XFree86/Linux-x86_64/560.35.03/NVIDIA-Linux-x86_64-560.35.03.run
   # sh ./NVIDIA-Linux-x86_64-560.35.03.run -x # this will allow you to review the contents of the package without installing it.
   is_complete userspace && return
-  local local_fn="${tmpdir}/userspace.run"
+  local local_fn="${tmpdir}/${USERSPACE_RUNFILE}"
 
   cache_fetched_package "${USERSPACE_URL}" \
-                        "${pkg_bucket}/nvidia/${USERSPACE_FILENAME}" \
+                        "${pkg_bucket}/nvidia/${USERSPACE_RUNFILE}" \
                         "${local_fn}"
+
+  local runfile_sha256sum
+  runfile_sha256sum="$(cd "${tmpdir}" && sha256sum "${USERSPACE_RUNFILE}")"
+  local runfile_hash
+  runfile_hash=$(echo "${runfile_sha256sum}" | awk '{print $1}')
 
   local runfile_args
   runfile_args=""
@@ -1290,7 +1372,7 @@ function install_nvidia_userspace_runfile() {
 function install_cuda_runfile() {
   is_complete cuda && return
 
-  local local_fn="${tmpdir}/cuda.run"
+  local local_fn="${tmpdir}/${CUDA_RUNFILE}"
 
   cache_fetched_package "${NVIDIA_CUDA_URL}" \
                         "${pkg_bucket}/nvidia/${CUDA_RUNFILE}" \
@@ -1444,6 +1526,11 @@ function install_gpu_agent() {
   "${python_interpreter}" -m venv "${venv}"
 (
   source "${venv}/bin/activate"
+  if [[ -v METADATA_HTTP_PROXY_PEM_URI ]] && [[ -n "${METADATA_HTTP_PROXY_PEM_URI}" ]]; then
+    export REQUESTS_CA_BUNDLE="${trusted_pem_path}"
+    pip install pip-system-certs
+    unset REQUESTS_CA_BUNDLE
+  fi
   python3 -m pip install --upgrade pip
   execute_with_retries python3 -m pip install -r "${install_dir}/requirements.txt"
 )
@@ -1767,7 +1854,7 @@ function mark_incomplete() {
 function install_dependencies() {
   is_complete install-dependencies && return 0
 
-  pkg_list="pciutils screen"
+  pkg_list="screen"
   if is_debuntu ; then execute_with_retries apt-get -y -q install ${pkg_list}
   elif is_rocky ; then execute_with_retries dnf     -y -q install ${pkg_list} ; fi
   mark_complete install-dependencies
@@ -1875,10 +1962,17 @@ function check_secure_boot() {
   return 0
 }
 
+
 # Function to group Hadoop/Spark config steps (called in init-action mode or deferred)
 function run_hadoop_spark_config() {
   # Ensure necessary variables are available or re-evaluated
   # prepare_gpu_env needs CUDA/Driver versions, call it first if needed
+  # Set GCS bucket for caching
+  if [[ ! -v pkg_bucket ]] ; then
+    temp_bucket="$(get_metadata_attribute dataproc-temp-bucket)"
+    readonly temp_bucket
+    readonly pkg_bucket="gs://${temp_bucket}/dpgce-packages"
+  fi
   if [[ ! -v CUDA_VERSION || ! -v DRIVER_VERSION ]]; then prepare_gpu_env; fi
   # Re-read ROLE
   ROLE="$(get_metadata_attribute dataproc-role)";
@@ -1933,13 +2027,6 @@ function run_hadoop_spark_config() {
     :
   fi
 
-  # Restart services after config
-  for svc in resourcemanager nodemanager; do
-    if (systemctl is-active --quiet hadoop-yarn-${svc}.service); then
-      systemctl stop  hadoop-yarn-${svc}.service || echo "WARN: Failed to stop ${svc}"
-      systemctl start hadoop-yarn-${svc}.service || echo "WARN: Failed to start ${svc}"
-    fi
-  done
   return 0 # Explicitly return success
 }
 
@@ -1957,6 +2044,10 @@ function create_deferred_config_files() {
 #!/bin/bash
 # Deferred configuration script generated by install_gpu_driver.sh
 set -xeuo pipefail
+
+readonly config_script_path="${config_script_path}"
+readonly service_name="${service_name}"
+readonly service_file="${service_file}"
 
 # --- Minimal necessary functions and variables ---
 # Define constants
@@ -2077,21 +2168,14 @@ $(declare -f cache_fetched_package)
 $(declare -f execute_with_retries)
 
 # --- Define gsutil/gcloud commands and curl args ---
-# With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
-# used as a more performant replacement for `gsutil`
-if gcloud --help >/dev/null 2>&1 && gcloud storage --help >/dev/null 2>&1; then
-  gsutil_cmd="gcloud storage"
-  gsutil_stat_cmd="gcloud storage objects describe"
-else
+gsutil_cmd="gcloud storage"
+gsutil_stat_cmd="gcloud storage objects describe"
+gcloud_sdk_version="\$(gcloud --version | awk -F'SDK ' '/Google Cloud SDK/ {print \$2}' || echo '0.0.0')"
+if version_lt "\${gcloud_sdk_version}" "402.0.0" ; then
   gsutil_cmd="gsutil -o GSUtil:check_hashes=never"
   gsutil_stat_cmd="gsutil stat"
 fi
 curl_retry_args="-fsSL --retry-connrefused --retry 10 --retry-max-time 30"
-# Define pkg_bucket (needed by cache_fetched_package)
-temp_bucket="\$(get_metadata_attribute dataproc-temp-bucket)"
-readonly temp_bucket
-readonly pkg_bucket="gs://\${temp_bucket}/dpgce-packages"
-readonly install_log="/tmp/deferred-config-install.log" # Log file for execute_with_retries
 
 # --- Include the main config function ---
 $(declare -f run_hadoop_spark_config)
@@ -2107,6 +2191,14 @@ else
   # Keep the service enabled to allow for manual inspection/retry
   exit 1
 fi
+
+# Restart services after applying config
+for svc in resourcemanager nodemanager; do
+  if (systemctl is-active --quiet hadoop-yarn-\${svc}.service); then
+    systemctl stop  hadoop-yarn-\${svc}.service || echo "WARN: Failed to stop \${svc}"
+    systemctl start hadoop-yarn-\${svc}.service || echo "WARN: Failed to start \${svc}"
+  fi
+done
 
 exit 0
 EOF
@@ -2135,9 +2227,11 @@ EOF
   # Service is enabled later only if IS_CUSTOM_IMAGE_BUILD is true
 }
 
+
 function main() {
   # Perform installations (these are generally safe during image build)
-  if (lspci | grep -q NVIDIA); then
+  if (grep -qi PCI_ID=10DE /sys/bus/pci/devices/*/uevent); then
+
     # Check MIG status early, primarily for driver installation logic
     migquery_result="$(nvsmi --query-gpu=mig.mode.current --format=csv,noheader || echo '[N/A]')" # Use || for safety
     if [[ "${migquery_result}" == "[N/A]" ]] ; then migquery_result="" ; fi
@@ -2459,7 +2553,7 @@ print( "     samples-taken: ", scalar @siz, $/,
   echo "exit_handler has completed"
 
   # zero free disk space (only if creating image)
-  if [[ "${IS_CUSTOM_IMAGE_BUILD}" == "true" ]]; then
+  if [[ "0" == "1" ]] && [[ "${IS_CUSTOM_IMAGE_BUILD}" == "true" ]]; then
     dd if=/dev/zero of=/zero status=progress || true
     sync
     sleep 3s
@@ -2474,19 +2568,162 @@ function set_proxy(){
 
   if [[ -z "${METADATA_HTTP_PROXY}" ]] ; then return ; fi
 
-  export http_proxy="${METADATA_HTTP_PROXY}"
-  export https_proxy="${METADATA_HTTP_PROXY}"
-  export HTTP_PROXY="${METADATA_HTTP_PROXY}"
-  export HTTPS_PROXY="${METADATA_HTTP_PROXY}"
-  no_proxy="localhost,127.0.0.0/8,::1,metadata.google.internal,169.254.169.254"
-  local no_proxy_svc
-  for no_proxy_svc in compute  secretmanager dns    servicedirectory     logging  \
-                      bigquery composer      pubsub bigquerydatatransfer dataflow \
-                      storage  datafusion    ; do
-    no_proxy="${no_proxy},${no_proxy_svc}.googleapis.com"
-  done
+  default_no_proxy_list=("localhost" "127.0.0.0/8" "::1" "*.googleapis.com"
+		 "metadata.google.internal" "169.254.169.254")
 
+  user_no_proxy=$(get_metadata_attribute 'no-proxy' '')
+  user_no_proxy_list=()
+  if [[ -n "${user_no_proxy}" ]]; then
+    # Replace spaces with commas, then split by comma
+    IFS=',' read -r -a user_no_proxy_list <<< "${user_no_proxy// /,}"
+  fi
+
+  combined_no_proxy_list=("${default_no_proxy_list[@]}" "${user_no_proxy_list[@]}")
+  no_proxy=$( IFS=',' ; echo "${combined_no_proxy_list[*]}" )
+
+  export http_proxy="http://${METADATA_HTTP_PROXY}"
+  export https_proxy="http://${METADATA_HTTP_PROXY}"
+  export no_proxy
+  export HTTP_PROXY="http://${METADATA_HTTP_PROXY}"
+  export HTTPS_PROXY="http://${METADATA_HTTP_PROXY}"
   export NO_PROXY="${no_proxy}"
+
+  # configure gcloud
+  # There is no no_proxy config for gcloud so we cannot use these settings until https://github.com/psf/requests/pull/7068 is merged
+#  gcloud config set proxy/type http
+#  gcloud config set proxy/address "${METADATA_HTTP_PROXY%:*}"
+#  gcloud config set proxy/port "${METADATA_HTTP_PROXY#*:}"
+
+  # add proxy environment variables to /etc/environment
+  grep http_proxy /etc/environment || echo "http_proxy=${http_proxy}" >> /etc/environment
+  grep https_proxy /etc/environment || echo "https_proxy=${https_proxy}" >> /etc/environment
+  grep no_proxy /etc/environment || echo "no_proxy=${no_proxy}" >> /etc/environment
+  grep HTTP_PROXY /etc/environment || echo "HTTP_PROXY=${HTTP_PROXY}" >> /etc/environment
+  grep HTTPS_PROXY /etc/environment || echo "HTTPS_PROXY=${HTTPS_PROXY}" >> /etc/environment
+  grep NO_PROXY /etc/environment || echo "NO_PROXY=${NO_PROXY}" >> /etc/environment
+
+  local pkg_proxy_conf_file
+  if is_debuntu ; then
+    # configure Apt to use the proxy:
+    pkg_proxy_conf_file="/etc/apt/apt.conf.d/99proxy"
+    cat > "${pkg_proxy_conf_file}" <<EOF
+Acquire::http::Proxy "http://${METADATA_HTTP_PROXY}";
+Acquire::https::Proxy "http://${METADATA_HTTP_PROXY}";
+EOF
+  elif is_rocky ; then
+    pkg_proxy_conf_file="/etc/dnf/dnf.conf"
+
+    touch "${pkg_proxy_conf_file}"
+
+    if grep -q "^proxy=" "${pkg_proxy_conf_file}"; then
+      sed -i.bak "s@^proxy=.*@proxy=${HTTP_PROXY}@" "${pkg_proxy_conf_file}"
+    elif grep -q "^\[main\]" "${pkg_proxy_conf_file}"; then
+      sed -i.bak "/^\[main\]/a proxy=${HTTP_PROXY}" "${pkg_proxy_conf_file}"
+    else
+      local TMP_FILE=$(mktemp)
+      printf "[main]\nproxy=%s\n" "${HTTP_PROXY}" > "${TMP_FILE}"
+
+      cat "${TMP_FILE}" "${pkg_proxy_conf_file}" > "${pkg_proxy_conf_file}".new
+      mv "${pkg_proxy_conf_file}".new "${pkg_proxy_conf_file}"
+
+      rm "${TMP_FILE}"
+    fi
+  else
+    echo "unknown OS"
+    exit 1
+  fi
+  # configure gpg to use the proxy:
+  if ! grep 'keyserver-options http-proxy' /etc/gnupg/dirmngr.conf ; then
+    mkdir -p /etc/gnupg
+    cat >> /etc/gnupg/dirmngr.conf <<EOF
+http-proxy http://${METADATA_HTTP_PROXY}
+EOF
+  fi
+
+  # Install the HTTPS proxy's certificate in the system and Java trust databases
+  METADATA_HTTP_PROXY_PEM_URI="$(get_metadata_attribute http-proxy-pem-uri '')"
+
+  if [[ -z "${METADATA_HTTP_PROXY_PEM_URI}" ]] ; then return ; fi
+  if [[ ! "${METADATA_HTTP_PROXY_PEM_URI}" =~ ^gs ]] ; then echo "http-proxy-pem-uri value should start with gs://" ; exit 1 ; fi
+
+  local trusted_pem_dir
+  # Add this certificate to the OS trust database
+  # When proxy cert is provided, speak to the proxy over https
+  if is_debuntu ; then
+    trusted_pem_dir="/usr/local/share/ca-certificates"
+    mkdir -p "${trusted_pem_dir}"
+    proxy_ca_pem="${trusted_pem_dir}/proxy_ca.crt"
+    gsutil cp "${METADATA_HTTP_PROXY_PEM_URI}" "${proxy_ca_pem}"
+    update-ca-certificates
+    trusted_pem_path="/etc/ssl/certs/ca-certificates.crt"
+    sed -i -e 's|http://|https://|' "${pkg_proxy_conf_file}"
+  elif is_rocky ; then
+    trusted_pem_dir="/etc/pki/ca-trust/source/anchors"
+    mkdir -p "${trusted_pem_dir}"
+    proxy_ca_pem="${trusted_pem_dir}/proxy_ca.crt"
+    gsutil cp "${METADATA_HTTP_PROXY_PEM_URI}" "${proxy_ca_pem}"
+    update-ca-trust
+    trusted_pem_path="/etc/ssl/certs/ca-bundle.crt"
+    sed -i -e 's|^proxy=http://|proxy=https://|' "${pkg_proxy_conf_file}"
+  else
+    echo "unknown OS"
+    exit 1
+  fi
+
+  # configure gcloud to respect proxy ca cert
+  #gcloud config set core/custom_ca_certs_file "${proxy_ca_pem}"
+
+  ca_subject="$(openssl crl2pkcs7 -nocrl -certfile "${proxy_ca_pem}" | openssl pkcs7 -print_certs -noout | grep ^subject)"
+  # Verify that the proxy certificate is trusted
+  local output
+  output=$(echo | openssl s_client \
+           -connect "${METADATA_HTTP_PROXY}" \
+           -proxy "${METADATA_HTTP_PROXY}" \
+           -CAfile "${proxy_ca_pem}") || {
+    echo "proxy certificate verification failed"
+    echo "${output}"
+    exit 1
+  }
+  output=$(echo | openssl s_client \
+           -connect "${METADATA_HTTP_PROXY}" \
+           -proxy "${METADATA_HTTP_PROXY}" \
+           -CAfile "${trusted_pem_path}") || {
+    echo "proxy ca certificate not included in system bundle"
+    echo "${output}"
+    exit 1
+  }
+  output=$(curl --verbose -fsSL --retry-connrefused --retry 10 --retry-max-time 30 --head "https://google.com" 2>&1)|| {
+    echo "curl rejects proxy configuration"
+    echo "${curl_output}"
+    exit 1
+  }
+  output=$(curl --verbose -fsSL --retry-connrefused --retry 10 --retry-max-time 30 --head "https://developer.download.nvidia.com/compute/cuda/12.6.3/local_installers/cuda_12.6.3_560.35.05_linux.run" 2>&1)|| {
+    echo "curl rejects proxy configuration"
+    echo "${output}"
+    exit 1
+  }
+
+  # Instruct conda to use the system certificate
+  echo "Attempting to install pip-system-certs using the proxy certificate..."
+  export REQUESTS_CA_BUNDLE="${trusted_pem_path}"
+  pip install pip-system-certs
+  unset REQUESTS_CA_BUNDLE
+
+  # For the binaries bundled with conda, append our certificate to the bundle
+  openssl crl2pkcs7 -nocrl -certfile /opt/conda/default/ssl/cacert.pem | openssl pkcs7 -print_certs -noout | grep -Fx "${ca_subject}" || {
+    cat "${proxy_ca_pem}" >> /opt/conda/default/ssl/cacert.pem
+  }
+
+  sed -i -e 's|http://|https://|' /etc/gnupg/dirmngr.conf
+  export http_proxy="https://${METADATA_HTTP_PROXY}"
+  export https_proxy="https://${METADATA_HTTP_PROXY}"
+  export HTTP_PROXY="https://${METADATA_HTTP_PROXY}"
+  export HTTPS_PROXY="https://${METADATA_HTTP_PROXY}"
+  sed -i -e 's|proxy=http://|proxy=https://|'  -e 's|PROXY=http://|PROXY=https://|' /etc/environment
+
+  # Instruct the JRE to trust the certificate
+  JAVA_HOME="$(awk -F= '/^JAVA_HOME=/ {print $2}' /etc/environment)"
+  "${JAVA_HOME}/bin/keytool" -import -cacerts -storepass changeit -noprompt -alias swp_ca -file "${proxy_ca_pem}"
 }
 
 function mount_ramdisk(){
@@ -2548,6 +2785,7 @@ function prepare_to_install(){
   # Verify OS compatability and Secure boot state
   check_os
   check_secure_boot
+  set_proxy
 
   # --- Detect Image Build Context ---
   # Use 'initialization-actions' as the default name for clarity
@@ -2569,15 +2807,34 @@ function prepare_to_install(){
     gsutil_cmd="gsutil -o GSUtil:check_hashes=never"
     gsutil_stat_cmd="gsutil stat"
   fi
+
+  # if fetches of nvidia packages fail, apply -k argument to the following.
+
   curl_retry_args="-fsSL --retry-connrefused --retry 10 --retry-max-time 30"
+
+  # After manually verifying the veracity of the asset, take note of sha256sum
+  # of the downloaded files in your gcs bucket and submit these data with an
+  # issue or pull request to the github repository
+  # GoogleCloudDataproc/initialization-actions and we will include those hashes
+  # with this script for manual validation at time of deployment.
+
+  # Please provide hash data in the following format:
+
+#      ["cuda_11.5.2_495.29.05_linux.run"]="2c33591bb5b33a3d4bffafdc7da76fe4"
+#      ["cuda_11.6.2_510.47.03_linux.run"]="2989d2d2a943fa5e2a1f29f660221788"
+#      ["cuda_12.1.1_530.30.02_linux.run"]="2f0a4127bf797bf4eab0be2a547cb8d0"
+#      ["cuda_12.4.1_550.54.15_linux.run"]="afc99bab1d8c6579395d851d948ca3c1"
+#      ["cuda_12.6.3_560.35.05_linux.run"]="29d297908c72b810c9ceaa5177142abd"
+#      ["NVIDIA-Linux-x86_64-495.46.run"]="db1d6b0f9e590249bbf940a99825f000"
+#      ["NVIDIA-Linux-x86_64-510.108.03.run"]="a225bcb0373cbf6c552ed906bc5c614e"
+#      ["NVIDIA-Linux-x86_64-530.30.02.run"]="655b1509b9a9ed0baa1ef6b2bcf80283"
+#      ["NVIDIA-Linux-x86_64-550.135.run"]="a8c3ae0076f11e864745fac74bfdb01f"
+#      ["NVIDIA-Linux-x86_64-550.142.run"]="e507e578ecf10b01a08e5424dddb25b8"
 
   # Setup temporary directories (potentially on RAM disk)
   tmpdir=/tmp/ # Default
   mount_ramdisk # Updates tmpdir if successful
   install_log="${tmpdir}/install.log" # Set install log path based on final tmpdir
-
-  # Prepare GPU environment variables (versions, URLs, counts)
-  prepare_gpu_env
 
   workdir=/opt/install-dpgce
   # Set GCS bucket for caching
@@ -2587,9 +2844,11 @@ function prepare_to_install(){
   readonly bdcfg="/usr/local/bin/bdconfig"
   export DEBIAN_FRONTEND=noninteractive
 
+  # Prepare GPU environment variables (versions, URLs, counts)
+  prepare_gpu_env
+
   mkdir -p "${workdir}/complete"
   trap exit_handler EXIT
-  set_proxy
 
   is_complete prepare.common && return
 
@@ -2612,9 +2871,9 @@ function prepare_to_install(){
   fi
 
   # zero free disk space (only if creating image)
-  if [[ "${IS_CUSTOM_IMAGE_BUILD}" == "true" ]]; then ( set +e
+  if [[ "0" == "1" ]] && [[ "${IS_CUSTOM_IMAGE_BUILD}" == "true" ]]; then
     time dd if=/dev/zero of=/zero status=none ; sync ; sleep 3s ; rm -f /zero
-  ) fi
+  fi
 
   install_dependencies
 
@@ -2729,24 +2988,27 @@ function install_spark_rapids() {
 
   # Update SPARK RAPIDS config
   local DEFAULT_SPARK_RAPIDS_VERSION
+  local nvidia_repo_url
   DEFAULT_SPARK_RAPIDS_VERSION="24.08.1"
-  if version_ge "${DATAPROC_IMAGE_VERSION}" "2.2" ; then
-    DEFAULT_SPARK_RAPIDS_VERSION="25.02.1"
+  if [[ "${DATAPROC_IMAGE_VERSION}" == "2.0" ]] ; then
+    DEFAULT_SPARK_RAPIDS_VERSION="23.08.2" # Final release to support spark 3.1.3
+    nvidia_repo_url='https://repo1.maven.org/maven2/com/nvidia'
+  elif version_ge "${DATAPROC_IMAGE_VERSION}" "2.2" ; then
+    DEFAULT_SPARK_RAPIDS_VERSION="25.08.0"
+    nvidia_repo_url='https://edge.urm.nvidia.com/artifactory/sw-spark-maven/com/nvidia'
+  elif version_ge "${DATAPROC_IMAGE_VERSION}" "2.1" ; then
+    DEFAULT_SPARK_RAPIDS_VERSION="25.08.0"
+    nvidia_repo_url='https://edge.urm.nvidia.com/artifactory/sw-spark-maven/com/nvidia'
   fi
   local DEFAULT_XGBOOST_VERSION="1.7.6" # 2.1.3
 
   # https://mvnrepository.com/artifact/ml.dmlc/xgboost4j-spark-gpu
   local -r scala_ver="2.12"
 
-  if [[ "${DATAPROC_IMAGE_VERSION}" == "2.0" ]] ; then
-    DEFAULT_SPARK_RAPIDS_VERSION="23.08.2" # Final release to support spark 3.1.3
-  fi
-
   readonly SPARK_RAPIDS_VERSION=$(get_metadata_attribute 'spark-rapids-version' ${DEFAULT_SPARK_RAPIDS_VERSION})
   readonly XGBOOST_VERSION=$(get_metadata_attribute 'xgboost-version' ${DEFAULT_XGBOOST_VERSION})
 
   local -r rapids_repo_url='https://repo1.maven.org/maven2/ai/rapids'
-  local -r nvidia_repo_url='https://repo1.maven.org/maven2/com/nvidia'
   local -r dmlc_repo_url='https://repo.maven.apache.org/maven2/ml/dmlc'
 
   local jar_basename
