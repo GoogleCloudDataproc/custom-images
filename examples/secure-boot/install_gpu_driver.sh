@@ -899,11 +899,11 @@ function install_pytorch() {
     conda_pkg_list=(
       "numba" "pytorch" "rapids" "pyspark" "cuda-version<=${CUDA_VERSION}" "${cudart_spec}"
     )
-    
+
     if le_debian10 ; then
       "${conda_root_path}/bin/conda" config --set ssl_verify false
 
-      conda_pkg_list=("python=3.10" "numba" "pytorch" "rapids" "pyspark" "cudatoolkit<=12.4")
+      conda_pkg_list=("numba" "pytorch" "rapids" "pyspark" "cudatoolkit<=12.4" "python=3.10")
 
       conda_path="${conda_root_path}/bin/conda"
     fi
@@ -1057,10 +1057,11 @@ function add_repo_nvidia_container_toolkit() {
     elif [[ -v http_proxy ]] ; then
       GPG_PROXY="--keyserver-options http-proxy=${http_proxy}"
     fi
-    execute_with_retries gpg --keyserver keyserver.ubuntu.com \
-      ${GPG_PROXY_ARGS} \
-      --no-default-keyring --keyring "${kr_path}" \
-      --recv-keys "0xae09fe4bbd223a84b2ccfce3f60f4b3d7fa2af80" "0xeb693b3035cd5710e231e123a4b469963bf863cc" "0xc95b321b61e88c1809c4f759ddcae044f796ecb0"
+    import_gpg_keys --keyring-file "${kr_path}" \
+                    --key-id "0xae09fe4bbd223a84b2ccfce3f60f4b3d7fa2af80" \
+                    --key-id "0xeb693b3035cd5710e231e123a4b469963bf863cc" \
+                    --key-id "0xc95b321b61e88c1809c4f759ddcae044f796ecb0"
+
     local -r repo_data="${nvctk_root}/stable/deb/\$(ARCH) /"
     local -r repo_path="/etc/apt/sources.list.d/${repo_name}.list"
     echo "deb     [signed-by=${kr_path}] ${repo_data}" >  "${repo_path}"
@@ -1089,9 +1090,9 @@ function add_repo_cuda() {
       elif [[ -n "${http_proxy}" ]] ; then
         GPG_PROXY="--keyserver-options http-proxy=${http_proxy}"
       fi
-      execute_with_retries gpg --keyserver keyserver.ubuntu.com ${GPG_PROXY_ARGS} \
-        --no-default-keyring --keyring "${kr_path}" \
-        --recv-keys "0xae09fe4bbd223a84b2ccfce3f60f4b3d7fa2af80" "0xeb693b3035cd5710e231e123a4b469963bf863cc"
+      import_gpg_keys --keyring-file "${kr_path}" \
+                      --key-id "0xae09fe4bbd223a84b2ccfce3f60f4b3d7fa2af80" \
+                      --key-id "0xeb693b3035cd5710e231e123a4b469963bf863cc"
     else
       install_cuda_keyring_pkg # 11.7+, 12.0+
     fi
@@ -2374,8 +2375,7 @@ function clean_up_sources_lists() {
 
     local -r bigtop_kr_path="/usr/share/keyrings/bigtop-keyring.gpg"
     rm -f "${bigtop_kr_path}"
-    curl ${curl_retry_args} \
-      "${bigtop_key_uri}" | gpg --dearmor -o "${bigtop_kr_path}"
+    import_gpg_keys --keyring-file "${bigtop_kr_path}" --key-url "${bigtop_key_uri}"
 
     sed -i -e "s:deb https:deb [signed-by=${bigtop_kr_path}] https:g" "${dataproc_repo_file}"
     sed -i -e "s:deb-src https:deb-src [signed-by=${bigtop_kr_path}] https:g" "${dataproc_repo_file}"
@@ -2392,10 +2392,9 @@ function clean_up_sources_lists() {
   if test -f "${old_adoptium_list}" ; then
     rm -f "${old_adoptium_list}"
   fi
-  for keyid in "0x3b04d753c9050d9a5d343f39843c48a565f8f04b" "0x35baa0b33e9eb396f59ca838c0ba5ce6dc6315a3" ; do
-    curl ${curl_retry_args} "https://keyserver.ubuntu.com/pks/lookup?op=get&search=${keyid}" \
-    | gpg --import --no-default-keyring --keyring "${adoptium_kr_path}"
-  done
+  import_gpg_keys --keyring-file "${adoptium_kr_path}" \
+                  --key-id "0x3b04d753c9050d9a5d343f39843c48a565f8f04b" \
+                  --key-id "0x35baa0b33e9eb396f59ca838c0ba5ce6dc6315a3"
   echo "deb [signed-by=${adoptium_kr_path}] https://packages.adoptium.net/artifactory/deb/ $(os_codename) main" \
    > /etc/apt/sources.list.d/adoptium.list
 
@@ -2407,8 +2406,7 @@ function clean_up_sources_lists() {
   local -r docker_key_url="https://download.docker.com/linux/$(os_id)/gpg"
 
   rm -f "${docker_kr_path}"
-  curl ${curl_retry_args} "${docker_key_url}" \
-    | gpg --import --no-default-keyring --keyring "${docker_kr_path}"
+  import_gpg_keys --keyring-file "${docker_kr_path}" --key-url "${docker_key_url}"
   echo "deb [signed-by=${docker_kr_path}] https://download.docker.com/linux/$(os_id) $(os_codename) stable" \
     > ${docker_repo_file}
 
@@ -2418,8 +2416,7 @@ function clean_up_sources_lists() {
   local gcloud_kr_path="/usr/share/keyrings/cloud.google.gpg"
   if ls /etc/apt/sources.list.d/google-clou*.list ; then
     rm -f "${gcloud_kr_path}"
-    curl ${curl_retry_args} https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-      | gpg --import --no-default-keyring --keyring "${gcloud_kr_path}"
+    import_gpg_keys --keyring-file "${gcloud_kr_path}" --key-url "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
     for list in google-cloud google-cloud-logging google-cloud-monitoring ; do
       list_file="/etc/apt/sources.list.d/${list}.list"
       if [[ -f "${list_file}" ]]; then
@@ -2434,10 +2431,9 @@ function clean_up_sources_lists() {
   if [[ -f /etc/apt/sources.list.d/cran-r.list ]]; then
     local cranr_kr_path="/usr/share/keyrings/cran-r.gpg"
     rm -f "${cranr_kr_path}"
-    for keyid in "0x95c0faf38db3ccad0c080a7bdc78b2ddeabc47b7" "0xe298a3a825c0d65dfd57cbb651716619e084dab9" ; do
-      curl ${curl_retry_args} "https://keyserver.ubuntu.com/pks/lookup?op=get&search=${keyid}" \
-      | gpg --import --no-default-keyring --keyring "${cranr_kr_path}"
-    done
+    import_gpg_keys --keyring-file "${cranr_kr_path}" \
+                    --key-id "0x95c0faf38db3ccad0c080a7bdc78b2ddeabc47b7" \
+                    --key-id "0xe298a3a825c0d65dfd57cbb651716619e084dab9"
     sed -i -e "s:deb http:deb [signed-by=${cranr_kr_path}] http:g" /etc/apt/sources.list.d/cran-r.list
   fi
 
@@ -2446,8 +2442,9 @@ function clean_up_sources_lists() {
   #
   if [[ -f /etc/apt/sources.list.d/mysql.list ]]; then
     rm -f /usr/share/keyrings/mysql.gpg
-    curl ${curl_retry_args} 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xBCA43417C3B485DD128EC6D4B7B3B788A8D3785C' | \
-      gpg --dearmor -o /usr/share/keyrings/mysql.gpg
+
+    import_gpg_keys --keyring-file /usr/share/keyrings/mysql.gpg --key-id "0xBCA43417C3B485DD128EC6D4B7B3B788A8D3785C"
+
     sed -i -e 's:deb https:deb [signed-by=/usr/share/keyrings/mysql.gpg] https:g' /etc/apt/sources.list.d/mysql.list
   fi
 
@@ -2569,7 +2566,7 @@ function set_proxy(){
   if [[ -z "${METADATA_HTTP_PROXY}" ]] ; then return ; fi
 
   default_no_proxy_list=("localhost" "127.0.0.0/8" "::1" "*.googleapis.com"
-		 "metadata.google.internal" "169.254.169.254")
+                         "metadata.google.internal" "169.254.169.254")
 
   user_no_proxy=$(get_metadata_attribute 'no-proxy' '')
   user_no_proxy_list=()
@@ -2973,8 +2970,7 @@ function os_add_repo() {
 
   mkdir -p "$(dirname "${kr_path}")"
 
-  curl ${curl_retry_args} "${signing_key_url}" \
-    | gpg --import --no-default-keyring --keyring "${kr_path}"
+  import_gpg_keys --keyring-file "${kr_path}" --key-url "${signing_key_url}"
 
   if is_debuntu ; then apt_add_repo "${repo_name}" "${signing_key_url}" "${repo_data}" "${4:-yes}" "${kr_path}" "${6:-}"
                   else dnf_add_repo "${repo_name}" "${signing_key_url}" "${repo_data}" "${4:-yes}" "${kr_path}" "${6:-}" ; fi
@@ -3030,6 +3026,174 @@ function install_spark_rapids() {
                         "${pkg_bucket}/rapids-4-spark_${scala_ver}/${SPARK_RAPIDS_VERSION}/${jar_basename}" \
                         "${spark_jars_dir}/${jar_basename}"
 }
+
+# Function to download GPG keys from URLs or Keyservers and import them to a specific keyring
+# Usage:
+#   import_gpg_keys --keyring-file <PATH> \
+#     [--key-url <URL1> [--key-url <URL2> ...]] \
+#     [--key-id <ID1> [--key-id <ID2> ...]] \
+#     [--keyserver <KEYSERVER_URI>]
+import_gpg_keys() {
+  local keyring_file=""
+  local key_urls=()
+  local key_ids=()
+  local keyserver="hkp://keyserver.ubuntu.com:80" # Default keyserver
+  local tmpdir="${TMPDIR:-/tmp}" # Use TMPDIR if set, otherwise /tmp
+  local curl_retry_args=(-sSLf --retry 3 --retry-delay 5) # Basic curl retry args
+
+  # Parse named arguments
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --keyring-file)
+        keyring_file="$2"
+        shift 2
+        ;;
+      --key-url)
+        key_urls+=("$2")
+        shift 2
+        ;;
+      --key-id)
+        key_ids+=("$2")
+        shift 2
+        ;;
+      --keyserver)
+        keyserver="$2"
+        shift 2
+        ;;
+      *)
+        echo "Unknown option: $1" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  # Validate arguments
+  if [[ -z "${keyring_file}" ]]; then
+    echo "ERROR: --keyring-file is required." >&2
+    return 1
+  fi
+  if [[ ${#key_urls[@]} -eq 0 && ${#key_ids[@]} -eq 0 ]]; then
+    echo "ERROR: At least one --key-url or --key-id must be specified." >&2
+    return 1
+  fi
+
+  # Ensure the directory for the keyring file exists
+  local keyring_dir
+  keyring_dir=$(dirname "${keyring_file}")
+  if [[ ! -d "${keyring_dir}" ]]; then
+    echo "Creating directory for keyring: ${keyring_dir}"
+    mkdir -p "${keyring_dir}"
+  fi
+
+  local tmp_key_file=""
+  local success=true
+
+  # Setup curl proxy arguments if environment variables are set
+  local proxy_to_use=""
+  if [[ -n "${HTTPS_PROXY:-}" ]]; then
+    proxy_to_use="${HTTPS_PROXY}"
+  elif [[ -n "${HTTP_PROXY:-}" ]]; then
+    proxy_to_use="${HTTP_PROXY}"
+  fi
+
+  if [[ -n "${proxy_to_use}" ]]; then
+    curl_retry_args+=(-x "${proxy_to_use}")
+  fi
+
+  if [[ -v METADATA_HTTP_PROXY_PEM_URI ]] && [[ -n "${METADATA_HTTP_PROXY_PEM_URI}" ]]; then
+      if [[ -z "${trusted_pem_path:-}" ]]; then
+          echo "WARNING: METADATA_HTTP_PROXY_PEM_URI is set, but trusted_pem_path is not defined." >&2
+      else
+          curl_retry_args+=(--cacert "${trusted_pem_path}")
+      fi
+  fi
+
+  # Process Key URLs
+  for key_url in "${key_urls[@]}"; do
+    echo "Attempting to download GPG key from URL: ${key_url}"
+    tmp_key_file="${tmpdir}/key_$(basename "${key_url}")_$(date +%s).asc"
+
+    if curl "${curl_retry_args[@]}" "${key_url}" -o "${tmp_key_file}"; then
+      if [[ -s "${tmp_key_file}" ]]; then
+        echo "Key file downloaded to ${tmp_key_file}."
+        if gpg --no-default-keyring --keyring "${keyring_file}" --import "${tmp_key_file}"; then
+          echo "Key from ${key_url} imported successfully to ${keyring_file}."
+        else
+          echo "ERROR: gpg --import failed for ${tmp_key_file} from ${key_url}." >&2
+          success=false
+        fi
+      else
+        echo "ERROR: Downloaded key file ${tmp_key_file} from ${key_url} is empty." >&2
+        success=false
+      fi
+    else
+      echo "ERROR: curl failed to download key from ${key_url}." >&2
+      success=false
+    fi
+    [[ -f "${tmp_key_file}" ]] && rm -f "${tmp_key_file}"
+  done
+
+  # Process Key IDs
+  for key_id in "${key_ids[@]}"; do
+    # Strip 0x prefix if present
+    clean_key_id="${key_id#0x}"
+    echo "Attempting to fetch GPG key ID ${clean_key_id} using curl from ${keyserver}"
+
+    local fallback_key_url
+    local server_host
+    server_host=$(echo "${keyserver}" | sed -e 's#hkp[s]*://##' -e 's#:[0-9]*##')
+
+    # Common keyserver URL patterns
+    if [[ "${server_host}" == "keyserver.ubuntu.com" ]]; then
+        fallback_key_url="https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${clean_key_id}"
+    elif [[ "${server_host}" == "pgp.mit.edu" ]]; then
+        fallback_key_url="https://pgp.mit.edu/pks/lookup?op=get&search=0x${clean_key_id}"
+    elif [[ "${server_host}" == "keys.openpgp.org" ]]; then
+        fallback_key_url="https://keys.openpgp.org/vks/v1/by-fpr/${clean_key_id}"
+    else
+        fallback_key_url="https://${server_host}/pks/lookup?op=get&search=0x${clean_key_id}"
+        echo "WARNING: Using best-guess fallback URL for ${keyserver}: ${fallback_key_url}"
+    fi
+
+    tmp_key_file="${tmpdir}/${clean_key_id}.asc"
+    if curl "${curl_retry_args[@]}" "${fallback_key_url}" -o "${tmp_key_file}"; then
+      if [[ -s "${tmp_key_file}" ]]; then
+         if grep -q -iE '<html|<head|<!DOCTYPE' "${tmp_key_file}"; then
+          echo "ERROR: Output from keyserver for ${clean_key_id} appears to be HTML, not a key. Key likely not found at ${fallback_key_url}." >&2
+          success=false
+        elif gpg --no-default-keyring --keyring "${keyring_file}" --import "${tmp_key_file}"; then
+          echo "Key ${clean_key_id} imported successfully to ${keyring_file}."
+        else
+          echo "ERROR: gpg --import failed for ${clean_key_id} from ${fallback_key_url}." >&2
+          success=false
+        fi
+      else
+        echo "ERROR: Downloaded key file for ${clean_key_id} is empty from ${fallback_key_url}." >&2
+        success=false
+      fi
+    else
+      echo "ERROR: curl failed to download key ${clean_key_id} from ${fallback_key_url}." >&2
+      success=false
+    fi
+    [[ -f "${tmp_key_file}" ]] && rm -f "${tmp_key_file}"
+  done
+
+  if [[ "${success}" == "true" ]]; then
+    return 0
+  else
+    echo "ERROR: One or more keys failed to import." >&2
+    return 1
+  fi
+}
+
+# Example Usage (uncomment to test)
+# import_gpg_keys --keyring-file "/tmp/test-keyring.gpg" --key-url "https://nvidia.github.io/libnvidia-container/gpgkey"
+# import_gpg_keys --keyring-file "/tmp/test-keyring.gpg" --key-id "A040830F7FAC5991"
+# import_gpg_keys --keyring-file "/tmp/test-keyring.gpg" --key-id "B82D541C" --keyserver "hkp://keyserver.ubuntu.com:80"
+
+# To use this in another script:
+# source ./gpg-import.sh
+# import_gpg_keys --keyring-file "/usr/share/keyrings/my-repo.gpg" --key-url "https://example.com/repo.key"
 
 # --- Script Entry Point ---
 prepare_to_install # Run preparation steps first
