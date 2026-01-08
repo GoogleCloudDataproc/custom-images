@@ -40,7 +40,7 @@ _ARM_ARCH_REGEX = re.compile(r"""
   (?:$|[-_./])  # Non-alphanumeric separator or end of string
 """, re.IGNORECASE | re.VERBOSE)
 _VALID_OPTIONAL_COMPONENTS = ["HIVE_WEBHCAT", "ZEPPELIN", "TRINO", "RANGER", "SOLR", "FLINK", "DOCKER", "HUDI", "ICEBERG", "PIG"]
-_ARM_MACHINE_TYPE = "t2a-standard-2"
+_ARM_MACHINE_TYPE = "c4a-standard-2"
 _X86_MACHINE_TYPE = "n1-standard-1"
 
 def _version_regex_type(s):
