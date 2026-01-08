@@ -148,7 +148,7 @@ def parse_args(args):
       required=False,
       default=None,
       help="""(Optional) Machine type used to build custom image.
-      Default is auto-detected (n1 for x86, t2a for arm).""")
+      Default is auto-detected (n1 for x86, c4a for arm).""")
   parser.add_argument(
       "--no-smoke-test",
       action="store_true",
