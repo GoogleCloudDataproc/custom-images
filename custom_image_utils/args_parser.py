@@ -29,8 +29,19 @@ from custom_image_utils import constants
 _VERSION_REGEX = re.compile(r"^\d+\.\d+\.\d+(-RC\d+)?(-[a-z\-]+\d+)?$")
 _FULL_IMAGE_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/([^/]+)$")
 _FULL_IMAGE_FAMILY_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/family/([^/]+)$")
-_LATEST_FROM_MINOR_VERSION = re.compile(r"^(\d+)\.(\d+)-((?:[a-z\-]+-)?(?:debian|ubuntu|rocky)\d+)$")
+_LATEST_FROM_MINOR_VERSION = re.compile(r"^(\d+)\.(\d+)-((?:debian|ubuntu|rocky)\d+)$")
+_ARM_ARCH_REGEX = re.compile(r"""
+  (?:^|[-_./])  # Non-alphanumeric separator or start of string
+  (?:           # Match one of the ARM architecture terms:
+    arm         #  "arm"
+    | arm64     #  "arm64"
+    | aarch64   #  "aarch64"
+  )
+  (?:$|[-_./])  # Non-alphanumeric separator or end of string
+""", re.IGNORECASE | re.VERBOSE)
 _VALID_OPTIONAL_COMPONENTS = ["HIVE_WEBHCAT", "ZEPPELIN", "TRINO", "RANGER", "SOLR", "FLINK", "DOCKER", "HUDI", "ICEBERG", "PIG"]
+_ARM_MACHINE_TYPE = "t2a-standard-2"
+_X86_MACHINE_TYPE = "n1-standard-1"
 
 def _version_regex_type(s):
   """Check if version string matches regex."""
@@ -135,9 +146,9 @@ def parse_args(args):
       "--machine-type",
       type=str,
       required=False,
-      default="n1-standard-1",
+      default=None,
       help="""(Optional) Machine type used to build custom image.
-      Default machine type is n1-standard-1.""")
+      Default is auto-detected (n1 for x86, t2a for arm).""")
   parser.add_argument(
       "--no-smoke-test",
       action="store_true",
@@ -247,5 +258,12 @@ def parse_args(args):
       (Only supported for Dataproc Images 2.3 and above)"""
   )
 
+  parsed_args = parser.parse_args(args)
 
-  return parser.parse_args(args)
+  if parsed_args.machine_type is None:
+    if parsed_args.base_image_uri and _ARM_ARCH_REGEX.search(parsed_args.base_image_uri):
+      parsed_args.machine_type = _ARM_MACHINE_TYPE
+    else:
+      parsed_args.machine_type = _X86_MACHINE_TYPE
+
+  return parsed_args
