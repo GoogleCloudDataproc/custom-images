@@ -261,7 +261,9 @@ def parse_args(args):
   parsed_args = parser.parse_args(args)
 
   if parsed_args.machine_type is None:
-    if parsed_args.base_image_uri and _ARM_ARCH_REGEX.search(parsed_args.base_image_uri):
+    is_arm = ((parsed_args.base_image_uri and _ARM_ARCH_REGEX.search(parsed_args.base_image_uri)) or
+              (parsed_args.base_image_family and _ARM_ARCH_REGEX.search(parsed_args.base_image_family)))
+    if is_arm:
       parsed_args.machine_type = _ARM_MACHINE_TYPE
     else:
       parsed_args.machine_type = _X86_MACHINE_TYPE
