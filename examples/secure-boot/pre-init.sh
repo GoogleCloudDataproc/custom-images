@@ -76,25 +76,22 @@ case "${dataproc_version}" in
 esac
 
 function create_h100_instance() {
-  python generate_custom_image.py \
-    --project-id "${PROJECT_ID}" \
-    --machine-type         "a3-highgpu-2g" \
-    --accelerator          "type=nvidia-h100-80gb,count=2" \
+  python3 generate_custom_image.py \
+    --machine-type "a3-highgpu-2g" \
+    --accelerator  "type=nvidia-h100-80gb,count=2" \
     $*
 }
 
 function create_t4_instance() {
-  python generate_custom_image.py \
-    --project-id "${PROJECT_ID}" \
-    --machine-type         "n1-standard-32" \
-    --accelerator          "type=nvidia-tesla-t4,count=1" \
+  python3 generate_custom_image.py \
+    --machine-type "n1-standard-32" \
+    --accelerator  "type=nvidia-tesla-t4,count=1" \
     $*
 }
 
 function create_unaccelerated_instance() {
-  python generate_custom_image.py \
-    --project-id "${PROJECT_ID}" \
-    --machine-type         "n1-standard-2" \
+  python3 generate_custom_image.py \
+    --machine-type "n1-standard-2" \
     $*
 }
 
@@ -108,147 +105,180 @@ function generate() {
 
   print_status "Processing image ${image_name} for ${dataproc_version}"
 
-  local build_tmpdir="${tmpdir}/${PURPOSE}-${short_dp_ver}"
-  mkdir -p "${build_tmpdir}"
+  local images_json_file="${tmpdir}/images.json"
+  if [[ ! -s "${images_json_file}" ]]; then # Check if file is missing or empty
+    print_status "Fetching current images list for ${PROJECT_ID}... "
+    if gcloud compute images list --project="${PROJECT_ID}" --format json > "${images_json_file}"; then
+      report_result "Done"
+      if [[ ! -s "${images_json_file}" ]]; then
+         echo "ERROR: ${images_json_file} is empty after gcloud command."
+         exit 1
+      fi
+    else
+      report_result "FAIL"
+      echo "ERROR: Failed to fetch image list."
+      exit 1
+    fi
+  fi
 
-  # Check for existing images/instances in a shared location if necessary
-  # For now, assume checks are against the unique build_tmpdir
-  local image="$(jq -r ".[] | select(.name == \"${image_name}\").name" "${build_tmpdir}/images.json" 2>/dev/null || echo '')"
+  local instances_json_file="${tmpdir}/instances.json"
+  if [[ ! -s "${instances_json_file}" ]]; then # Check if file is missing or empty
+    print_status "Fetching current instances list for ${PROJECT_ID}... "
+    if gcloud compute instances list --project="${PROJECT_ID}" --zones "${ZONE}" --format json > "${instances_json_file}"; then
+      report_result "Done"
+      if [[ ! -s "${instances_json_file}" ]]; then
+         echo "ERROR: ${instances_json_file} is empty after gcloud command."
+         exit 1
+      fi
+    else
+      report_result "FAIL"
+      echo "ERROR: Failed to fetch instance list."
+      exit 1
+    fi
+  fi
+
+  local image="$(jq -r ".[] | select(.name == \"${image_name}\").name" "${images_json_file}" 2>/dev/null || echo '')"
 
   if [[ -n "${image}" ]] ; then
     print_status "Image ${image_name} already exists. "
     report_result "Skipped"
-    return
-  fi
+  else
+    # Image doesn't exist, proceed with creation
+    declare -a metadata_args
+    metadata_args+=("invocation-type=custom-images")
+    metadata_args+=("dataproc-temp-bucket=${TEMP_BUCKET}")
 
-  declare -a metadata_args
-  metadata_args+=("invocation-type=custom-images")
-  metadata_args+=("dataproc-temp-bucket=${TEMP_BUCKET}")
-  local metadata_string=$(IFS=,; echo "${metadata_args[*]}")
+    create_function="create_unaccelerated_instance"
 
-  print_status "Generating image ${image_name}..."
-  if [[ -n "${install_image}" ]] ; then
-    print_status "Install image ${image_name}-install already exists.  Cleaning up... "
-    if run_gcloud "delete_install_image" gcloud -q compute images delete "${image_name}-install" --project="${PROJECT_ID}"; then
-      report_result "Deleted"
-    else
-      report_result "Fail"
+    if [[ "${customization_script}" =~ "cloud-sql-proxy.sh"  ]] ; then
+      metadata_args+=(
+        "hive-metastore-instance=${PROJECT_ID}:${region}:${HIVE_NAME}"
+        "db-hive-password-uri=${HIVEDB_PW_URI}"
+        "kms-key-uri=${KMS_KEY_URI}"
+      )
     fi
-  fi
 
-  local instance="$(jq -r ".[] | select(.name == \"${image_name}-install\").name" "${build_tmpdir}/instances.json" 2>/dev/null || echo '')"
-
-  if [[ -n "${instance}" ]]; then
-    # if previous run ended without cleanup...
-    print_status "Cleaning up instance ${image_name}-install from previous run... "
-    if run_gcloud "delete_install_instance" gcloud -q compute instances delete "${image_name}-install" --zone "${ZONE}" --project="${PROJECT_ID}"; then
-      report_result "Deleted"
-    else
-      report_result "Fail"
+    # For actions requiring access to the MOK during runtime, pass the requisite
+    # metadata to extract the signing material
+    if [[ "${customization_script}" =~ "install_gpu_driver.sh" ]] ; then
+      eval "$(bash examples/secure-boot/create-key-pair.sh)"
+      metadata_args+=(
+        "public_secret_name=${public_secret_name}"
+        "private_secret_name=${private_secret_name}"
+        "secret_project=${secret_project}"
+        "secret_version=${secret_version}"
+        "modulus_md5sum=${modulus_md5sum}"
+        "cuda-version=${CUDA_VERSION}"
+        "include-pytorch=1"
+      )
+      create_function="create_t4_instance"
     fi
-  fi
 
-  create_function="create_unaccelerated_instance"
+    if [[ "${customization_script}" =~ "spark-rapids.sh" ]] ; then
+      metadata_args+=("rapids-runtime=SPARK")
+      create_function="create_t4_instance"
+    fi
 
-  if [[ "${customization_script}" =~ "cloud-sql-proxy.sh"  ]] ; then
-    metadata_args+=(
-      "hive-metastore-instance=${PROJECT_ID}:${region}:${HIVE_NAME}"
-      "db-hive-password-uri=${HIVEDB_PW_URI}"
-      "kms-key-uri=${KMS_KEY_URI}"
-    )
-  fi
+    if [[ "${customization_script}" =~ "rapids.sh" ]] ; then
+      metadata_args+=("rapids-runtime=DASK")
+      create_function="create_t4_instance"
+    fi
 
-  # For actions requiring access to the MOK during runtime, pass the requisite
-  # metadata to extract the signing material
-  if [[ "${customization_script}" =~ "install_gpu_driver.sh" ]] ; then
-    eval "$(bash examples/secure-boot/create-key-pair.sh)"
-    metadata_args+=(
-      "public_secret_name=${public_secret_name}"
-      "private_secret_name=${private_secret_name}"
-      "secret_project=${secret_project}"
-      "secret_version=${secret_version}"
-      "modulus_md5sum=${modulus_md5sum}"
-    )
-  fi
+    # Add proxy metadata if defined in env.json
+    if [[ -n "${SWP_IP:-}" && -n "${SWP_PORT:-}" ]]; then
+      proxy_addr="${SWP_IP}:${SWP_PORT}"
+      proxy_metadata="http-proxy=${proxy_addr}"
+      if [[ -n "${PROXY_CERT_GCS_PATH:-}" && "${PROXY_CERT_GCS_PATH}" != "null" ]]; then
+        proxy_metadata="${proxy_metadata},http-proxy-pem-uri=${PROXY_CERT_GCS_PATH}"
+      fi
+      metadata_args+=("${proxy_metadata}")
+      echo "DEBUG: Added proxy metadata: ${proxy_metadata}"
+    fi
 
-  if [[ "${customization_script}" =~ "install_gpu_driver.sh" ]] ; then
-    metadata_args+=(
-      "cuda-version=${CUDA_VERSION}"
-      "include-pytorch=1"
-    )
-    create_function="create_t4_instance"
-  fi
+    # Join metadata array with commas
+    local metadata_string=$(IFS=,; echo "${metadata_args[*]}")
 
-  if [[ "${customization_script}" =~ "spark-rapids.sh" ]] ; then
-    metadata_args+=("rapids-runtime=SPARK")
-    create_function="create_t4_instance"
-  fi
+    print_status "Generating image ${image_name}..."
+    # check for known retry-able errors after failed completion
+    local do_retry=1
+    local retry_count=0
+    while [[ "${do_retry}" == "1" ]]; do
+      do_retry=0
+      print_status "Attempt $((${retry_count} + 1)) to generate ${image_name}"
 
-  if [[ "${customization_script}" =~ "rapids.sh" ]] ; then
-    metadata_args+=("rapids-runtime=DASK")
-    create_function="create_t4_instance"
-  fi
+      # Cleanup install image from previous failed attempts of this PURPOSE
+      local install_image_name="${image_name}-install"
+      if gcloud compute images describe "${install_image_name}" --project="${PROJECT_ID}" > /dev/null 2>&1; then
+        print_status "Deleting leftover install image ${install_image_name}... "
+        run_gcloud "delete_install_image_${short_dp_ver}" gcloud -q compute images delete "${install_image_name}" --project="${PROJECT_ID}"
+      fi
+      # Cleanup instance from previous failed attempts of this PURPOSE
+      local instances_json_file="${tmpdir}/instances.json"
+      if [[ ! -s "${instances_json_file}" ]]; then
+        print_status "Fetching current instances list for ${PROJECT_ID}... "
+        run_gcloud "instance_list_${short_dp_ver}" gcloud compute instances list --project="${PROJECT_ID}" --zones "${ZONE}" --format json > "${instances_json_file}"
+        report_result "Done"
+      fi
+      if jq -e ".[] | select(.name == \"${install_image_name}\")" "${instances_json_file}" > /dev/null; then
+         print_status "Deleting leftover install instance ${install_image_name}... "
+        run_gcloud "delete_install_instance_${short_dp_ver}" gcloud -q compute instances delete "${install_image_name}" --zone "${ZONE}" --project="${PROJECT_ID}"
+      fi
 
-  # Join metadata array with commas
-  local metadata_string=$(IFS=,; echo "${metadata_args[*]}")
-
-  print_status "Generating image ${image_name}..."
-  # check for known retry-able errors after failed completion
-  local do_retry=1
-  local retry_count=0
-  while [[ "${do_retry}" == "1" ]]; do
-    do_retry=0
-    print_status "Attempt $((${retry_count} + 1)) to generate ${image_name}"
-    if "${create_function}" \
-      --image-name           "${image_name}" \
-      --customization-script "/custom-images/${customization_script}" \
-      --service-account      "${GSA}" \
-      --metadata             "${metadata_string}" \
-      --zone                 "${custom_image_zone}" \
-      --disk-size            "${disk_size_gb}" \
-      --gcs-bucket           "${BUCKET}" \
-      --subnet               "${SUBNET}" \
-      ${OPTIONAL_COMPONENTS_ARG} \
-      --shutdown-instance-timer-sec=30 \
-      --no-smoke-test \
-      ${extra_args}
-    then
-      report_result "Success"
-    else
-      local exit_code=$?
-      report_result "Fail"
-      local img_build_dir="$(ls -d /tmp/custom-image-${image_name}-* 2>/dev/null || echo '')"
-      # retry if the startup-script.log file does not exist or is empty
-      if [[ -n "${img_build_dir}" ]]; then
-        local startup_script_log="${img_build_dir}/logs/startup-script.log"
-        if [[ ! -f "${startup_script_log}" ]] || [[ ! -s "${startup_script_log}" ]]; then
-          if [[ ${retry_count} -lt 2 ]]; then
-             print_status "Startup script log not found or empty, retrying..."
-             do_retry=1
-             retry_count=$((${retry_count} + 1))
-             mkdir -p /tmp/old
-             mv "${img_build_dir}" /tmp/old
+      if "${create_function}" \
+        --project-id           "${PROJECT_ID}" \
+        --image-name           "${image_name}" \
+        --customization-script "/custom-images/${customization_script}" \
+        --service-account      "${GSA}" \
+        --metadata             "${metadata_string}" \
+        --zone                 "${custom_image_zone}" \
+        --disk-size            "${disk_size_gb}" \
+        --gcs-bucket           "${BUCKET}" \
+        --subnet               "${SUBNET}" \
+        ${OPTIONAL_COMPONENTS_ARG} \
+        --trusted-cert "tls/db.der" \
+        --shutdown-instance-timer-sec=30 \
+        --no-smoke-test \
+        ${extra_args}
+      then
+        report_result "Success"
+        # Update the local images.json cache
+        run_gcloud "image_list_${short_dp_ver}" gcloud compute images list --project="${PROJECT_ID}" --format json > "${images_json_file}"
+      else
+        local exit_code=$?
+        report_result "Fail"
+        local img_build_dir="$(ls -d /tmp/custom-image-${image_name}-* 2>/dev/null || echo '')"
+        # retry if the startup-script.log file does not exist or is empty
+        if [[ -n "${img_build_dir}" ]]; then
+          local startup_script_log="${img_build_dir}/logs/startup-script.log"
+          if [[ ! -f "${startup_script_log}" ]] || [[ ! -s "${startup_script_log}" ]]; then
+            if [[ ${retry_count} -lt 2 ]]; then
+               print_status "Startup script log not found or empty, retrying..."
+               do_retry=1
+               retry_count=$((${retry_count} + 1))
+               mkdir -p /tmp/old
+               mv "${img_build_dir}" /tmp/old
+            else
+              print_status "Max retries reached, failing."
+              exit ${exit_code}
+            fi
           else
-            print_status "Max retries reached, failing."
+            print_status "Build failed, check logs in ${img_build_dir}/logs"
             exit ${exit_code}
           fi
         else
-          print_status "Build failed, check logs in ${img_build_dir}/logs"
-          exit ${exit_code}
+           # If img_build_dir doesn't exist, something failed very early. Retry.
+           if [[ ${retry_count} -lt 2 ]]; then
+             print_status "Build directory not found, retrying..."
+             do_retry=1
+             retry_count=$((${retry_count} + 1))
+           else
+             print_status "Max retries reached, failing."
+             exit ${exit_code}
+           fi
         fi
-      else
-         # If img_build_dir doesn't exist, something failed very early. Retry.
-         if [[ ${retry_count} -lt 2 ]]; then
-           print_status "Build directory not found, retrying..."
-           do_retry=1
-           retry_count=$((${retry_count} + 1))
-         else
-           print_status "Max retries reached, failing."
-           exit ${exit_code}
-         fi
       fi
-    fi
-  done
+    done
+  fi # end else for image exists
 }
 
 function generate_from_dataproc_version() { generate --dataproc-version "$1" ; }
