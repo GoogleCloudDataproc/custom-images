@@ -337,6 +337,12 @@ customization_script="examples/secure-boot/no-customization.sh"
 print_status "=== Generating base secure-boot image for ${dataproc_version} ==="
 time generate_from_dataproc_version "${dataproc_version}"
 
+# Configure a proxy on secure-boot image
+PURPOSE="secure-proxy"
+customization_script="startup_script/gce-proxy-setup.sh"
+print_status "=== Generating base ${PURPOSE} image for ${dataproc_version} ==="
+time generate_from_base_purpose "secure-boot"
+
 #time generate_from_prerelease_version "${dataproc_version}"
 
 if version_ge "${IMAGE_VERSION}" "2.3" ; then
@@ -346,21 +352,21 @@ if version_ge "${IMAGE_VERSION}" "2.3" ; then
   OPTIONAL_COMPONENTS_ARG='--optional-components=DOCKER'
   customization_script="examples/secure-boot/no-customization.sh"
   print_status "=== Generating docker image for ${dataproc_version} ==="
-  time generate_from_base_purpose "secure-boot"
+  echo time generate_from_base_purpose "secure-boot"
 
   ## run the installer for the ZEPPELIN optional component
   PURPOSE="zeppelin"
   OPTIONAL_COMPONENTS_ARG='--optional-components=ZEPPELIN'
   customization_script="examples/secure-boot/no-customization.sh"
   print_status "=== Generating zeppelin image for ${dataproc_version} ==="
-  time generate_from_base_purpose "secure-boot"
+  echo time generate_from_base_purpose "secure-boot"
 
   ## run the installer for the DOCKER,PIG optional components
   PURPOSE="docker-pig"
   OPTIONAL_COMPONENTS_ARG='--optional-components=PIG'
   customization_script="examples/secure-boot/no-customization.sh"
   print_status "=== Generating docker-pig image for ${dataproc_version} ==="
-  time generate_from_base_purpose "docker"
+  echo time generate_from_base_purpose "docker"
 
 fi
 
@@ -390,7 +396,7 @@ case "${dataproc_version}" in
   "2.2-rocky9"       ) disk_size_gb="51" ;; #  49.79G  43.51G    6.28G  88% / # 20250429-193537-tf
   "2.2-ubuntu22"     ) disk_size_gb="50" ;; #  48.28G  43.32G    4.94G  90% / # 20250429-193537-tf
 
-  "2.3-debian12"     ) disk_size_gb="42" ;; #  41.11G  36.20G    3.12G  93% / # 20250507-083009-tf
+  "2.3-debian12"     ) disk_size_gb="50" ;; #  41.11G  36.20G    3.12G  93% / # 20250507-083009-tf
   "2.3-rocky9"       ) disk_size_gb="44" ;; #  49.79G  37.82G   11.98G  76% / # 20250507-083009-tf
   "2.3-ubuntu22"     ) disk_size_gb="42" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
   "2.3-ml-ubuntu22"  ) disk_size_gb="70" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
@@ -402,6 +408,12 @@ PURPOSE="tf"
 customization_script="examples/secure-boot/install_gpu_driver.sh"
 print_status "=== Generating tf image for ${dataproc_version} ==="
 time generate_from_base_purpose "secure-boot"
+
+# Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
+PURPOSE="proxy-tf"
+customization_script="examples/secure-boot/install_gpu_driver.sh"
+print_status "=== Generating proxy-tf image for ${dataproc_version} ==="
+time generate_from_base_purpose "secure-proxy"
 
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="spark"
