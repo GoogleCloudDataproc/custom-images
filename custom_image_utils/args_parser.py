@@ -257,6 +257,13 @@ def parse_args(args):
       Can be a comma-separated list of components, e.g., TRINO,ZEPPELIN.
       (Only supported for Dataproc Images 2.3 and above)"""
   )
+  parser.add_argument(
+      "--universe-domain",
+      type=str,
+      required=False,
+      default="googleapis.com",
+      help="""(Optional) The universe domain to configure for gcloud. Defaults to 'googleapis.com'."""
+  )
 
   parsed_args = parser.parse_args(args)
 
@@ -269,4 +276,5 @@ def parse_args(args):
       parsed_args.machine_type = _X86_MACHINE_TYPE
 
   return parsed_args
+
 

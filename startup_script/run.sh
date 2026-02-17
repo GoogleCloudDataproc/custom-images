@@ -27,6 +27,16 @@
 
 set -x
 
+# Ensure gcloud is configured for the correct universe to prevent b/454030974
+UNIVERSE_DOMAIN=$(/usr/share/google/get_metadata_value attributes/universe-domain || echo "googleapis.com")
+echo "INFO: Ensuring gcloud universe_domain is set to ${UNIVERSE_DOMAIN}..."
+if [[ "$(gcloud config get core/universe_domain 2>/dev/null)" != "${UNIVERSE_DOMAIN}" ]]; then
+  echo "INFO: Setting core/universe_domain to ${UNIVERSE_DOMAIN}"
+  gcloud config set core/universe_domain "${UNIVERSE_DOMAIN}"
+else
+  echo "INFO: core/universe_domain is already set to ${UNIVERSE_DOMAIN}."
+fi
+
 echo "DEBUG: Starting startup_script/run.sh"
 
 # get custom-sources-path

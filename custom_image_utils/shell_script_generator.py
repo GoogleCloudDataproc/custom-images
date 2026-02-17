@@ -292,7 +292,8 @@ class Generator:
         "run.sh": "startup_script/run.sh",
         "init_actions.sh": self.args["customization_script"]
     }
-    if self.args.get("metadata") and "http-proxy" in self.args["metadata"]:
+    metadata = self.args.get("metadata")
+    if metadata and ("http-proxy" in metadata or "https-proxy" in metadata):
         all_sources["gce-proxy-setup.sh"] = "startup_script/gce-proxy-setup.sh"
     all_sources.update(self.args["extra_sources"])
 
@@ -325,7 +326,8 @@ class Generator:
         **self.args) if self.args["storage_location"] else ""
     metadata_flag_template = (
         "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},"
-        "custom-sources-path={custom_sources_path}"
+        "custom-sources-path={custom_sources_path},"
+        "universe-domain={universe_domain}"
     )
     if self.args["zone"]:
       region = "-".join(self.args["zone"].split("-")[:-1])
