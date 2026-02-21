@@ -66,13 +66,13 @@ case "${dataproc_version}" in
   "2.1-rocky8"       ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-roc8 ;;
   "2.1-ubuntu20"     ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-ubu20 ;;
   "2.1-ubuntu20-arm" ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-ubu20-arm ;;
-  "2.2-debian12"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-deb12 ;;
-  "2.2-rocky9"       ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-roc9 ;;
-  "2.2-ubuntu22"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-ubu22 ;;
-  "2.3-debian12"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-deb12 ;;
-  "2.3-rocky9"       ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-roc9 ;;
-  "2.3-ubuntu22"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-ubu22 ;;
-  "2.3-ml-ubuntu22"  ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-ml-ubu22 ; disk_size_gb="50";;
+  "2.2-debian12"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.2-deb12 ;;
+  "2.2-rocky9"       ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.2-roc9 ;;
+  "2.2-ubuntu22"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.2-ubu22 ;;
+  "2.3-debian12"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-deb12 ;;
+  "2.3-rocky9"       ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-roc9 ;;
+  "2.3-ubuntu22"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-ubu22 ;;
+  "2.3-ml-ubuntu22"  ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-ml-ubu22 ; disk_size_gb="50";;
 esac
 
 function create_h100_instance() {
@@ -341,7 +341,7 @@ time generate_from_dataproc_version "${dataproc_version}"
 PURPOSE="secure-proxy"
 customization_script="startup_script/gce-proxy-setup.sh"
 print_status "=== Generating base ${PURPOSE} image for ${dataproc_version} ==="
-time generate_from_base_purpose "secure-boot"
+echo time generate_from_base_purpose "secure-boot"
 
 #time generate_from_prerelease_version "${dataproc_version}"
 
@@ -393,27 +393,41 @@ case "${dataproc_version}" in
   "2.1-ubuntu20-arm" ) disk_size_gb="45" ;; # 39.55G 39.39G   0.15G 100% / # pre-init-2-1-ubuntu20
 
   "2.2-debian12"     ) disk_size_gb="51" ;; #  58.82G  43.88G   12.44G  78% / # 20250429-193537-tf
-  "2.2-rocky9"       ) disk_size_gb="51" ;; #  49.79G  43.51G    6.28G  88% / # 20250429-193537-tf
-  "2.2-ubuntu22"     ) disk_size_gb="50" ;; #  48.28G  43.32G    4.94G  90% / # 20250429-193537-tf
+  "2.2-rocky9"       ) disk_size_gb="60" ;; #  49.79G  43.51G    6.28G  88% / # 20250429-193537-tf
+  "2.2-ubuntu22"     ) disk_size_gb="60" ;; #  48.28G  43.32G    4.94G  90% / # 20250429-193537-tf
 
   "2.3-debian12"     ) disk_size_gb="50" ;; #  41.11G  36.20G    3.12G  93% / # 20250507-083009-tf
-  "2.3-rocky9"       ) disk_size_gb="44" ;; #  49.79G  37.82G   11.98G  76% / # 20250507-083009-tf
-  "2.3-ubuntu22"     ) disk_size_gb="42" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
+  "2.3-rocky9"       ) disk_size_gb="50" ;; #  49.79G  37.82G   11.98G  76% / # 20250507-083009-tf
+  "2.3-ubuntu22"     ) disk_size_gb="50" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
   "2.3-ml-ubuntu22"  ) disk_size_gb="70" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
 
 esac
 
-# Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
-PURPOSE="tf"
-customization_script="examples/secure-boot/install_gpu_driver.sh"
-print_status "=== Generating tf image for ${dataproc_version} ==="
-time generate_from_base_purpose "secure-boot"
+# Extract major.minor version (e.g., 2.2 from 2.2-debian12)
+MAJOR_MINOR_VERSION=$(echo "${dataproc_version}" | cut -d'-' -f1)
 
-# Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
-PURPOSE="proxy-tf"
-customization_script="examples/secure-boot/install_gpu_driver.sh"
-print_status "=== Generating proxy-tf image for ${dataproc_version} ==="
-time generate_from_base_purpose "secure-proxy"
+if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
+  print_status "=== Generating GPU/ML images for ${dataproc_version} (>=2.2) ==="
+
+  # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
+  PURPOSE="tf"
+  customization_script="examples/secure-boot/install_gpu_driver.sh"
+  print_status "=== Generating tf image for ${dataproc_version} ==="
+  time generate_from_base_purpose "secure-boot"
+  touch "${tmpdir}/sentinels/tf_build_complete"
+
+  # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
+  PURPOSE="proxy-tf"
+  customization_script="examples/secure-boot/install_gpu_driver.sh"
+  print_status "=== Waiting for TF build to complete to leverage cache... ==="
+  while [[ ! -f "${tmpdir}/sentinels/tf_build_complete" ]]; do
+    sleep 10
+  done
+  print_status "=== Generating proxy-tf image for ${dataproc_version} ==="
+  echo time generate_from_base_purpose "secure-proxy"
+else
+  print_status "=== Skipping GPU/ML image generation for ${dataproc_version} (<2.2) ==="
+fi
 
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="spark"
