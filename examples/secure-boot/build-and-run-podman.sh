@@ -2,7 +2,7 @@
 
 set -e
 
-DATAPROC_IMAGE_VERSION="${1:-2.2-debian12}"
+DATAPROC_IMAGE_VERSION="${1:-2.3-debian12}"
 
 # Source environment variables and utilities
 if [[ -f examples/secure-boot/lib/env.sh ]]; then
