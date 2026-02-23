@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import unittest
-import exceptions
+import argparse
 from custom_image_utils import args_parser
 
 
@@ -39,30 +39,32 @@ class TestArgsParser(unittest.TestCase):
 
     expected_result = self._make_expected_result(
         accelerator=None,
-        base_image_family="None",
-        base_image_uri="None",
-        customization_script="'{}'".format(customization_script),
-        dataproc_version="None",
-        disk_size="20",
+        base_image_family=None,
+        base_image_uri=None,
+        customization_script=customization_script,
+        dataproc_version=None,
+        disk_size=30,
         dry_run=False,
-        extra_sources="{}",
-        family="'dataproc-custom-image'",
-        gcs_bucket="'{}'".format(gcs_bucket),
-        image_name="'{}'".format(image_name),
-        machine_type="'n1-standard-1'",
-        network="'{}'".format(''),
-        no_external_ip="False",
-        no_smoke_test="False",
-        oauth="None",
-        project_id="None",
-        service_account="'default'",
-        shutdown_instance_timer_sec="300",
+        extra_sources={},
+        family='dataproc-custom-image',
+        gcs_bucket=gcs_bucket,
+        image_name=image_name,
+        machine_type='n1-standard-1',
+        network='',
+        no_external_ip=False,
+        no_smoke_test=False,
+        oauth=None,
+        project_id=None,
+        service_account='default',
+        shutdown_instance_timer_sec=300,
         storage_location=None,
-        subnetwork="''",
-        zone="'{}'".format(zone),
-        metadata=None
+        subnetwork='',
+        zone=zone,
+        metadata=None,
+        trusted_cert='tls/db.der',
+        optional_components=None
     )
-    self.assertEqual(str(args), expected_result)
+    self.assertEqual(args, expected_result)
 
   def test_optional_args(self):
     """Verifies it succeeds with optional arguments specified."""
@@ -111,31 +113,33 @@ class TestArgsParser(unittest.TestCase):
     ])
 
     expected_result = self._make_expected_result(
-        accelerator="'{}'".format(accelerator),
-        base_image_family="None",        
-        base_image_uri="None",
-        customization_script="'{}'".format(customization_script),
-        dataproc_version="'{}'".format(dataproc_version),
-        disk_size="{}".format(disk_size),
-        dry_run="{}".format(dry_run),
-        extra_sources="{}",
-        family="'{}'".format(family),
-        gcs_bucket="'{}'".format(gcs_bucket),
-        image_name="'{}'".format(image_name),
-        machine_type="'{}'".format(machine_type),
-        metadata="'{}'".format(metadata),
-        network="'{}'".format(network),
-        no_external_ip="{}".format(no_external_ip),
-        no_smoke_test="{}".format(no_smoke_test),
-        oauth="'{}'".format(oauth),
-        project_id="'{}'".format(project_id),
-        service_account="'{}'".format(service_account),
-        shutdown_instance_timer_sec="{}".format(shutdown_instance_timer_sec),
-        storage_location="'{}'".format(storage_location),
-        subnetwork="'{}'".format(subnetwork),
-        zone="'{}'".format(zone),
+        accelerator=accelerator,
+        base_image_family=None,        
+        base_image_uri=None,
+        customization_script=customization_script,
+        dataproc_version=dataproc_version,
+        disk_size=disk_size,
+        dry_run=dry_run,
+        extra_sources={},
+        family=family,
+        gcs_bucket=gcs_bucket,
+        image_name=image_name,
+        machine_type=machine_type,
+        metadata=metadata,
+        network=network,
+        no_external_ip=no_external_ip,
+        no_smoke_test=no_smoke_test,
+        oauth=oauth,
+        project_id=project_id,
+        service_account=service_account,
+        shutdown_instance_timer_sec=shutdown_instance_timer_sec,
+        storage_location=storage_location,
+        subnetwork=subnetwork,
+        zone=zone,
+        trusted_cert='tls/db.der',
+        optional_components=None
     )
-    self.assertEqual(str(args), expected_result)
+    self.assertEqual(args, expected_result)
 
   def test_inferred_subminor_versions(self):
     """Verifies it succeeds if inferred/unspecified subminor version is correctly formatted."""
@@ -155,28 +159,30 @@ class TestArgsParser(unittest.TestCase):
     def _expected_result(dataproc_version):
        return self._make_expected_result(
           accelerator=None,
-          base_image_family="None",
-          base_image_uri="None",
-          customization_script="'{}'".format(customization_script),
-          dataproc_version="'{}'".format(dataproc_version),
-          disk_size="20",
+          base_image_family=None,
+          base_image_uri=None,
+          customization_script=customization_script,
+          dataproc_version=dataproc_version,
+          disk_size=30,
           dry_run=False,
-          extra_sources="{}",
-          family="'dataproc-custom-image'",
-          gcs_bucket="'{}'".format(gcs_bucket),
-          image_name="'{}'".format(image_name),
-          machine_type="'n1-standard-1'",
-          network="'{}'".format(''),
-          no_external_ip="False",
-          no_smoke_test="False",
-          oauth="None",
-          project_id="None",
-          service_account="'default'",
-          shutdown_instance_timer_sec="300",
+          extra_sources={},
+          family='dataproc-custom-image',
+          gcs_bucket=gcs_bucket,
+          image_name=image_name,
+          machine_type='n1-standard-1',
+          network='',
+          no_external_ip=False,
+          no_smoke_test=False,
+          oauth=None,
+          project_id=None,
+          service_account='default',
+          shutdown_instance_timer_sec=300,
           storage_location=None,
-          subnetwork="''",
-          zone="'{}'".format(zone),
-          metadata=None
+          subnetwork='',
+          zone=zone,
+          metadata=None,
+          trusted_cert='tls/db.der',
+          optional_components=None
     )
 
     def _args_exception(dataproc_version):
@@ -184,13 +190,14 @@ class TestArgsParser(unittest.TestCase):
       try:
         _args_parsed(dataproc_version)
       except SystemExit as e:
-        self.assertEqual(e.__class__, exceptions.SystemExit)
+        self.assertEqual(e.__class__, SystemExit)
       else:
         raise ValueError("Exception not raised")
 
-    self.assertEqual(str(_args_parsed('1.5-debian10')), _expected_result('1.5-debian10'))
-    self.assertEqual(str(_args_parsed('1.3-ubuntu18')), _expected_result('1.3-ubuntu18'))
-    self.assertEqual(str(_args_parsed('1.3-centos8')), _expected_result('1.3-centos8'))
+    self.assertEqual(_args_parsed('1.5-debian10'), _expected_result('1.5-debian10'))
+    self.assertEqual(_args_parsed('1.3-ubuntu18'), _expected_result('1.3-ubuntu18'))
+    self.assertEqual(_args_parsed('1.3-rocky8'), _expected_result('1.3-rocky8'))
+    self.assertEqual(_args_parsed('2.3-ml-ubuntu22'), _expected_result('2.3-ml-ubuntu22'))
 
     invalid_dataproc_versions = ['*.*.*-debian10', '1.**.*-debian10', '1.*.8*-debian10', '11.*.*-debian', 
       '1.*-debian10', '1.5.*-debian10', '1.5.-debian10', '1.*.*-debian10']
@@ -200,80 +207,8 @@ class TestArgsParser(unittest.TestCase):
     except ValueError as e:
       raise e
 
-  def _make_expected_result(
-      self,
-      accelerator,
-      base_image_family,      
-      base_image_uri,
-      customization_script,
-      dataproc_version,
-      disk_size,
-      dry_run,
-      extra_sources,
-      family,
-      gcs_bucket,
-      image_name,
-      machine_type,
-      metadata,
-      network,
-      no_external_ip,
-      no_smoke_test,
-      oauth,
-      project_id,
-      service_account,
-      shutdown_instance_timer_sec,
-      storage_location,
-      subnetwork,
-      zone):
-    expected_result_template = (
-        "Namespace("
-        "accelerator={}, "
-        "base_image_family={}, "        
-        "base_image_uri={}, "
-        "customization_script={}, "
-        "dataproc_version={}, "
-        "disk_size={}, "
-        "dry_run={}, "
-        "extra_sources={}, "
-        "family={}, "
-        "gcs_bucket={}, "
-        "image_name={}, "
-        "machine_type={}, "
-        "metadata={}, "
-        "network={}, "
-        "no_external_ip={}, "
-        "no_smoke_test={}, "
-        "oauth={}, "
-        "project_id={}, "
-        "service_account={}, "
-        "shutdown_instance_timer_sec={}, "
-        "storage_location={}, "
-        "subnetwork={}, "
-        "zone={})")
-    return expected_result_template.format(
-        accelerator,
-        base_image_family,        
-        base_image_uri,
-        customization_script,
-        dataproc_version,
-        disk_size,
-        dry_run,
-        extra_sources,
-        family,
-        gcs_bucket,
-        image_name,
-        machine_type,
-        metadata,
-        network,
-        no_external_ip,
-        no_smoke_test,
-        oauth,
-        project_id,
-        service_account,
-        shutdown_instance_timer_sec,
-        storage_location,
-        subnetwork,
-        zone)
+  def _make_expected_result(self, **kwargs):
+    return argparse.Namespace(**kwargs)
 
 if __name__ == '__main__':
     unittest.main()
