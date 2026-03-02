@@ -136,6 +136,46 @@ function cleanup() {
   rm ./init_actions.sh ./run.sh
 }
 
+function patch_bdutil_universe() {
+  # Apply workaround for b/454030974 directly to bdutil scripts if they exist
+  local bdutil_universe_script="/usr/local/share/google/dataproc/bdutil/bdutil_universe.sh"
+  if [[ -f "${bdutil_universe_script}" ]] && ! grep -q 'if \[\[ -z "${universe_domain}" \]\]' "${bdutil_universe_script}"; then
+    echo "INFO: Patching ${bdutil_universe_script} to fix universe_domain resolution..."
+    cp "${bdutil_universe_script}" "${bdutil_universe_script}.bak"
+    cat << 'EOF' > /tmp/patch_universe.sh
+#!/bin/bash
+awk '
+/function get_universe_domain\(\) \{/ {
+    print
+    print "  local universe_domain"
+    print "  universe_domain=\"\$(gcloud config get core/universe_domain 2> /dev/null || true)\""
+    print "  if [[ -z \"\${universe_domain}\" ]]; then"
+    print "    echo \"googleapis.com\""
+    print "  else"
+    print "    echo \"\${universe_domain}\""
+    print "  fi"
+    print "}"
+    in_func = 1
+    next
+}
+in_func && /^\}/ {
+    in_func = 0
+    next
+}
+!in_func { print }
+' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+EOF
+    bash /tmp/patch_universe.sh "${bdutil_universe_script}"
+    rm -f /tmp/patch_universe.sh
+  fi
+
+  # Remove any corrupted boto.cfg generated during builder VM boot
+  if [[ -f /etc/boto.cfg ]] && grep -q 'gs_host[[:space:]]*=[[:space:]]*storage\.$' /etc/boto.cfg; then
+    echo "INFO: Removing corrupted /etc/boto.cfg"
+    rm -f /etc/boto.cfg
+  fi
+}
+
 function is_version_at_least() {
   local -r VERSION=$1
   if [[ $(echo "$DATAPROC_IMAGE_VERSION >= $VERSION" | bc -l) -eq 1 ]]; then
@@ -182,6 +222,7 @@ function main() {
   if [[ "${ready}" == "true" ]]; then
     run_install_optional_components_script
     run_custom_script
+    patch_bdutil_universe
     cleanup
   fi
 
