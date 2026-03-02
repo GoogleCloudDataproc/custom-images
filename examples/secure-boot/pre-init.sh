@@ -341,34 +341,9 @@ time generate_from_dataproc_version "${dataproc_version}"
 PURPOSE="secure-proxy"
 customization_script="startup_script/gce-proxy-setup.sh"
 print_status "=== Generating base ${PURPOSE} image for ${dataproc_version} ==="
-echo time generate_from_base_purpose "secure-boot"
+time generate_from_base_purpose "secure-boot"
 
 #time generate_from_prerelease_version "${dataproc_version}"
-
-if version_ge "${IMAGE_VERSION}" "2.3" ; then
-
-  ## run the installer for the DOCKER optional component
-  PURPOSE="docker"
-  OPTIONAL_COMPONENTS_ARG='--optional-components=DOCKER'
-  customization_script="examples/secure-boot/no-customization.sh"
-  print_status "=== Generating docker image for ${dataproc_version} ==="
-  echo time generate_from_base_purpose "secure-boot"
-
-  ## run the installer for the ZEPPELIN optional component
-  PURPOSE="zeppelin"
-  OPTIONAL_COMPONENTS_ARG='--optional-components=ZEPPELIN'
-  customization_script="examples/secure-boot/no-customization.sh"
-  print_status "=== Generating zeppelin image for ${dataproc_version} ==="
-  echo time generate_from_base_purpose "secure-boot"
-
-  ## run the installer for the DOCKER,PIG optional components
-  PURPOSE="docker-pig"
-  OPTIONAL_COMPONENTS_ARG='--optional-components=PIG'
-  customization_script="examples/secure-boot/no-customization.sh"
-  print_status "=== Generating docker-pig image for ${dataproc_version} ==="
-  echo time generate_from_base_purpose "docker"
-
-fi
 
 OPTIONAL_COMPONENTS_ARG=""
 
@@ -416,7 +391,10 @@ if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
   time generate_from_base_purpose "secure-boot"
   touch "${tmpdir}/sentinels/tf_build_complete"
 
-  # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
+fi
+
+if [[ "1" == "0" ]] && version_ge "${IMAGE_VERSION}" "2.3" ; then
+  # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image on a proxy base
   PURPOSE="proxy-tf"
   customization_script="examples/secure-boot/install_gpu_driver.sh"
   print_status "=== Waiting for TF build to complete to leverage cache... ==="
@@ -424,10 +402,44 @@ if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
     sleep 10
   done
   print_status "=== Generating proxy-tf image for ${dataproc_version} ==="
-  echo time generate_from_base_purpose "secure-proxy"
-else
-  print_status "=== Skipping GPU/ML image generation for ${dataproc_version} (<2.2) ==="
+  time generate_from_base_purpose "secure-proxy"
+
+  ## run the installer for the DOCKER optional component
+  PURPOSE="docker"
+  OPTIONAL_COMPONENTS_ARG='--optional-components=DOCKER'
+  customization_script="examples/secure-boot/no-customization.sh"
+  print_status "=== Generating ${PURPOSE} image for ${dataproc_version} ==="
+  time generate_from_base_purpose "proxy-tf"
+
+  ## run the installer for the DOCKER optional component
+  PURPOSE="jupyter"
+  OPTIONAL_COMPONENTS_ARG='--optional-components=JUPYTER'
+  customization_script="examples/secure-boot/no-customization.sh"
+  print_status "=== Generating ${PURPOSE} image for ${dataproc_version} ==="
+  time generate_from_base_purpose "docker"
+
+  ## run the installer for the ZEPPELIN optional component
+  PURPOSE="zeppelin"
+  OPTIONAL_COMPONENTS_ARG='--optional-components=ZEPPELIN'
+  customization_script="examples/secure-boot/no-customization.sh"
+  print_status "=== Generating ${PURPOSE} image for ${dataproc_version} ==="
+  time generate_from_base_purpose "jupyter"
+
+  ## run the installer for the PIG optional components
+  PURPOSE="pig"
+  OPTIONAL_COMPONENTS_ARG='--optional-components=PIG'
+  customization_script="examples/secure-boot/no-customization.sh"
+  print_status "=== Generating ${PURPOSE} image for ${dataproc_version} ==="
+  time generate_from_base_purpose "zeppelin"
+
+  ## run the installer for the DELTA LAKE optional components
+  PURPOSE="delta"
+  OPTIONAL_COMPONENTS_ARG='--optional-components=DELTA'
+  customization_script="examples/secure-boot/no-customization.sh"
+  print_status "=== Generating ${PURPOSE} image for ${dataproc_version} ==="
+  time generate_from_base_purpose "pig"
 fi
+
 
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="spark"
@@ -436,10 +448,10 @@ print_status "=== Generating spark image for ${dataproc_version} ==="
 echo time generate_from_base_purpose "tf"
 
 ## Execute spark-rapids/mig.sh init action on base image
-PURPOSE="mig-pre-init"
+PURPOSE="mig"
 customization_script="examples/secure-boot/mig.sh"
 print_status "=== Generating mig-pre-init image for ${dataproc_version} ==="
-echo time generate_from_base_purpose "tf"
+echo time generate_from_base_purpose "spark"
 
 # tf image -> rapids
 case "${dataproc_version}" in
