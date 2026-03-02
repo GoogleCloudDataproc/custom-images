@@ -16,6 +16,7 @@ Shell script based image creation workflow generator.
 """
 
 from datetime import datetime
+import re
 
 
 _template = """#!/usr/bin/env bash
@@ -222,6 +223,7 @@ function main() {{
       {accelerator_flag} \
       {service_account_flag} \
       --scopes=cloud-platform \
+      {shielded_secure_boot_flag} \
       {metadata_flag} \
       --metadata-from-file startup-script=startup_script/run.sh
 
@@ -362,6 +364,7 @@ class Generator:
       except FileNotFoundError:
         print("ERROR: examples/secure-boot/create-key-pair.sh not found")
         # Handle error
+    self.args["shielded_secure_boot_flag"] = ""
     if self.args["metadata"]:
       metadata_flag_template += ",{metadata}"
     self.args["metadata_flag"] = metadata_flag_template.format(**self.args)
@@ -383,4 +386,19 @@ class Generator:
 
   def generate(self, args):
     self._init_args(args)
+
+    dataproc_version = self.args.get("dataproc_version", "")
+    major_minor = "0.0"
+    if dataproc_version:
+      match = re.match(r"(\d+)\.(\d+)", dataproc_version)
+      if match:
+        major_minor = "{}.{}".format(match.group(1), match.group(2))
+
+    trusted_cert = self.args.get("trusted_cert")
+    shielded_secure_boot_flag = ""
+    if float(major_minor) >= 2.2:
+      if trusted_cert != "":
+        shielded_secure_boot_flag = "--shielded-secure-boot"
+    self.args["shielded_secure_boot_flag"] = shielded_secure_boot_flag
+
     return _template.format(**args)
