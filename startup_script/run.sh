@@ -95,12 +95,7 @@ function download_scripts() {
   echo "DEBUG: gsutil exit code: $?"
 }
 
-function run_custom_script() {
-  if ! download_scripts; then
-    echo "BuildFailed: failed to download scripts from ${CUSTOM_SOURCES_PATH}."
-    return 1
-  fi
-
+function setup_proxy() {
   # Setup HTTP proxy if configured
   if [[ -f ./gce-proxy-setup.sh ]] && /usr/share/google/get_metadata_value attributes/http-proxy >/dev/null 2>&1; then
     echo "DEBUG: Running gce-proxy-setup.sh"
@@ -111,7 +106,10 @@ function run_custom_script() {
     fi
     echo "DEBUG: Finished gce-proxy-setup.sh"
   fi
+  return 0
+}
 
+function run_custom_script() {
   # run init actions
   echo "DEBUG: Running init_actions.sh"
   bash -x ./init_actions.sh
@@ -220,6 +218,15 @@ function main() {
   wait_until_ready
 
   if [[ "${ready}" == "true" ]]; then
+    if ! download_scripts; then
+      echo "BuildFailed: failed to download scripts from ${CUSTOM_SOURCES_PATH}."
+      exit 1
+    fi
+
+    if ! setup_proxy; then
+      exit 1
+    fi
+
     run_install_optional_components_script
     run_custom_script
     patch_bdutil_universe
