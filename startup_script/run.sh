@@ -97,14 +97,23 @@ function download_scripts() {
 
 function setup_proxy() {
   # Setup HTTP proxy if configured
-  if [[ -f ./gce-proxy-setup.sh ]] && /usr/share/google/get_metadata_value attributes/http-proxy >/dev/null 2>&1; then
-    echo "DEBUG: Running gce-proxy-setup.sh"
-    bash -x ./gce-proxy-setup.sh
-    if [[ $? -ne 0 ]]; then
-      echo "BuildFailed: gce-proxy-setup.sh failed."
-      return 1
+  if [[ -f ./gce-proxy-setup.sh ]]; then
+    local has_proxy="false"
+    if /usr/share/google/get_metadata_value attributes/http-proxy >/dev/null 2>&1; then has_proxy="true"; fi
+    if /usr/share/google/get_metadata_value attributes/https-proxy >/dev/null 2>&1; then has_proxy="true"; fi
+    if /usr/share/google/get_metadata_value attributes/proxy-uri >/dev/null 2>&1; then has_proxy="true"; fi
+
+    if [[ "${has_proxy}" == "true" ]]; then
+      echo "DEBUG: Running gce-proxy-setup.sh"
+      bash -x ./gce-proxy-setup.sh
+      if [[ $? -ne 0 ]]; then
+        echo "BuildFailed: gce-proxy-setup.sh failed."
+        return 1
+      fi
+      echo "DEBUG: Finished gce-proxy-setup.sh"
+    else
+      echo "DEBUG: No proxy metadata found, skipping gce-proxy-setup.sh"
     fi
-    echo "DEBUG: Finished gce-proxy-setup.sh"
   fi
   return 0
 }
@@ -192,7 +201,9 @@ function run_install_optional_components_script() {
     export BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
     # Install Optional components
     set -Ee
+    set -a
     source /etc/environment
+    set +a
     source "${BDUTIL_DIR}/bdutil_env.sh"
     source "${BDUTIL_DIR}/bdutil_helpers.sh"
     source "${BDUTIL_DIR}/bdutil_metadata.sh"
@@ -209,6 +220,7 @@ function run_install_optional_components_script() {
   # print failure message if install fails
   if [[ $RET_CODE -ne 0 ]]; then
     echo "BuildFailed: Dataproc optional component installation Failed. Please check logs."
+    exit ${RET_CODE}
   else
     echo "BuildSucceeded: Dataproc optional component installation Succeeded."
   fi
