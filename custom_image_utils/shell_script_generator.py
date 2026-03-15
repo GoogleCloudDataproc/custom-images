@@ -16,6 +16,7 @@ Shell script based image creation workflow generator.
 """
 
 from datetime import datetime
+import re
 
 
 _template = """#!/usr/bin/env bash
@@ -41,9 +42,6 @@ function execute_with_retries() (
   return 1
 )
 
-function version_le(){{ [[ "$1" = "$(echo -e "$1\n$2"|sort -V|head -n1)" ]]; }}
-function version_lt(){{ [[ "$1" = "$2" ]]&& return 1 || version_le "$1" "$2";}}
-
 function prepare() {{
   # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
   # used as a more performant replacement for `gsutil`
@@ -59,11 +57,11 @@ function prepare() {{
 function exit_handler() {{
   echo 'Cleaning up before exiting.'
 
-  if [[ -f /tmp/{run_id}/vm_created ]]; then ( set +e
+  if [[ -f /tmp/{run_id}/vm_created ]]; then
     echo 'Deleting VM instance.'
     execute_with_retries \
       gcloud compute instances delete {image_name}-install --project={project_id} --zone={zone} -q
-  ) elif [[ -f /tmp/{run_id}/disk_created ]]; then
+  elif [[ -f /tmp/{run_id}/disk_created ]]; then
     echo 'Deleting disk.'
     execute_with_retries gcloud compute ${{base_obj_type}} delete {image_name}-install --project={project_id} -q
   fi
@@ -126,13 +124,11 @@ function main() {{
 
   local cert_args=""
   local num_src_certs="0"
-  metadata_arg="{metadata_flag}"
   if [[ -n '{trusted_cert}' ]] && [[ -f '{trusted_cert}' ]]; then
     # build tls/ directory from variables defined near the header of
     # the examples/secure-boot/create-key-pair.sh file
 
     eval "$(bash examples/secure-boot/create-key-pair.sh)"
-    metadata_arg="${{metadata_arg}},public_secret_name=${{public_secret_name}},private_secret_name=${{private_secret_name}},secret_project=${{secret_project}},secret_version=${{secret_version}}"
 
     # by default, a gcloud secret with the name of efi-db-pub-key-042 is
     # created in the current project to store the certificate installed
@@ -155,14 +151,11 @@ function main() {{
 
     mapfile -t src_img_modulus_md5sums < <(print_img_dbs_modulus_md5sums {dataproc_base_image})
     num_src_certs="${{#src_img_modulus_md5sums[@]}}"
-    echo "debug - num_src_certs: [${{#src_img_modulus_md5sums[*]}}]"
-    echo "value of src_img_modulus_md5sums: [${{src_img_modulus_md5sums}}]"
-    if [[ -z "${{src_img_modulus_md5sums}}" ]]; then
-      num_src_certs=0
+    echo "${{num_src_certs}} db certificates attached to source image"
+    if [[ "${{num_src_certs}}" -eq "0" ]]; then
       echo "no db certificates in source image"
       cert_list=( "${{default_cert_list[@]}}" )
     else
-      echo "${{num_src_certs}} db certificates attached to source image"
       echo "db certs exist in source image"
       for cert in ${{default_cert_list[*]}}; do
         if test_element_in_array "$(print_modulus_md5sum ${{cert}})" ${{src_img_modulus_md5sums[@]}} ; then
@@ -230,24 +223,22 @@ function main() {{
       {accelerator_flag} \
       {service_account_flag} \
       --scopes=cloud-platform \
-      "${{metadata_arg}}" \
+      {shielded_secure_boot_flag} \
+      {metadata_flag} \
       --metadata-from-file startup-script=startup_script/run.sh
 
   touch /tmp/{run_id}/vm_created
 
   # clean up intermediate install image
-  if [[ "${{base_obj_type}}" == "images" ]] ; then ( set +e
-    # This sometimes returns an API error but deletes the image despite the failure
+  if [[ "${{base_obj_type}}" == "images" ]] ; then
     gcloud compute images delete -q {image_name}-install --project={project_id}
-  ) fi
+  fi
 
   echo "Monitor startup logs in {log_dir}/startup-script.log"
   echo 'Waiting for customization script to finish and VM shutdown.'
   set -x
   # too many serial port output requests per minute occur if they all occur at once
   sleep $(( ( RANDOM % 60 ) + 20 ))
-
-  gcloud compute instances describe --format json {image_name}-install --zone {zone} | tee {log_dir}/instance.json
 
   execute_with_retries gcloud compute instances tail-serial-port-output {image_name}-install \
       --project={project_id} \
@@ -261,9 +252,12 @@ function main() {{
   date
   if grep -q 'BuildSucceeded:' {log_dir}/startup-script.log; then
     echo -e "${{GREEN}}Customization script succeeded.${{NC}}"
-  else
+  elif grep -q 'BuildFailed:' {log_dir}/startup-script.log; then
     echo -e "${{RED}}Customization script failed.${{NC}}"
     echo "See {log_dir}/startup-script.log for details"
+    exit 1
+  else
+    echo 'Unable to determine the customization script result.'
     exit 1
   fi
 
@@ -279,9 +273,9 @@ function main() {{
   touch /tmp/{run_id}/image_created
 }}
 
-prepare
 trap exit_handler EXIT
 mkdir -p {log_dir}
+prepare
 main "$@" 2>&1 | tee {log_dir}/workflow.log
 """
 
@@ -300,6 +294,9 @@ class Generator:
         "run.sh": "startup_script/run.sh",
         "init_actions.sh": self.args["customization_script"]
     }
+    metadata = self.args.get("metadata")
+    if metadata and ("http-proxy" in metadata or "https-proxy" in metadata):
+        all_sources["gce-proxy-setup.sh"] = "startup_script/gce-proxy-setup.sh"
     all_sources.update(self.args["extra_sources"])
 
     sources_map_items = tuple(enumerate(all_sources.items()))
@@ -331,7 +328,8 @@ class Generator:
         **self.args) if self.args["storage_location"] else ""
     metadata_flag_template = (
         "--metadata=shutdown-timer-in-sec={shutdown_timer_in_sec},"
-        "custom-sources-path={custom_sources_path}"
+        "custom-sources-path={custom_sources_path},"
+        "universe-domain={universe_domain}"
     )
     if self.args["zone"]:
       region = "-".join(self.args["zone"].split("-")[:-1])
@@ -341,9 +339,32 @@ class Generator:
       # convert to component names used inside image and join to set as metadata value
       optional_image_components = '.'.join(self._get_optional_to_image_components(optional_components))
       metadata_flag_template += ',optional-components="{}"'.format(optional_image_components)
+
     if self.args["dataproc_version"]:
       dataproc_version = self.args["dataproc_version"]
       metadata_flag_template += ',dataproc_dataproc_version="{}"'.format(dataproc_version)
+    if self.args.get("trusted_cert"):
+      import subprocess
+      import re
+      try:
+        script_output = subprocess.check_output(['bash', 'examples/secure-boot/create-key-pair.sh'], text=True)
+        secret_vars = {}
+        for line in script_output.splitlines():
+          if '=' in line:
+            key, value = line.split('=', 1)
+            secret_vars[key] = value.strip().strip("'")
+        self.args.update(secret_vars)
+        metadata_flag_template += (',public_secret_name={public_secret_name},'
+                                 'private_secret_name={private_secret_name},'
+                                 'secret_project={secret_project},'
+                                 'secret_version={secret_version}')
+      except subprocess.CalledProcessError as e:
+        print(f"ERROR: Failed to source secret names from create-key-pair.sh: {e}")
+        # Handle error appropriately, maybe exit or raise
+      except FileNotFoundError:
+        print("ERROR: examples/secure-boot/create-key-pair.sh not found")
+        # Handle error
+    self.args["shielded_secure_boot_flag"] = ""
     if self.args["metadata"]:
       metadata_flag_template += ",{metadata}"
     self.args["metadata_flag"] = metadata_flag_template.format(**self.args)
@@ -365,4 +386,19 @@ class Generator:
 
   def generate(self, args):
     self._init_args(args)
+
+    dataproc_version = self.args.get("dataproc_version", "")
+    major_minor = "0.0"
+    if dataproc_version:
+      match = re.match(r"(\d+)\.(\d+)", dataproc_version)
+      if match:
+        major_minor = "{}.{}".format(match.group(1), match.group(2))
+
+    trusted_cert = self.args.get("trusted_cert")
+    shielded_secure_boot_flag = ""
+    if float(major_minor) >= 2.2:
+      if trusted_cert != "":
+        shielded_secure_boot_flag = "--shielded-secure-boot"
+    self.args["shielded_secure_boot_flag"] = shielded_secure_boot_flag
+
     return _template.format(**args)

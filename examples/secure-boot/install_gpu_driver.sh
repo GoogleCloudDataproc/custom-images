@@ -62,9 +62,9 @@ function repair_old_backports {
 
   # https://github.com/GoogleCloudDataproc/initialization-actions/issues/1157
   debdists="https://deb.debian.org/debian/dists"
-  oldoldstable=$(curl ${curl_retry_args} "${debdists}/oldoldstable/Release" | awk '/^Codename/ {print $2}');
-  oldstable=$(   curl ${curl_retry_args} "${debdists}/oldstable/Release"    | awk '/^Codename/ {print $2}');
-  stable=$(      curl ${curl_retry_args} "${debdists}/stable/Release"       | awk '/^Codename/ {print $2}');
+  oldoldstable=$(curl ${curl_retry_args[@]} "${debdists}/oldoldstable/Release" | awk '/^Codename/ {print $2}');
+  oldstable=$(   curl ${curl_retry_args[@]} "${debdists}/oldstable/Release"    | awk '/^Codename/ {print $2}');
+  stable=$(      curl ${curl_retry_args[@]} "${debdists}/stable/Release"       | awk '/^Codename/ {print $2}');
 
   matched_files=( $(test -d /etc/apt && grep -rsil '\-backports' /etc/apt/sources.list*||:) )
 
@@ -141,6 +141,8 @@ readonly -A DRIVER_FOR_CUDA=(
     ["11.7"]="515.65.01" ["11.8"]="525.147.05" ["12.0"]="525.147.05"
     ["12.1"]="530.30.02" ["12.2"]="535.216.01" ["12.3"]="545.29.06"
     ["12.4"]="550.135" ["12.5"]="550.142" ["12.6"]="550.142"
+    ["12.8"]="570.211.01" ["12.9"]="575.64.05"
+    ["13.0"]="580.126.16" ["13.1"]="590.48.01"
 )
 readonly -A DRIVER_SUBVER=(
     ["410"]="410.104" ["415"]="415.27" ["418"]="418.113"
@@ -150,7 +152,8 @@ readonly -A DRIVER_SUBVER=(
     ["510"]="510.108.03" ["515"]="515.48.07" ["520"]="525.147.05"
     ["525"]="525.147.05" ["535"]="535.216.01" ["545"]="545.29.06"
     ["550"]="550.142" ["555"]="555.58.02" ["560"]="560.35.03"
-    ["565"]="565.77"
+    ["565"]="565.77" ["570"]="570.211.01" ["575"]="575.64.05"
+    ["580"]="580.126.16" ["590"]="590.48.01"
 )
 # https://developer.nvidia.com/cudnn-downloads
 readonly -A CUDNN_FOR_CUDA=(
@@ -160,7 +163,8 @@ readonly -A CUDNN_FOR_CUDA=(
     ["11.6"]="8.4.0.27" ["11.7"]="8.9.7.29" ["11.8"]="9.5.1.17"
     ["12.0"]="8.8.1.3" ["12.1"]="8.9.3.28" ["12.2"]="8.9.5"
     ["12.3"]="9.0.0.306" ["12.4"]="9.1.0.70" ["12.5"]="9.2.1.18"
-    ["12.6"]="9.6.0.74"
+    ["12.6"]="9.6.0.74" ["12.8"]="9.8.0.87" ["12.9"]="9.10.2.21"
+    ["13.0"]="9.14.0.64" ["13.1"]="9.17.0.29"
 )
 # https://developer.nvidia.com/nccl/nccl-download
 readonly -A NCCL_FOR_CUDA=(
@@ -169,7 +173,8 @@ readonly -A NCCL_FOR_CUDA=(
     ["11.5"]="2.11.4" ["11.6"]="2.12.10" ["11.7"]="2.12.12"
     ["11.8"]="2.21.5" ["12.0"]="2.16.5" ["12.1"]="2.18.3"
     ["12.2"]="2.19.3" ["12.3"]="2.19.4" ["12.4"]="2.23.4"
-    ["12.5"]="2.22.3" ["12.6"]="2.23.4"
+    ["12.5"]="2.22.3" ["12.6"]="2.23.4" ["12.8"]="2.25.1"
+    ["12.9"]="2.27.3" ["13.0"]="2.27.7" ["13.1"]="2.29.2"
 )
 readonly -A CUDA_SUBVER=(
     ["10.0"]="10.0.130" ["10.1"]="10.1.234" ["10.2"]="10.2.89"
@@ -178,7 +183,8 @@ readonly -A CUDA_SUBVER=(
     ["11.6"]="11.6.2" ["11.7"]="11.7.1" ["11.8"]="11.8.0"
     ["12.0"]="12.0.1" ["12.1"]="12.1.1" ["12.2"]="12.2.2"
     ["12.3"]="12.3.2" ["12.4"]="12.4.1" ["12.5"]="12.5.1"
-    ["12.6"]="12.6.3"
+    ["12.6"]="12.6.3" ["12.8"]="12.8.1" ["12.9"]="12.9.1"
+    ["13.0"]="13.0.2" ["13.1"]="13.1.1"
 )
 
 function set_cuda_version() {
@@ -186,8 +192,8 @@ function set_cuda_version() {
     "1.5" ) DEFAULT_CUDA_VERSION="11.6.2" ;;
     "2.0" ) DEFAULT_CUDA_VERSION="12.1.1" ;; # Cuda 12.1.1 - Driver v530.30.02 is the latest version supported by Ubuntu 18)
     "2.1" ) DEFAULT_CUDA_VERSION="12.4.1" ;;
-    "2.2" ) DEFAULT_CUDA_VERSION="12.6.3" ;;
-    "2.3" ) DEFAULT_CUDA_VERSION="12.6.3" ;;
+    "2.2" ) DEFAULT_CUDA_VERSION="13.1.0" ;;
+    "2.3" ) DEFAULT_CUDA_VERSION="13.1.0" ;;
     *   )
       echo "unrecognized Dataproc image version: ${DATAPROC_IMAGE_VERSION}"
       exit 1
@@ -245,10 +251,10 @@ function set_driver_version() {
     if [[ "${CUDA_URL_DRIVER_VERSION}" =~ ^[0-9]+.*[0-9]$ ]] ; then
       major_driver_version="${CUDA_URL_DRIVER_VERSION%%.*}"
       driver_max_maj_version=${DRIVER_SUBVER["${major_driver_version}"]}
-      if curl ${curl_retry_args} --head "${nv_xf86_x64_base}/${CUDA_URL_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${CUDA_URL_DRIVER_VERSION}.run" | grep -E -q 'HTTP.*200' ; then
+      if curl ${curl_retry_args[@]} --head "${nv_xf86_x64_base}/${CUDA_URL_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${CUDA_URL_DRIVER_VERSION}.run" | grep -E -q 'HTTP.*200' ; then
         # use the version indicated by the cuda url as the default if it exists
         DEFAULT_DRIVER="${CUDA_URL_DRIVER_VERSION}"
-      elif curl ${curl_retry_args} --head "${nv_xf86_x64_base}/${driver_max_maj_version}/NVIDIA-Linux-x86_64-${driver_max_maj_version}.run" | grep -E -q 'HTTP.*200' ; then
+      elif curl ${curl_retry_args[@]} --head "${nv_xf86_x64_base}/${driver_max_maj_version}/NVIDIA-Linux-x86_64-${driver_max_maj_version}.run" | grep -E -q 'HTTP.*200' ; then
         # use the maximum sub-version available for the major version indicated in cuda url as the default
         DEFAULT_DRIVER="${driver_max_maj_version}"
       fi
@@ -268,10 +274,47 @@ function set_driver_version() {
   export DRIVER_VERSION DRIVER
 
   gpu_driver_url="${nv_xf86_x64_base}/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
-  if ! curl ${curl_retry_args} --head "${gpu_driver_url}" | grep -E -q 'HTTP.*200' ; then
-    echo "No NVIDIA driver exists for DRIVER_VERSION=${DRIVER_VERSION}"
-    exit 1
+
+  # GCS Cache Check Logic
+  local driver_filename
+  driver_filename=$(basename "${gpu_driver_url}")
+  local gcs_cache_path="${pkg_bucket}/nvidia/${driver_filename}"
+
+  echo "Checking for cached NVIDIA driver at: ${gcs_cache_path}"
+
+  if ! ${gsutil_stat_cmd} "${gcs_cache_path}" 2>/dev/null; then
+    echo "Driver not found in GCS cache. Validating URL: ${gpu_driver_url}"
+    # Use curl to check if the URL is valid (HEAD request)
+    if curl -I ${curl_retry_args[@]} "${gpu_driver_url}" 2>/dev/null | grep -E -q 'HTTP.*200'; then
+      echo "NVIDIA URL is valid. Downloading to cache..."
+      local temp_driver_file="${tmpdir}/${driver_filename}"
+
+      # Download the file
+      echo "Downloading from ${gpu_driver_url} to ${temp_driver_file}"
+      if curl ${curl_retry_args[@]} -o "${temp_driver_file}" "${gpu_driver_url}"; then
+        echo "Download complete. Uploading to ${gcs_cache_path}"
+        # Upload to GCS
+        if ${gsutil_cmd} cp "${temp_driver_file}" "${gcs_cache_path}"; then
+          echo "Successfully cached to GCS."
+          rm -f "${temp_driver_file}"
+        else
+          echo "ERROR: Failed to upload driver to GCS: ${gcs_cache_path}"
+          rm -f "${temp_driver_file}"
+          exit 1
+        fi
+      else
+        echo "ERROR: Failed to download driver from NVIDIA: ${gpu_driver_url}"
+        rm -f "${temp_driver_file}" # File might not exist if curl failed early
+        exit 1
+      fi
+    else
+      echo "ERROR: NVIDIA driver URL is not valid or accessible: ${gpu_driver_url}"
+      exit 1
+    fi
+  else
+    echo "Driver found in GCS cache: ${gcs_cache_path}"
   fi
+  # End of GCS Cache Check Logic
 }
 
 function set_cudnn_version() {
@@ -392,6 +435,10 @@ function set_cuda_runfile_url() {
       ["12.4.0"]="550.54.14" ["12.4.1"]="550.54.15" # 550.54.15 is not a driver indexed at https://us.download.nvidia.com/XFree86/Linux-x86_64/
       ["12.5.0"]="555.42.02" ["12.5.1"]="555.42.06" # 555.42.02 is indexed, 555.42.06 is not
       ["12.6.0"]="560.28.03" ["12.6.1"]="560.35.03" ["12.6.2"]="560.35.03" ["12.6.3"]="560.35.05"
+      ["12.8.0"]="570.86.10" ["12.8.1"]="570.124.06"
+      ["12.9.0"]="575.51.03" ["12.9.1"]="575.57.08"
+      ["13.0.0"]="580.65.06" ["13.0.1"]="580.82.07" ["13.0.2"]="580.95.05"
+      ["13.1.0"]="590.44.01"
   )
 
   # Verify that the file with the indicated combination exists
@@ -401,19 +448,41 @@ function set_cuda_runfile_url() {
   local DEFAULT_NVIDIA_CUDA_URL="${CUDA_RELEASE_BASE_URL}/local_installers/${CUDA_RUNFILE}"
 
   NVIDIA_CUDA_URL=$(get_metadata_attribute 'cuda-url' "${DEFAULT_NVIDIA_CUDA_URL}")
-
-  if ! curl ${curl_retry_args} --head "${NVIDIA_CUDA_URL}" | grep -E -q 'HTTP.*200' ; then
-    echo "No CUDA distribution exists for this combination of DRIVER_VERSION=${drv_ver}, CUDA_VERSION=${CUDA_FULL_VERSION}"
-    if [[ "${DEFAULT_NVIDIA_CUDA_URL}" != "${NVIDIA_CUDA_URL}" ]]; then
-      echo "consider [${DEFAULT_NVIDIA_CUDA_URL}] instead"
-    fi
-    exit 1
-  fi
-
   readonly NVIDIA_CUDA_URL
 
   CUDA_RUNFILE="$(echo ${NVIDIA_CUDA_URL} | perl -pe 's{^.+/}{}')"
   readonly CUDA_RUNFILE
+  export local_cuda_runfile="${tmpdir}/${CUDA_RUNFILE}"
+  local gcs_cache_path="${pkg_bucket}/nvidia/${CUDA_RUNFILE}" # Corrected path
+
+  echo "Checking for cached CUDA runfile at: ${gcs_cache_path}"
+  if ${gsutil_stat_cmd} "${gcs_cache_path}" > /dev/null 2>&1; then
+    echo "CUDA runfile found in GCS cache. Downloading from ${gcs_cache_path}"
+    if ! ${gsutil_cmd} cp "${gcs_cache_path}" "${local_cuda_runfile}"; then
+      echo "ERROR: Failed to download CUDA runfile from GCS cache."
+      exit 1
+    fi
+  else
+    echo "CUDA runfile not found in GCS cache. Downloading from NVIDIA: ${NVIDIA_CUDA_URL}"
+
+    # Check if URL is valid before downloading
+    if ! curl ${curl_retry_args[@]} --head "${NVIDIA_CUDA_URL}" 2>/dev/null | grep -E -q 'HTTP.*200'; then
+      echo "ERROR: CUDA runfile URL is NOT valid or not reachable: ${NVIDIA_CUDA_URL}"
+      exit 1
+    fi
+
+    echo "Downloading from ${NVIDIA_CUDA_URL} to ${local_cuda_runfile}"
+    if curl ${curl_retry_args[@]} -o "${local_cuda_runfile}" "${NVIDIA_CUDA_URL}"; then
+      echo "Download complete. Uploading to GCS cache: ${gcs_cache_path}"
+      if ! ${gsutil_cmd} cp "${local_cuda_runfile}" "${gcs_cache_path}"; then
+        echo "WARN: Failed to upload CUDA runfile to GCS cache."
+      fi
+    else
+      echo "ERROR: Failed to download CUDA runfile from NVIDIA."
+      exit 1
+    fi
+  fi
+  echo "DEBUG: Local CUDA runfile path: ${local_cuda_runfile}"
 
   if ( version_lt "${CUDA_FULL_VERSION}" "12.3.0" && ge_debian12 ) ; then
     echo "CUDA 12.3.0 is the minimum CUDA 12 version supported on Debian 12"
@@ -453,7 +522,12 @@ GPU_DRIVER_PROVIDER=$(get_metadata_attribute 'gpu-driver-provider' 'NVIDIA')
 readonly GPU_DRIVER_PROVIDER
 
 # Whether to install GPU monitoring agent that sends GPU metrics to Stackdriver
-INSTALL_GPU_AGENT=$(get_metadata_attribute 'install-gpu-agent' 'true')
+INSTALL_GPU_AGENT_METADATA=$(get_metadata_attribute 'install-gpu-agent' 'true')
+ENABLE_GPU_MONITORING_METADATA=$(get_metadata_attribute 'enable-gpu-monitoring' 'true')
+INSTALL_GPU_AGENT='true'
+if [[ "${INSTALL_GPU_AGENT_METADATA}" == "false" ]] || [[ "${ENABLE_GPU_MONITORING_METADATA}" == "false" ]] ; then
+  INSTALL_GPU_AGENT='false'
+fi
 readonly INSTALL_GPU_AGENT
 
 # Dataproc configurations
@@ -485,7 +559,7 @@ function execute_with_retries() (
 function install_cuda_keyring_pkg() {
   is_complete cuda-keyring-installed && return
   local kr_ver=1.1
-  curl ${curl_retry_args} \
+  curl ${curl_retry_args[@]} \
     "${NVIDIA_REPO_URL}/cuda-keyring_${kr_ver}-1_all.deb" \
     -o "${tmpdir}/cuda-keyring.deb"
   dpkg -i "${tmpdir}/cuda-keyring.deb"
@@ -507,7 +581,7 @@ function install_local_cuda_repo() {
   readonly LOCAL_DEB_URL="${NVIDIA_BASE_DL_URL}/cuda/${CUDA_FULL_VERSION}/local_installers/${LOCAL_INSTALLER_DEB}"
   readonly DIST_KEYRING_DIR="/var/${pkgname}"
 
-  curl ${curl_retry_args} \
+  curl ${curl_retry_args[@]} \
     "${LOCAL_DEB_URL}" -o "${tmpdir}/${LOCAL_INSTALLER_DEB}"
 
   dpkg -i "${tmpdir}/${LOCAL_INSTALLER_DEB}"
@@ -515,7 +589,7 @@ function install_local_cuda_repo() {
   cp ${DIST_KEYRING_DIR}/cuda-*-keyring.gpg /usr/share/keyrings/
 
   if is_ubuntu ; then
-    curl ${curl_retry_args} \
+    curl ${curl_retry_args[@]} \
       "${NVIDIA_REPO_URL}/cuda-${shortname}.pin" \
       -o /etc/apt/preferences.d/cuda-repository-pin-600
   fi
@@ -535,7 +609,7 @@ function install_local_cudnn_repo() {
   local_deb_url="${NVIDIA_BASE_DL_URL}/cudnn/${CUDNN_VERSION%.*}/local_installers/${local_deb_fn}"
 
   # ${NVIDIA_BASE_DL_URL}/redist/cudnn/v8.6.0/local_installers/11.8/cudnn-linux-x86_64-8.6.0.163_cuda11-archive.tar.xz
-  curl ${curl_retry_args} \
+  curl ${curl_retry_args[@]} \
     "${local_deb_url}" -o "${tmpdir}/local-installer.deb"
 
   dpkg -i "${tmpdir}/local-installer.deb"
@@ -613,7 +687,7 @@ function install_nvidia_nccl() {
 
   test -d "${workdir}/nccl" || {
     local tarball_fn="v${NCCL_VERSION}-1.tar.gz"
-    curl ${curl_retry_args} \
+    curl ${curl_retry_args[@]} \
       "https://github.com/NVIDIA/nccl/archive/refs/tags/${tarball_fn}" \
       | tar xz
     mv "nccl-${NCCL_VERSION}-1" nccl
@@ -677,14 +751,31 @@ function install_nvidia_nccl() {
       # Ada:       SM_89,             compute_89
       # Hopper:    SM_90,SM_90a       compute_90,compute_90a
       # Blackwell: SM_100,            compute_100
-                      NVCC_GENCODE="-gencode=arch=compute_70,code=sm_70 -gencode=arch=compute_72,code=sm_72"
-      NVCC_GENCODE="${NVCC_GENCODE} -gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm_86"
+      local nvcc_gencode=("-gencode=arch=compute_80,code=sm_80" # Ampre
+			  "-gencode=arch=compute_86,code=sm_86" # Ampre
+			 )
+
       if version_gt "${CUDA_VERSION}" "11.6" ; then
-        NVCC_GENCODE="${NVCC_GENCODE} -gencode=arch=compute_87,code=sm_87" ; fi
+        nvcc_gencode+=("-gencode=arch=compute_87,code=sm_87") # Ampre
+      fi
       if version_ge "${CUDA_VERSION}" "11.8" ; then
-        NVCC_GENCODE="${NVCC_GENCODE} -gencode=arch=compute_89,code=sm_89" ; fi
+        nvcc_gencode+=("-gencode=arch=compute_89,code=sm_89") # Lovelace
+      fi
       if version_ge "${CUDA_VERSION}" "12.0" ; then
-        NVCC_GENCODE="${NVCC_GENCODE} -gencode=arch=compute_90,code=sm_90 -gencode=arch=compute_90a,code=compute_90a" ; fi
+        nvcc_gencode+=("-gencode=arch=compute_90,code=sm_90") # Hopper
+      fi
+      # if version_ge "${CUDA_VERSION}" "12.8" ; then
+      #   nvcc_gencode+=("-gencode=arch=compute_101,code=sm_101") # Blackwell
+      # fi
+      if version_lt "${CUDA_VERSION}" "13.0" ; then
+        nvcc_gencode+=("-gencode=arch=compute_70,code=sm_70" # Volta
+                       "-gencode=arch=compute_72,code=sm_72" # Volta
+                       )
+      fi
+      if version_ge "${CUDA_VERSION}" "13.0" ; then
+        nvcc_gencode+=("-gencode=arch=compute_110,code=sm_110") # Blackwell
+      fi
+      NVCC_GENCODE="${nvcc_gencode[*]}"
 
       if is_debuntu ; then
         # These packages are required to build .deb packages from source
@@ -700,7 +791,7 @@ function install_nvidia_nccl() {
         execute_with_retries make -j$(nproc) pkg.redhat.build
       fi
       tar czvf "${local_tarball}" "../${build_path}"
-      make clean
+      make clean || echo "WARN: 'make clean' failed in nccl build, continuing..."
       popd
       tar xzvf "${local_tarball}"
       ${gsutil_cmd} cp "${local_tarball}" "${gcs_tarball}"
@@ -812,6 +903,27 @@ function install_pytorch() {
   local local_tarball="${workdir}/${build_tarball}"
   local gcs_tarball="${pkg_bucket}/conda/${_shortname}/${build_tarball}"
 
+  # We are here because the 'pytorch' sentinel is missing.
+  # If the main driver install sentinel EXISTS, it means this is a re-run
+  # on a system where the driver was likely already set up.
+  # The missing 'pytorch' sentinel in this context is used as a signal
+  # to force a purge of the PyTorch Conda environment cache and a full rebuild.
+  if is_complete install_gpu_driver-main; then
+    echo "INFO: Main GPU driver install sentinel found, but PyTorch sentinel missing. Triggering cache purge and environment rebuild."
+    # Attempt to remove GCS cache for the PyTorch env
+    echo "INFO: Removing GCS cache object: ${gcs_tarball}"
+    ${gsutil_cmd} rm "${gcs_tarball}" || echo "WARN: Failed to remove GCS cache (may not exist)."
+
+    # Attempt to remove local env directory
+    if [[ -d "${envpath}" ]]; then
+      echo "INFO: Removing local Conda env directory: ${envpath}"
+      rm -rf "${envpath}" || echo "WARN: Failed to remove local env directory."
+    fi
+  fi
+
+  # edge nodes (fewer cores than 32) in test do not build the conda
+  # packages ; stand by as a big machine completes that work.
+
   if [[ "$(hostname -s)" =~ ^test && "$(nproc)" < 32 ]] ; then
     # when running with fewer than 32 cores, yield to in-progress build
     sleep $(( ( RANDOM % 11 ) + 10 ))
@@ -844,14 +956,49 @@ function install_pytorch() {
     building_file="${gcs_tarball}.building"
     local verb=create
     if test -d "${envpath}" ; then verb=install ; fi
-    cudart_spec="cuda-cudart"
-    if le_cuda11 ; then cudart_spec="cudatoolkit" ; fi
+    local conda_path="${conda_root_path}/bin/mamba"
 
+    local mamba_tried=false
+    if ! command -v "${conda_path}" > /dev/null 2>&1; then
+      echo "Mamba not found, trying to install it..."
+      mamba_tried=true
+      "${conda_root_path}/bin/conda" install -n base -c conda-forge mamba -y \
+        || echo "WARN: Mamba installation failed."
+      if ! command -v "${conda_path}" > /dev/null 2>&1; then
+        echo "Mamba not found after install attempt, falling back to conda."
+        conda_path="${conda_root_path}/bin/conda"
+      fi
+    fi
+    echo "Using installer: ${conda_path}"
+    conda_pkg_list=(
+      "numba" "pytorch" "tensorflow[and-cuda]" "rapids" "pyspark"
+      "cuda-version<=${CUDA_VERSION}"
+    )
+
+    conda_pkg=$( IFS=' ' ; echo "${conda_pkg_list[*]}" )
+
+    local conda_err_file="${tmpdir}/conda_create.err"
     # Install pytorch and company to this environment
-    "${conda_root_path}/bin/mamba" "${verb}" -n "${env}" \
+    set +e
+    "${conda_path}" "${verb}" -n "${env}" \
       -c conda-forge -c nvidia -c rapidsai \
-      numba pytorch tensorflow[and-cuda] rapids pyspark \
-      "cuda-version<=${CUDA_VERSION}" "${cudart_spec}"
+      ${conda_pkg} 2> "${conda_err_file}"
+    local conda_exit_code="$?"
+    set -e
+
+    if [[ "${conda_exit_code}" -ne 0 ]]; then
+      cat "${conda_err_file}" >&2
+      if [[ "${conda_path}" == *mamba ]] && grep -q "RuntimeError: Multi-download failed." "${conda_err_file}"; then
+        echo "ERROR: Mamba failed to create the environment, likely due to a proxy issue on this platform." >&2
+        echo "ERROR: Please run this initialization action in a non-proxied environment at least once to build and populate the GCS cache for '${gcs_tarball}'." >&2
+        echo "ERROR: Once the cache exists, subsequent runs in the proxied environment should succeed." >&2
+        exit 1
+      else
+        echo "ERROR: Conda/Mamba environment creation failed with exit code ${conda_exit_code}." >&2
+        exit ${conda_exit_code}
+      fi
+    fi
+    rm -f "${conda_err_file}"
 
     # Install jupyter kernel in this environment
     "${envpath}/bin/python3" -m pip install ipykernel
@@ -863,6 +1010,7 @@ function install_pytorch() {
     ${gsutil_cmd} cp "${local_tarball}" "${gcs_tarball}"
     if ${gsutil_stat_cmd} "${gcs_tarball}.building" ; then ${gsutil_cmd} rm "${gcs_tarball}.building" || true ; fi
     building_file=""
+    rm "${local_tarball}"
   fi
 
   # register the environment as a selectable kernel
@@ -877,68 +1025,46 @@ function configure_dkms_certs() {
       return 0
   fi
 
-  mkdir -p "${CA_TMPDIR}"
+  # Always fetch keys if PSN is set to ensure modulus_md5sum is calculated.
+  if [[ -n "${PSN}" ]]; then
+    mkdir -p "${CA_TMPDIR}"
 
-  # If the private key exists, verify it
-  if [[ -f "${CA_TMPDIR}/db.rsa" ]]; then
-    echo "Private key material exists"
+    # Retrieve cloud secrets keys
+    local sig_priv_secret_name
+    sig_priv_secret_name="${PSN}"
+    local sig_pub_secret_name
+    sig_pub_secret_name="$(get_metadata_attribute public_secret_name)"
+    local sig_secret_project
+    sig_secret_project="$(get_metadata_attribute secret_project)"
+    local sig_secret_version
+    sig_secret_version="$(get_metadata_attribute secret_version)"
 
-    local expected_modulus_md5sum
-    expected_modulus_md5sum=$(get_metadata_attribute modulus_md5sum)
-    if [[ -n "${expected_modulus_md5sum}" ]]; then
-      modulus_md5sum="${expected_modulus_md5sum}"
+    # If metadata values are not set, do not write mok keys
+    if [[ -z "${sig_priv_secret_name}" ]]; then return 0 ; fi
 
-      # Verify that cert md5sum matches expected md5sum
-      if [[ "${modulus_md5sum}" != "$(openssl rsa -noout -modulus -in "${CA_TMPDIR}/db.rsa" | openssl md5 | awk '{print $2}')" ]]; then
-        echo "unmatched rsa key"
-      fi
+    # Write private material to volatile storage
+    gcloud secrets versions access "${sig_secret_version}" \
+           --project="${sig_secret_project}" \
+           --secret="${sig_priv_secret_name}" \
+        | dd status=none of="${CA_TMPDIR}/db.rsa"
 
-      # Verify that key md5sum matches expected md5sum
-      if [[ "${modulus_md5sum}" != "$(openssl x509 -noout -modulus -in ${mok_der} | openssl md5 | awk '{print $2}')" ]]; then
-        echo "unmatched x509 cert"
-      fi
-    else
-      modulus_md5sum="$(openssl rsa -noout -modulus -in "${CA_TMPDIR}/db.rsa" | openssl md5 | awk '{print $2}')"
-    fi
+    # Write public material to volatile storage
+    gcloud secrets versions access "${sig_secret_version}" \
+           --project="${sig_secret_project}" \
+           --secret="${sig_pub_secret_name}" \
+        | base64 --decode \
+        | dd status=none of="${CA_TMPDIR}/db.der"
+
+    local mok_directory="$(dirname "${mok_key}")"
+    mkdir -p "${mok_directory}"
+
+    # symlink private key and copy public cert from volatile storage to DKMS directory
     ln -sf "${CA_TMPDIR}/db.rsa" "${mok_key}"
+    cp  -f "${CA_TMPDIR}/db.der" "${mok_der}"
 
-    return
+    modulus_md5sum="$(openssl rsa -noout -modulus -in "${mok_key}" | openssl md5 | awk '{print $2}')"
+    echo "DEBUG: modulus_md5sum set to: ${modulus_md5sum}"
   fi
-
-  # Retrieve cloud secrets keys
-  local sig_priv_secret_name
-  sig_priv_secret_name="${PSN}"
-  local sig_pub_secret_name
-  sig_pub_secret_name="$(get_metadata_attribute public_secret_name)"
-  local sig_secret_project
-  sig_secret_project="$(get_metadata_attribute secret_project)"
-  local sig_secret_version
-  sig_secret_version="$(get_metadata_attribute secret_version)"
-
-  # If metadata values are not set, do not write mok keys
-  if [[ -z "${sig_priv_secret_name}" ]]; then return 0 ; fi
-
-  # Write private material to volatile storage
-  gcloud secrets versions access "${sig_secret_version}" \
-         --project="${sig_secret_project}" \
-         --secret="${sig_priv_secret_name}" \
-      | dd status=none of="${CA_TMPDIR}/db.rsa"
-
-  # Write public material to volatile storage
-  gcloud secrets versions access "${sig_secret_version}" \
-         --project="${sig_secret_project}" \
-         --secret="${sig_pub_secret_name}" \
-      | base64 --decode \
-      | dd status=none of="${CA_TMPDIR}/db.der"
-
-  local mok_directory="$(dirname "${mok_key}")"
-  mkdir -p "${mok_directory}"
-
-  # symlink private key and copy public cert from volatile storage to DKMS directory
-  ln -sf "${CA_TMPDIR}/db.rsa" "${mok_key}"
-  cp  -f "${CA_TMPDIR}/db.der" "${mok_der}"
-
-  modulus_md5sum="$(openssl rsa -noout -modulus -in "${mok_key}" | openssl md5 | awk '{print $2}')"
 }
 
 function clear_dkms_key {
@@ -988,9 +1114,17 @@ function add_repo_nvidia_container_toolkit() {
     # "${repo_name}" "${signing_key_url}" "${repo_data}" "${4:-yes}" "${kr_path}" "${6:-}"
     local -r repo_name="nvidia-container-toolkit"
     local -r kr_path="/usr/share/keyrings/${repo_name}.gpg"
-    execute_with_retries gpg --keyserver keyserver.ubuntu.com \
-      --no-default-keyring --keyring "${kr_path}" \
-      --recv-keys "0xae09fe4bbd223a84b2ccfce3f60f4b3d7fa2af80" "0xeb693b3035cd5710e231e123a4b469963bf863cc" "0xc95b321b61e88c1809c4f759ddcae044f796ecb0"
+    GPG_PROXY_ARGS=""
+    if [[ -v HTTP_PROXY ]] ; then
+      GPG_PROXY="--keyserver-options http-proxy=${HTTP_PROXY}"
+    elif [[ -v http_proxy ]] ; then
+      GPG_PROXY="--keyserver-options http-proxy=${http_proxy}"
+    fi
+    import_gpg_keys --keyring-file "${kr_path}" \
+                    --key-id "0xae09fe4bbd223a84b2ccfce3f60f4b3d7fa2af80" \
+                    --key-id "0xeb693b3035cd5710e231e123a4b469963bf863cc" \
+                    --key-id "0xc95b321b61e88c1809c4f759ddcae044f796ecb0"
+
     local -r repo_data="${nvctk_root}/stable/deb/\$(ARCH) /"
     local -r repo_path="/etc/apt/sources.list.d/${repo_name}.list"
     echo "deb     [signed-by=${kr_path}] ${repo_data}" >  "${repo_path}"
@@ -1013,9 +1147,15 @@ function add_repo_cuda() {
       echo "deb [signed-by=${kr_path}] https://developer.download.nvidia.com/compute/cuda/repos/${shortname}/x86_64/ /" \
       | sudo tee "${sources_list_path}"
 
-      gpg --keyserver keyserver.ubuntu.com \
-        --no-default-keyring --keyring "${kr_path}" \
-        --recv-keys "0xae09fe4bbd223a84b2ccfce3f60f4b3d7fa2af80" "0xeb693b3035cd5710e231e123a4b469963bf863cc"
+      GPG_PROXY_ARGS=""
+      if [[ -n "${HTTP_PROXY}" ]] ; then
+        GPG_PROXY="--keyserver-options http-proxy=${HTTP_PROXY}"
+      elif [[ -n "${http_proxy}" ]] ; then
+        GPG_PROXY="--keyserver-options http-proxy=${http_proxy}"
+      fi
+      import_gpg_keys --keyring-file "${kr_path}" \
+                      --key-id "0xae09fe4bbd223a84b2ccfce3f60f4b3d7fa2af80" \
+                      --key-id "0xeb693b3035cd5710e231e123a4b469963bf863cc"
     else
       install_cuda_keyring_pkg # 11.7+, 12.0+
     fi
@@ -1024,30 +1164,148 @@ function add_repo_cuda() {
   fi
 }
 
+function execute_github_driver_build() {
+      local local_tarball="$1"
+      local gcs_tarball="$2"
+
+      if ${gsutil_stat_cmd} "${gcs_tarball}" 2>&1 ; then
+        echo "cache hit"
+        return
+      fi
+
+      # build the kernel modules
+      touch "${local_tarball}.building"
+      ${gsutil_cmd} cp "${local_tarball}.building" "${gcs_tarball}.building"
+      building_file="${gcs_tarball}.building"
+
+      pushd open-gpu-kernel-modules
+      install_build_dependencies
+      if ( is_cuda11 && is_ubuntu22 ) ; then
+        echo "Kernel modules cannot be compiled for CUDA 11 on ${_shortname}"
+        exit 1
+      fi
+      execute_with_retries make -j$(nproc) modules \
+        >  kernel-open/build.log \
+        2> kernel-open/build_error.log
+      make -j$(nproc) modules_install
+      # Sign kernel modules
+      if [[ -n "${PSN}" ]]; then
+        configure_dkms_certs
+        echo "DEBUG: mok_key=${mok_key}"
+        echo "DEBUG: mok_der=${mok_der}"
+        if [[ -f "${mok_key}" ]]; then ls -l "${mok_key}"; fi
+        if [[ -f "${mok_der}" ]]; then ls -l "${mok_der}"; fi
+        set -x
+        for module in $(find /lib/modules/${uname_r}/kernel/drivers/video -name '*nvidia*.ko') ; do
+          echo "DEBUG: Signing ${module}"
+          "/lib/modules/${uname_r}/build/scripts/sign-file" sha256 \
+          "${mok_key}" \
+          "${mok_der}" \
+          "${module}"
+        done
+        set +x
+        clear_dkms_key
+      fi
+      # Collect build logs and installed binaries
+      tar czvf "${local_tarball}" \
+        "${workdir}/open-gpu-kernel-modules/kernel-open/"*.log \
+        $(find /lib/modules/${uname_r}/ -iname 'nvidia*.ko')
+      ${gsutil_cmd} cp "${local_tarball}" "${gcs_tarball}"
+      if ${gsutil_stat_cmd} "${gcs_tarball}.building" ; then ${gsutil_cmd} rm "${gcs_tarball}.building" || true ; fi
+      building_file=""
+      rm "${local_tarball}"
+      make clean
+      popd
+}
+
 function build_driver_from_github() {
   # non-GPL driver will have been built on rocky8, or when driver
   # version is prior to open driver min, or GPU architecture is prior
   # to Turing
   if ( is_rocky8 \
     || version_lt "${DRIVER_VERSION}" "${MIN_OPEN_DRIVER_VER}" \
-    || [[ "$((16#${pci_device_id}))" < "$((16#1E00))" ]] ) ; then return 0 ; fi
+    || [[ "$((16#${pci_device_id}))" < "$((16#1E00))" ]] ) ; then
+    return 0
+  fi
   pushd "${workdir}"
   test -d "${workdir}/open-gpu-kernel-modules" || {
     tarball_fn="${DRIVER_VERSION}.tar.gz"
-    execute_with_retries curl ${curl_retry_args} \
-      "https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${tarball_fn}" \
-      \| tar xz
-    mv "open-gpu-kernel-modules-${DRIVER_VERSION}" open-gpu-kernel-modules
-  }
 
-  local nvidia_ko_path="$(find /lib/modules/$(uname -r)/ -name 'nvidia.ko')"
-  test -n "${nvidia_ko_path}" && test -f "${nvidia_ko_path}" || {
+    local github_url="https://github.com/NVIDIA/open-gpu-kernel-modules/archive/refs/tags/${DRIVER_VERSION}.tar.gz"
+    local gcs_cache_path="${pkg_bucket}/nvidia/src/${tarball_fn}"
+    local local_tarball="${tmpdir}/${tarball_fn}"
+
+    # Check 1: Local tarball
+    if [[ ! -f "${local_tarball}" ]]; then
+      # Check 2: GCS Cache
+      echo "Checking for cached source tarball at: ${gcs_cache_path}"
+      if ! ${gsutil_stat_cmd} "${gcs_cache_path}" 2>/dev/null; then
+        # Check 3: Download from GitHub
+        echo "Source tarball not found in GCS cache. Downloading from GitHub: ${github_url}"
+        if curl ${curl_retry_args[@]} -L "${github_url}" -o "${local_tarball}"; then
+          echo "Download complete. Uploading to ${gcs_cache_path}"
+          if ${gsutil_cmd} cp "${local_tarball}" "${gcs_cache_path}"; then
+            echo "Successfully cached to GCS."
+          else
+            echo "ERROR: Failed to upload source tarball to GCS: ${gcs_cache_path}"
+            # Proceeding with local file anyway
+          fi
+        else
+          echo "ERROR: Failed to download source tarball from GitHub: ${github_url}"
+          exit 1
+        fi
+      else
+        echo "Source tarball found in GCS cache. Downloading from ${gcs_cache_path}"
+        if ! ${gsutil_cmd} cp "${gcs_cache_path}" "${local_tarball}"; then
+          echo "ERROR: Failed to download source tarball from GCS: ${gcs_cache_path}"
+          exit 1
+        fi
+      fi
+    else
+      echo "INFO: Using existing local tarball: ${local_tarball}"
+    fi
+
+    echo "Extracting source tarball..."
+    tar xzf "${local_tarball}" -C "${workdir}"
+    mv "${workdir}/open-gpu-kernel-modules-${DRIVER_VERSION}" "${workdir}/open-gpu-kernel-modules"
+    # rm -f "${local_tarball}" # Keep the local tarball for potential reuse
+  }
+  local nvidia_ko_path="$(find /lib/modules/$(uname -r)/ -name 'nvidia.ko' | head -n1)"
+
+  local needs_build=false
+  if [[ -n "${nvidia_ko_path}" && -f "${nvidia_ko_path}" ]]; then
+    if modinfo "${nvidia_ko_path}" | grep -qi sig ; then
+      echo "NVIDIA kernel module found and appears signed."
+      # Try to load it to be sure
+      if ! modprobe nvidia > /dev/null 2>&1; then
+        echo "Module signed but failed to load. Rebuilding."
+        needs_build=true
+      else
+        echo "Module loaded successfully."
+      fi
+    else
+      echo "NVIDIA kernel module found but NOT signed. Rebuilding."
+      needs_build=true
+    fi
+  else
+    echo "NVIDIA kernel module not found. Building."
+    needs_build=true
+  fi
+
+
+  if [[ "${needs_build}" == "true" ]]; then
+    # Configure certs to get modulus_md5sum for the path
+    if [[ -n "${PSN}" ]]; then
+      configure_dkms_certs
+    fi
+
     local build_tarball="kmod_${_shortname}_${DRIVER_VERSION}.tar.gz"
     local local_tarball="${workdir}/${build_tarball}"
     local build_dir
     if test -v modulus_md5sum && [[ -n "${modulus_md5sum}" ]]
       then build_dir="${modulus_md5sum}"
-      else build_dir="unsigned" ; fi
+      else build_dir="unsigned"
+    fi
 
     local gcs_tarball="${pkg_bucket}/nvidia/kmod/${_shortname}/${uname_r}/${build_dir}/${build_tarball}"
 
@@ -1067,55 +1325,41 @@ function build_driver_from_github() {
             ${gsutil_cmd} rm "${gcs_tarball}.building" || echo "might have been deleted by a peer"
             break
           fi
-          sleep 5m
+          sleep 1m # could take up to 180 minutes on single core nodes
         done
       fi
     fi
 
-    if ${gsutil_stat_cmd} "${gcs_tarball}" 2>&1 ; then
-      echo "cache hit"
-    else
-      # build the kernel modules
-      touch "${local_tarball}.building"
-      ${gsutil_cmd} cp "${local_tarball}.building" "${gcs_tarball}.building"
-      building_file="${gcs_tarball}.building"
-      pushd open-gpu-kernel-modules
-      install_build_dependencies
-      if ( is_cuda11 && is_ubuntu22 ) ; then
-        echo "Kernel modules cannot be compiled for CUDA 11 on ${_shortname}"
-        exit 1
-      fi
-      execute_with_retries make -j$(nproc) modules \
-        >  kernel-open/build.log \
-        2> kernel-open/build_error.log
-      # Sign kernel modules
-      if [[ -n "${PSN}" ]]; then
-        configure_dkms_certs
-        for module in $(find open-gpu-kernel-modules/kernel-open -name '*.ko'); do
-          "/lib/modules/${uname_r}/build/scripts/sign-file" sha256 \
-          "${mok_key}" \
-          "${mok_der}" \
-          "${module}"
-        done
-        clear_dkms_key
-      fi
-      make modules_install \
-        >>  kernel-open/build.log \
-        2>> kernel-open/build_error.log
-      # Collect build logs and installed binaries
-      tar czvf "${local_tarball}" \
-        "${workdir}/open-gpu-kernel-modules/kernel-open/"*.log \
-        $(find /lib/modules/${uname_r}/ -iname 'nvidia*.ko')
-      ${gsutil_cmd} cp "${local_tarball}" "${gcs_tarball}"
-      if ${gsutil_stat_cmd} "${gcs_tarball}.building" ; then ${gsutil_cmd} rm "${gcs_tarball}.building" || true ; fi
-      building_file=""
-      rm "${local_tarball}"
-      make clean
-      popd
-    fi
+    execute_github_driver_build "${local_tarball}" "${gcs_tarball}"
+
     ${gsutil_cmd} cat "${gcs_tarball}" | tar -C / -xzv
     depmod -a
-  }
+
+    # Verify signature after installation
+    if [[ -n "${PSN}" ]]; then
+      configure_dkms_certs
+
+      # Verify signatures and load
+      local signed=true
+      for module_path in $(find /lib/modules/${uname_r}/ -iname 'nvidia*.ko'); do
+        module="$(basename "${module_path}" | sed -e 's/.ko$//')"
+        if ! modinfo "${module}" | grep -qi ^signer: ; then
+           echo "ERROR: Module ${module} is NOT signed after installation."
+           signed=false
+        fi
+      done
+      if [[ "${signed}" != "true" ]]; then
+        echo "ERROR: Module signing failed."
+        exit 1
+      fi
+
+      if ! modprobe nvidia; then
+        echo "ERROR: Failed to load nvidia module after build and sign."
+        exit 1
+      fi
+      echo "NVIDIA modules built, signed, and loaded successfully."
+    fi
+  fi
 
   popd
 }
@@ -1157,12 +1401,13 @@ function build_driver_from_packages() {
 
 function install_nvidia_userspace_runfile() {
   # Parameters for NVIDIA-provided Debian GPU driver
-  readonly DEFAULT_USERSPACE_URL="https://us.download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
+  local -r USERSPACE_RUNFILE="NVIDIA-Linux-x86_64-${DRIVER_VERSION}.run"
 
-  readonly USERSPACE_URL=$(get_metadata_attribute 'gpu-driver-url' "${DEFAULT_USERSPACE_URL}")
+  local -r DEFAULT_USERSPACE_URL="https://us.download.nvidia.com/XFree86/Linux-x86_64/${DRIVER_VERSION}/${USERSPACE_RUNFILE}"
 
-  USERSPACE_FILENAME="$(echo ${USERSPACE_URL} | perl -pe 's{^.+/}{}')"
-  readonly USERSPACE_FILENAME
+  local USERSPACE_URL
+  USERSPACE_URL="$(get_metadata_attribute 'gpu-driver-url' "${DEFAULT_USERSPACE_URL}")"
+  readonly USERSPACE_URL
 
   # This .run file contains NV's OpenGL implementation as well as
   # nvidia optimized implementations of the gtk+ 2,3 stack(s) not
@@ -1175,16 +1420,21 @@ function install_nvidia_userspace_runfile() {
   # wget https://us.download.nvidia.com/XFree86/Linux-x86_64/560.35.03/NVIDIA-Linux-x86_64-560.35.03.run
   # sh ./NVIDIA-Linux-x86_64-560.35.03.run -x # this will allow you to review the contents of the package without installing it.
   is_complete userspace && return
-  local local_fn="${tmpdir}/userspace.run"
+  local local_fn="${tmpdir}/${USERSPACE_RUNFILE}"
 
   cache_fetched_package "${USERSPACE_URL}" \
-                        "${pkg_bucket}/nvidia/${USERSPACE_FILENAME}" \
+                        "${pkg_bucket}/nvidia/${USERSPACE_RUNFILE}" \
                         "${local_fn}"
 
-  local runfile_args
-  runfile_args=""
+  local runfile_sha256sum
+  runfile_sha256sum="$(cd "${tmpdir}" && sha256sum "${USERSPACE_RUNFILE}")"
+  local runfile_hash
+  runfile_hash=$(echo "${runfile_sha256sum}" | awk '{print $1}')
+
+  local runfile_args=""
   local cache_hit="0"
-  local local_tarball
+  local local_tarball="" # Initialize local_tarball here
+  local gcs_tarball=""   # Initialize gcs_tarball here
 
   # Build nonfree driver on rocky8, or when driver version is prior to
   # open driver min, or when GPU architecture is prior to Turing
@@ -1195,13 +1445,13 @@ function install_nvidia_userspace_runfile() {
     local nvidia_ko_path="$(find /lib/modules/$(uname -r)/ -name 'nvidia.ko')"
     test -n "${nvidia_ko_path}" && test -f "${nvidia_ko_path}" || {
       local build_tarball="kmod_${_shortname}_${DRIVER_VERSION}_nonfree.tar.gz"
-      local_tarball="${workdir}/${build_tarball}"
+      local_tarball="${workdir}/${build_tarball}" # Set within the condition
       local build_dir
       if test -v modulus_md5sum && [[ -n "${modulus_md5sum}" ]]
         then build_dir="${modulus_md5sum}"
         else build_dir="unsigned" ; fi
 
-      local gcs_tarball="${pkg_bucket}/nvidia/kmod/${_shortname}/${uname_r}/${build_dir}/${build_tarball}"
+      gcs_tarball="${pkg_bucket}/nvidia/kmod/${_shortname}/${uname_r}/${build_dir}/${build_tarball}" # Set within the condition
 
       if [[ "$(hostname -s)" =~ ^test && "$(nproc)" < 32 ]] ; then
         # when running with fewer than 32 cores, yield to in-progress build
@@ -1270,7 +1520,7 @@ function install_nvidia_userspace_runfile() {
     if [[ "${cache_hit}" == "1" ]] ; then
       ${gsutil_cmd} cat "${gcs_tarball}" | tar -C / -xzv
       depmod -a
-    else
+    elif [[ -n "${local_tarball}" ]]; then # Check if local_tarball was set
       clear_dkms_key
       tar czvf "${local_tarball}" \
         /var/log/nvidia-installer.log \
@@ -1279,6 +1529,8 @@ function install_nvidia_userspace_runfile() {
 
       if ${gsutil_stat_cmd} "${gcs_tarball}.building" ; then ${gsutil_cmd} rm "${gcs_tarball}.building" || true ; fi
       building_file=""
+    else
+      echo "DEBUG: local_tarball not set, skipping tarball creation." >&2
     fi
   fi
 
@@ -1290,7 +1542,7 @@ function install_nvidia_userspace_runfile() {
 function install_cuda_runfile() {
   is_complete cuda && return
 
-  local local_fn="${tmpdir}/cuda.run"
+  local local_fn="${tmpdir}/${CUDA_RUNFILE}"
 
   cache_fetched_package "${NVIDIA_CUDA_URL}" \
                         "${pkg_bucket}/nvidia/${CUDA_RUNFILE}" \
@@ -1379,6 +1631,12 @@ function install_nvidia_container_toolkit() {
 
 # Install NVIDIA GPU driver provided by NVIDIA
 function install_nvidia_gpu_driver() {
+  if ! modprobe nvidia > /dev/null 2>&1; then
+    echo "NVIDIA module not loading. Removing completion marker to force
+re-install."
+    mark_incomplete gpu-driver
+  fi
+
   is_complete gpu-driver && return
   if [[ "${gpu_count}" == "0" ]] ; then return ; fi
 
@@ -1411,7 +1669,7 @@ function install_ops_agent(){
   mkdir -p /opt/google
   cd /opt/google
   # https://cloud.google.com/stackdriver/docs/solutions/agents/ops-agent/installation
-  curl ${curl_retry_args} -O https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
+  curl ${curl_retry_args[@]} -O https://dl.google.com/cloudagents/add-google-cloud-ops-agent-repo.sh
   local expected="038d98644e4c4a7969d26da790946720d278c8d49bb82b677f550c2a2b858411  add-google-cloud-ops-agent-repo.sh"
 
   execute_with_retries bash add-google-cloud-ops-agent-repo.sh --also-install
@@ -1429,9 +1687,9 @@ function install_gpu_agent() {
   fi
   local install_dir=/opt/gpu-utilization-agent
   mkdir -p "${install_dir}"
-  curl ${curl_retry_args} \
+  curl ${curl_retry_args[@]} \
     "${GPU_AGENT_REPO_URL}/requirements.txt" -o "${install_dir}/requirements.txt"
-  curl ${curl_retry_args} \
+  curl ${curl_retry_args[@]} \
     "${GPU_AGENT_REPO_URL}/report_gpu_metrics.py" \
     | sed -e 's/-u --format=/--format=/' \
     | dd status=none of="${install_dir}/report_gpu_metrics.py"
@@ -1444,6 +1702,11 @@ function install_gpu_agent() {
   "${python_interpreter}" -m venv "${venv}"
 (
   source "${venv}/bin/activate"
+  if [[ -v METADATA_HTTP_PROXY_PEM_URI ]] && [[ -n "${METADATA_HTTP_PROXY_PEM_URI}" ]]; then
+    export REQUESTS_CA_BUNDLE="${trusted_pem_path}"
+    pip install pip-system-certs
+    unset REQUESTS_CA_BUNDLE
+  fi
   python3 -m pip install --upgrade pip
   execute_with_retries python3 -m pip install -r "${install_dir}/requirements.txt"
 )
@@ -1689,7 +1952,7 @@ function install_build_dependencies() {
   is_complete build-dependencies && return
 
   if is_debuntu ; then
-    if is_ubuntu22 && is_cuda12 ; then
+    if is_ubuntu22 && ge_cuda12 ; then
       # On ubuntu22, the default compiler does not build some kernel module versions
       # https://forums.developer.nvidia.com/t/linux-new-kernel-6-5-0-14-ubuntu-22-04-can-not-compile-nvidia-display-card-driver/278553/11
       execute_with_retries apt-get install -y -qq gcc-12
@@ -1767,7 +2030,7 @@ function mark_incomplete() {
 function install_dependencies() {
   is_complete install-dependencies && return 0
 
-  pkg_list="pciutils screen"
+  pkg_list="screen"
   if is_debuntu ; then execute_with_retries apt-get -y -q install ${pkg_list}
   elif is_rocky ; then execute_with_retries dnf     -y -q install ${pkg_list} ; fi
   mark_complete install-dependencies
@@ -1846,6 +2109,337 @@ function hold_nvidia_packages() {
   fi
 }
 
+# --- Global JQ Readers for /run/dpgce-network.json ---
+DPGCE_NET_FILE="/run/dpgce-network.json"
+
+# Generic function to query the network info file
+function get_network_info() {
+  local jq_filter="$1"
+  if [[ ! -f "${DPGCE_NET_FILE}" ]]; then
+    echo "WARNING: ${DPGCE_NET_FILE} not found, running evaluate_network..." >&2
+    evaluate_network > /dev/null # Run in a subshell to not affect current shell
+    if [[ ! -f "${DPGCE_NET_FILE}" ]]; then
+      echo "ERROR: Failed to create ${DPGCE_NET_FILE}" >&2
+      echo "null"
+      return 1
+    fi
+  fi
+  jq -r "${jq_filter}" "${DPGCE_NET_FILE}"
+}
+
+# Get the primary IP address (interface 0)
+function get_primary_ip() {
+  get_network_info '.network_interfaces[0].ip'
+}
+
+# Get the primary network name
+function get_primary_network() {
+  get_network_info '.network_interfaces[0].network'
+}
+
+# Get the primary subnet name
+function get_primary_subnet() {
+  get_network_info '.network_interfaces[0].subnet'
+}
+
+# Check if the primary interface has an external IP
+function has_external_ip() {
+  local access_configs
+  access_configs=$(get_network_info '.network_interfaces[0].access_configs')
+  if [[ "${access_configs}" == "[]" || "${access_configs}" == "null" ]]; then
+    return 1 # False
+  else
+    return 0 # True
+  fi
+}
+
+# Check if a default route exists
+function has_default_route() {
+  # This check is done live, before the JSON file is written
+  if ip route show default | grep -q default; then
+    return 0 # True - default route found
+  else
+    return 1 # False - no default route
+  fi
+}
+
+function is_proxy_enabled() {
+  local http_proxy=$(get_network_info '.metadata_instance_http_proxy')
+  local https_proxy=$(get_network_info '.metadata_instance_https_proxy')
+  local proj_http_proxy=$(get_network_info '.metadata_project_http_proxy')
+  local proj_https_proxy=$(get_network_info '.metadata_project_https_proxy')
+
+  if [[ "${http_proxy}" != "null" && -n "${http_proxy}" ]] || \
+     [[ "${https_proxy}" != "null" && -n "${https_proxy}" ]] || \
+     [[ "${proj_http_proxy}" != "null" && -n "${proj_http_proxy}" ]] || \
+     [[ "${proj_https_proxy}" != "null" && -n "${proj_https_proxy}" ]]; then
+    return 0 # True
+  else
+    return 1 # False
+  fi
+}
+
+function can_reach_gstatic() {
+  get_network_info '.connectivity.can_reach_gstatic' | grep -q true
+}
+
+# --- Globally Useful Helper Functions ---
+
+# Function to safely encode a string for JSON
+function json_encode() {
+  if [[ "$1" == "null" || -z "$1" ]]; then
+    echo "null"
+  else
+    jq -n --arg v "$1" '$v'
+  fi
+}
+
+# --- Main Evaluation Function ---
+
+function evaluate_network() {
+  # --- Helpers Local to evaluate_network ---
+  function _get_meta() {
+    local path="$1"
+    local url="http://metadata.google.internal/computeMetadata/v1/instance/${path}"
+    curl -f -H "Metadata-Flavor: Google" -s "${url}" 2>/dev/null || echo "null"
+  }
+  function _get_project_meta() {
+    local path="$1"
+    local url="http://metadata.google.internal/computeMetadata/v1/project/${path}"
+    curl -f -H "Metadata-Flavor: Google" -s "${url}" 2>/dev/null || echo "null"
+  }
+  function get_meta_base() {
+    _get_meta "$1" | awk -F/ '{print $NF}'
+  }
+  function get_meta_attr() {
+    _get_meta "attributes/$1"
+  }
+  function get_project_meta_attr() {
+    _get_project_meta "attributes/$1"
+  }
+  function get_net_meta() {
+    local iface="$1"
+    local item="$2"
+    local path="network-interfaces/${iface}${item}"
+    if [[ "${item}" == */ ]]; then
+      # If item is a directory, list its contents as a JSON array
+      local contents=$(_get_meta "${path}")
+      if [[ "${contents}" == "null" || -z "${contents}" ]]; then
+        echo "[]"
+      else
+        echo "${contents}" | jq -R -s 'split("\n") | map(select(length > 0)) | map(split("/") | last)'
+      fi
+    else
+      # Otherwise, fetch the value
+      _get_meta "${path}"
+    fi
+  }
+  function get_net_meta_base() {
+    local iface="$1"
+    local item="$2"
+    _get_meta "network-interfaces/${iface}${item}" | awk -F/ '{print $NF}'
+  }
+  function cmd_output() {
+    json_encode "$("$@")"
+  }
+  function file_content() {
+    if [[ -f "$1" ]]; then
+      json_encode "$(cat "$1")"
+    else
+      echo "null"
+    fi
+  }
+  # --- End Local Helpers ---
+
+  # --- Connectivity Checks ---
+  local public_ipv4=""
+  local public_ipv6=""
+  local can_reach_ns1_v4=false
+  local can_reach_ns1_v6=false
+  local can_reach_gstatic=false
+  local traceroute_gstatic="null"
+
+  if command -v dig > /dev/null 2>&1; then
+    if ping -4 -c1 -W1 ns1.google.com > /dev/null 2>&1; then
+      can_reach_ns1_v4=true
+      public_ipv4=$(dig -4 TXT +short o-o.myaddr.l.google.com @ns1.google.com | tr -d '"' || echo "")
+    fi
+    if ping -6 -c1 -W1 ns1.google.com > /dev/null 2>&1; then
+      can_reach_ns1_v6=true
+      public_ipv6=$(dig -6 TXT +short o-o.myaddr.l.google.com @ns1.google.com | tr -d '"' || echo "")
+    fi
+  else
+    echo "WARNING: dig command not found, skipping public IP checks." >&2
+  fi
+
+  if has_default_route; then
+    if curl -s --head --max-time 5 http://www.gstatic.com/generate_204 | grep -E "HTTP/[0-9.]* (2..|3..)" > /dev/null; then
+      can_reach_gstatic=true
+      if command -v traceroute > /dev/null 2>&1; then
+        traceroute_gstatic=$(traceroute -m 15 www.gstatic.com 2>/dev/null || echo "traceroute failed")
+      else
+         traceroute_gstatic="traceroute command not found"
+      fi
+    fi
+  fi
+
+  # --- Kerberos Checks ---
+  local krb5_conf="/etc/krb5.conf"
+  local kerberos_configured=false
+  local kdc_realm="null"
+  local kdc_hosts="[]"
+  local can_reach_kdc=false
+  if [[ -f "${krb5_conf}" ]]; then
+    kerberos_configured=true
+    kdc_realm=$(awk -F '=' '/default_realm/ {print $2}' "${krb5_conf}" | tr -d ' ' || echo "null")
+    if [[ "${kdc_realm}" != "null" ]]; then
+      local realm_hosts=$(awk "/${kdc_realm//./\\.} = {/,/}/" "${krb5_conf}" | grep kdc = | awk -F '=' '{print $2}' | tr -d ' ')
+      kdc_hosts=$(echo "${realm_hosts}" | jq -R -s 'split("\n") | map(select(length > 0))')
+      for host in ${realm_hosts}; do
+        if ping -c1 -W1 "${host}" > /dev/null 2>&1; then
+          can_reach_kdc=true
+          break
+        fi
+      done
+    fi
+  fi
+
+  local json_output
+  json_output=$(jq -n \
+    --arg hostname "$(_get_meta hostname)" \
+    --arg instance_id "$(_get_meta id)" \
+    --arg machine_type "$(get_meta_base machine-type)" \
+    --arg zone "$(get_meta_base zone)" \
+    --arg project_id "$(_get_project_meta project-id)" \
+    --arg can_ip_forward "$(_get_meta can-ip-forward)" \
+    --argjson tags "$(_get_meta tags || echo "[]")" \
+    --arg metadata_instance_http_proxy "$(get_meta_attr http-proxy)" \
+    --arg metadata_instance_https_proxy "$(get_meta_attr https-proxy)" \
+    --arg metadata_project_http_proxy "$(get_project_meta_attr http-proxy)" \
+    --arg metadata_project_https_proxy "$(get_project_meta_attr https-proxy)" \
+    --arg local_ip_addr "$(ip -json addr || echo "[]")" \
+    --arg local_ip_route "$(ip -json route show table all || echo "[]")" \
+    --arg local_resolv_conf "$(cat /etc/resolv.conf 2>/dev/null || echo "")" \
+    --arg env_http_proxy "${http_proxy:-null}" \
+    --arg env_https_proxy "${https_proxy:-null}" \
+    --arg env_no_proxy "${no_proxy:-null}" \
+    --arg public_ipv4 "${public_ipv4}" \
+    --arg public_ipv6 "${public_ipv6}" \
+    --arg can_reach_ns1_v4 "${can_reach_ns1_v4}" \
+    --arg can_reach_ns1_v6 "${can_reach_ns1_v6}" \
+    --arg can_reach_gstatic "${can_reach_gstatic}" \
+    --arg traceroute_gstatic "${traceroute_gstatic}" \
+    --arg kerberos_configured "${kerberos_configured}" \
+    --arg kdc_realm "${kdc_realm}" \
+    --argjson kdc_hosts "${kdc_hosts}" \
+    --arg can_reach_kdc "${can_reach_kdc}" \
+    '{
+      hostname: $hostname,
+      instance_id: $instance_id,
+      machine_type: $machine_type,
+      zone: $zone,
+      project_id: $project_id,
+      can_ip_forward: ($can_ip_forward == "true"),
+      tags: $tags,
+      metadata_instance_http_proxy: ($metadata_instance_http_proxy | if . == "null" then null else . end),
+      metadata_instance_https_proxy: ($metadata_instance_https_proxy | if . == "null" then null else . end),
+      metadata_project_http_proxy: ($metadata_project_http_proxy | if . == "null" then null else . end),
+      metadata_project_https_proxy: ($metadata_project_https_proxy | if . == "null" then null else . end),
+      local_ip_addr: ($local_ip_addr | fromjson?),
+      local_ip_route: ($local_ip_route | fromjson?),
+      local_resolv_conf: ($local_resolv_conf | if . == "" then null else . end),
+      env_http_proxy: ($env_http_proxy | if . == "null" then null else . end),
+      env_https_proxy: ($env_https_proxy | if . == "null" then null else . end),
+      env_no_proxy: ($env_no_proxy | if . == "null" then null else . end),
+      connectivity: {
+        public_ipv4: ($public_ipv4 | if . == "" then null else . end),
+        public_ipv6: ($public_ipv6 | if . == "" then null else . end),
+        can_reach_ns1_v4: ($can_reach_ns1_v4 == "true"),
+        can_reach_ns1_v6: ($can_reach_ns1_v6 == "true"),
+        can_reach_gstatic: ($can_reach_gstatic == "true"),
+        traceroute_gstatic: ($traceroute_gstatic | if . == "traceroute failed" or . == "traceroute command not found" then null else . end)
+      },
+      kerberos: {
+        configured: ($kerberos_configured == "true"),
+        default_realm: ($kdc_realm | if . == "null" then null else . end),
+        kdc_hosts: $kdc_hosts,
+        can_reach_kdc: ($can_reach_kdc == "true")
+      }
+    }')
+
+  # Add network interfaces
+  local ifs=$(_get_meta network-interfaces/)
+  local ni_array="[]"
+  for iface in ${ifs}; do
+    local iface_name=$(get_net_meta "${iface}" name)
+    local ethtool_info="null"
+    local ethtool_driver="null"
+    if [[ -n "${iface_name}" && "${iface_name}" != "null" && -x "/sbin/ethtool" ]]; then
+      ethtool_info=$(/sbin/ethtool "${iface_name}" 2>/dev/null || echo "")
+      ethtool_driver=$(/sbin/ethtool -i "${iface_name}" 2>/dev/null || echo "")
+    fi
+
+    local ip_aliases=$(get_net_meta "${iface}" ip-aliases/)
+    # Ensure access_configs are fetched and formatted as JSON array
+    local ac_contents=$(_get_meta "network-interfaces/${iface}access-configs/")
+    local access_configs="[]"
+    if [[ "${ac_contents}" != "null" && -n "${ac_contents}" ]]; then
+        readarray -t configs <<<"${ac_contents}"
+        local ac_json_array="["
+        local first_ac=true
+        for config in "${configs[@]}"; do
+            if [[ -z "${config}" ]]; then continue; fi
+            if [ "$first_ac" = false ]; then ac_json_array+=","; fi
+            first_ac=false
+            local ext_ip=$(_get_meta "network-interfaces/${iface}access-configs/${config}external-ip")
+            local ac_type=$(_get_meta "network-interfaces/${iface}access-configs/${config}type")
+            ac_json_array+=$(jq -n --arg external_ip "${ext_ip}" --arg type "${ac_type}" '{external_ip: $external_ip, type: $type}')
+        done
+        ac_json_array+="]"
+        access_configs=$ac_json_array
+    fi
+
+    local interface_json=$(jq -n \
+      --arg interface "${iface%%/}" \
+      --arg name "${iface_name}" \
+      --arg ip "$(get_net_meta "${iface}" ip)" \
+      --arg network "$(get_net_meta_base "${iface}" network)" \
+      --arg subnet "$(get_net_meta_base "${iface}" subnet)" \
+      --arg gateway "$(get_net_meta "${iface}" gateway)" \
+      --argjson ip_aliases "${ip_aliases}" \
+      --argjson access_configs "${access_configs}" \
+      --arg ethtool_info "${ethtool_info}" \
+      --arg ethtool_driver "${ethtool_driver}" \
+      '{
+        interface: $interface,
+        name: ($name | if . == "null" then null else . end),
+        ip: $ip,
+        network: $network,
+        subnet: $subnet,
+        gateway: $gateway,
+        ip_aliases: $ip_aliases,
+        access_configs: $access_configs,
+        ethtool_info: ($ethtool_info | if . == "null" or . == "" then null else . end),
+        ethtool_driver: ($ethtool_driver | if . == "null" or . == "" then null else . end)
+      }')
+    ni_array=$(echo "$ni_array" | jq --argjson item "$interface_json" '. += [$item]')
+  done
+
+  json_output=$(echo "$json_output" | jq --argjson ni "$ni_array" '.network_interfaces = $ni')
+
+  # Add sys_nvidia_devices
+  local sys_nvidia="null"
+  if [[ -d /sys/bus/pci/drivers/nvidia ]]; then
+    sys_nvidia=$(ls /sys/bus/pci/drivers/nvidia || echo "")
+  fi
+  json_output=$(echo "$json_output" | jq --arg sys_nvidia "${sys_nvidia}" '.sys_nvidia_devices = ($sys_nvidia | if . == "null" or . == "" then null else . end)')
+
+  # Write to file and stdout
+  local output_file="/run/dpgce-network.json"
+  echo "$json_output" | tee "$output_file"
+  echo "Network evaluation saved to ${output_file}" >&2
+}
+
 function check_secure_boot() {
   local SECURE_BOOT="disabled"
   if command -v mokutil ; then
@@ -1856,8 +2450,7 @@ function check_secure_boot() {
   readonly PSN
 
   if [[ "${SECURE_BOOT}" == "enabled" ]] && le_debian11 ; then
-    echo "Error: Secure Boot is not supported on Debian before image 2.2. Please disable Secure Boot while creating the cluster."
-    exit 1
+    echo "WARN: Secure Boot is not supported on Debian before image 2.2. Please disable Secure Boot while creating the cluster.  Continue at your own peril."
   elif [[ "${SECURE_BOOT}" == "enabled" ]] && [[ -z "${PSN}" ]]; then
     echo "Error: Secure boot is enabled, but no signing material provided."
     echo "Please either disable secure boot or provide signing material as per"
@@ -1875,10 +2468,17 @@ function check_secure_boot() {
   return 0
 }
 
+
 # Function to group Hadoop/Spark config steps (called in init-action mode or deferred)
 function run_hadoop_spark_config() {
   # Ensure necessary variables are available or re-evaluated
   # prepare_gpu_env needs CUDA/Driver versions, call it first if needed
+  # Set GCS bucket for caching
+  if [[ ! -v pkg_bucket ]] ; then
+    temp_bucket="$(get_metadata_attribute dataproc-temp-bucket)"
+    readonly temp_bucket
+    readonly pkg_bucket="gs://${temp_bucket}/dpgce-packages"
+  fi
   if [[ ! -v CUDA_VERSION || ! -v DRIVER_VERSION ]]; then prepare_gpu_env; fi
   # Re-read ROLE
   ROLE="$(get_metadata_attribute dataproc-role)";
@@ -1933,13 +2533,6 @@ function run_hadoop_spark_config() {
     :
   fi
 
-  # Restart services after config
-  for svc in resourcemanager nodemanager; do
-    if (systemctl is-active --quiet hadoop-yarn-${svc}.service); then
-      systemctl stop  hadoop-yarn-${svc}.service || echo "WARN: Failed to stop ${svc}"
-      systemctl start hadoop-yarn-${svc}.service || echo "WARN: Failed to start ${svc}"
-    fi
-  done
   return 0 # Explicitly return success
 }
 
@@ -1957,6 +2550,11 @@ function create_deferred_config_files() {
 #!/bin/bash
 # Deferred configuration script generated by install_gpu_driver.sh
 set -xeuo pipefail
+
+readonly tmpdir=/tmp
+readonly config_script_path="${config_script_path}"
+readonly service_name="${service_name}"
+readonly service_file="${service_file}"
 
 # --- Minimal necessary functions and variables ---
 # Define constants
@@ -2077,21 +2675,14 @@ $(declare -f cache_fetched_package)
 $(declare -f execute_with_retries)
 
 # --- Define gsutil/gcloud commands and curl args ---
-# With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
-# used as a more performant replacement for `gsutil`
-if gcloud --help >/dev/null 2>&1 && gcloud storage --help >/dev/null 2>&1; then
-  gsutil_cmd="gcloud storage"
-  gsutil_stat_cmd="gcloud storage objects describe"
-else
+gsutil_cmd="gcloud storage"
+gsutil_stat_cmd="gcloud storage objects describe"
+gcloud_sdk_version="\$(gcloud --version | awk -F'SDK ' '/Google Cloud SDK/ {print \$2}' || echo '0.0.0')"
+if version_lt "\${gcloud_sdk_version}" "402.0.0" ; then
   gsutil_cmd="gsutil -o GSUtil:check_hashes=never"
   gsutil_stat_cmd="gsutil stat"
 fi
 curl_retry_args="-fsSL --retry-connrefused --retry 10 --retry-max-time 30"
-# Define pkg_bucket (needed by cache_fetched_package)
-temp_bucket="\$(get_metadata_attribute dataproc-temp-bucket)"
-readonly temp_bucket
-readonly pkg_bucket="gs://\${temp_bucket}/dpgce-packages"
-readonly install_log="/tmp/deferred-config-install.log" # Log file for execute_with_retries
 
 # --- Include the main config function ---
 $(declare -f run_hadoop_spark_config)
@@ -2107,6 +2698,14 @@ else
   # Keep the service enabled to allow for manual inspection/retry
   exit 1
 fi
+
+# Restart services after applying config
+for svc in resourcemanager nodemanager; do
+  if (systemctl is-active --quiet hadoop-yarn-\${svc}.service); then
+    systemctl stop  hadoop-yarn-\${svc}.service || echo "WARN: Failed to stop \${svc}"
+    systemctl start hadoop-yarn-\${svc}.service || echo "WARN: Failed to start \${svc}"
+  fi
+done
 
 exit 0
 EOF
@@ -2135,9 +2734,11 @@ EOF
   # Service is enabled later only if IS_CUSTOM_IMAGE_BUILD is true
 }
 
+
 function main() {
   # Perform installations (these are generally safe during image build)
-  if (lspci | grep -q NVIDIA); then
+  if (grep -qi PCI_ID=10DE /sys/bus/pci/devices/*/uevent); then
+
     # Check MIG status early, primarily for driver installation logic
     migquery_result="$(nvsmi --query-gpu=mig.mode.current --format=csv,noheader || echo '[N/A]')" # Use || for safety
     if [[ "${migquery_result}" == "[N/A]" ]] ; then migquery_result="" ; fi
@@ -2240,6 +2841,7 @@ function main() {
     # The config script handles its own cleanup and service disabling on success
   fi
   # --- End Apply or Defer ---
+  mark_complete install_gpu_driver-main
 }
 
 function cache_fetched_package() {
@@ -2250,7 +2852,7 @@ function cache_fetched_package() {
   if ${gsutil_stat_cmd} "${gcs_fn}" 2>&1 ; then
     execute_with_retries ${gsutil_cmd} cp "${gcs_fn}" "${local_fn}"
   else
-    time ( curl ${curl_retry_args} "${src_url}" -o "${local_fn}" && \
+    time ( curl ${curl_retry_args[@]} "${src_url}" -o "${local_fn}" && \
            execute_with_retries ${gsutil_cmd} cp "${local_fn}" "${gcs_fn}" ; )
   fi
 }
@@ -2280,8 +2882,7 @@ function clean_up_sources_lists() {
 
     local -r bigtop_kr_path="/usr/share/keyrings/bigtop-keyring.gpg"
     rm -f "${bigtop_kr_path}"
-    curl ${curl_retry_args} \
-      "${bigtop_key_uri}" | gpg --dearmor -o "${bigtop_kr_path}"
+    import_gpg_keys --keyring-file "${bigtop_kr_path}" --key-url "${bigtop_key_uri}"
 
     sed -i -e "s:deb https:deb [signed-by=${bigtop_kr_path}] https:g" "${dataproc_repo_file}"
     sed -i -e "s:deb-src https:deb-src [signed-by=${bigtop_kr_path}] https:g" "${dataproc_repo_file}"
@@ -2298,10 +2899,9 @@ function clean_up_sources_lists() {
   if test -f "${old_adoptium_list}" ; then
     rm -f "${old_adoptium_list}"
   fi
-  for keyid in "0x3b04d753c9050d9a5d343f39843c48a565f8f04b" "0x35baa0b33e9eb396f59ca838c0ba5ce6dc6315a3" ; do
-    curl ${curl_retry_args} "https://keyserver.ubuntu.com/pks/lookup?op=get&search=${keyid}" \
-    | gpg --import --no-default-keyring --keyring "${adoptium_kr_path}"
-  done
+  import_gpg_keys --keyring-file "${adoptium_kr_path}" \
+                  --key-id "0x3b04d753c9050d9a5d343f39843c48a565f8f04b" \
+                  --key-id "0x35baa0b33e9eb396f59ca838c0ba5ce6dc6315a3"
   echo "deb [signed-by=${adoptium_kr_path}] https://packages.adoptium.net/artifactory/deb/ $(os_codename) main" \
    > /etc/apt/sources.list.d/adoptium.list
 
@@ -2313,8 +2913,7 @@ function clean_up_sources_lists() {
   local -r docker_key_url="https://download.docker.com/linux/$(os_id)/gpg"
 
   rm -f "${docker_kr_path}"
-  curl ${curl_retry_args} "${docker_key_url}" \
-    | gpg --import --no-default-keyring --keyring "${docker_kr_path}"
+  import_gpg_keys --keyring-file "${docker_kr_path}" --key-url "${docker_key_url}"
   echo "deb [signed-by=${docker_kr_path}] https://download.docker.com/linux/$(os_id) $(os_codename) stable" \
     > ${docker_repo_file}
 
@@ -2324,8 +2923,7 @@ function clean_up_sources_lists() {
   local gcloud_kr_path="/usr/share/keyrings/cloud.google.gpg"
   if ls /etc/apt/sources.list.d/google-clou*.list ; then
     rm -f "${gcloud_kr_path}"
-    curl ${curl_retry_args} https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-      | gpg --import --no-default-keyring --keyring "${gcloud_kr_path}"
+    import_gpg_keys --keyring-file "${gcloud_kr_path}" --key-url "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
     for list in google-cloud google-cloud-logging google-cloud-monitoring ; do
       list_file="/etc/apt/sources.list.d/${list}.list"
       if [[ -f "${list_file}" ]]; then
@@ -2340,10 +2938,9 @@ function clean_up_sources_lists() {
   if [[ -f /etc/apt/sources.list.d/cran-r.list ]]; then
     local cranr_kr_path="/usr/share/keyrings/cran-r.gpg"
     rm -f "${cranr_kr_path}"
-    for keyid in "0x95c0faf38db3ccad0c080a7bdc78b2ddeabc47b7" "0xe298a3a825c0d65dfd57cbb651716619e084dab9" ; do
-      curl ${curl_retry_args} "https://keyserver.ubuntu.com/pks/lookup?op=get&search=${keyid}" \
-      | gpg --import --no-default-keyring --keyring "${cranr_kr_path}"
-    done
+    import_gpg_keys --keyring-file "${cranr_kr_path}" \
+                    --key-id "0x95c0faf38db3ccad0c080a7bdc78b2ddeabc47b7" \
+                    --key-id "0xe298a3a825c0d65dfd57cbb651716619e084dab9"
     sed -i -e "s:deb http:deb [signed-by=${cranr_kr_path}] http:g" /etc/apt/sources.list.d/cran-r.list
   fi
 
@@ -2352,8 +2949,9 @@ function clean_up_sources_lists() {
   #
   if [[ -f /etc/apt/sources.list.d/mysql.list ]]; then
     rm -f /usr/share/keyrings/mysql.gpg
-    curl ${curl_retry_args} 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xBCA43417C3B485DD128EC6D4B7B3B788A8D3785C' | \
-      gpg --dearmor -o /usr/share/keyrings/mysql.gpg
+
+    import_gpg_keys --keyring-file /usr/share/keyrings/mysql.gpg --key-id "0xBCA43417C3B485DD128EC6D4B7B3B788A8D3785C"
+
     sed -i -e 's:deb https:deb [signed-by=/usr/share/keyrings/mysql.gpg] https:g' /etc/apt/sources.list.d/mysql.list
   fi
 
@@ -2460,33 +3058,227 @@ print( "     samples-taken: ", scalar @siz, $/,
 
   # zero free disk space (only if creating image)
   if [[ "${IS_CUSTOM_IMAGE_BUILD}" == "true" ]]; then
-    dd if=/dev/zero of=/zero status=progress || true
+    dd if=/dev/zero of=/zero status=progress
     sync
     sleep 3s
-    rm -f /zero || true
+    rm -f /zero
   fi
 
   return 0
 }
 
 function set_proxy(){
-  METADATA_HTTP_PROXY="$(get_metadata_attribute http-proxy '')"
+  local meta_http_proxy meta_https_proxy meta_proxy_uri
+  meta_http_proxy=$(get_metadata_attribute 'http-proxy' '')
+  meta_https_proxy=$(get_metadata_attribute 'https-proxy' '')
+  meta_proxy_uri=$(get_metadata_attribute 'proxy-uri' '')
+  METADATA_HTTP_PROXY_PEM_URI="$(get_metadata_attribute http-proxy-pem-uri '')"
 
-  if [[ -z "${METADATA_HTTP_PROXY}" ]] ; then return ; fi
+  echo "DEBUG: set_proxy: meta_http_proxy='${meta_http_proxy}'"
+  echo "DEBUG: set_proxy: meta_https_proxy='${meta_https_proxy}'"
+  echo "DEBUG: set_proxy: meta_proxy_uri='${meta_proxy_uri}'"
+  echo "DEBUG: set_proxy: METADATA_HTTP_PROXY_PEM_URI='${METADATA_HTTP_PROXY_PEM_URI}'"
 
-  export http_proxy="${METADATA_HTTP_PROXY}"
-  export https_proxy="${METADATA_HTTP_PROXY}"
-  export HTTP_PROXY="${METADATA_HTTP_PROXY}"
-  export HTTPS_PROXY="${METADATA_HTTP_PROXY}"
-  no_proxy="localhost,127.0.0.0/8,::1,metadata.google.internal,169.254.169.254"
-  local no_proxy_svc
-  for no_proxy_svc in compute  secretmanager dns    servicedirectory     logging  \
-                      bigquery composer      pubsub bigquerydatatransfer dataflow \
-                      storage  datafusion    ; do
-    no_proxy="${no_proxy},${no_proxy_svc}.googleapis.com"
-  done
+  local http_proxy_val=""
+  local https_proxy_val=""
 
+  # Determine HTTP_PROXY value
+  if [[ -n "${meta_http_proxy}" ]] && [[ "${meta_http_proxy}" != ":" ]]; then
+    http_proxy_val="${meta_http_proxy}"
+  elif [[ -n "${meta_proxy_uri}" ]] && [[ "${meta_proxy_uri}" != ":" ]]; then
+    http_proxy_val="${meta_proxy_uri}"
+  fi
+
+  # Determine HTTPS_PROXY value
+  if [[ -n "${meta_https_proxy}" ]] && [[ "${meta_https_proxy}" != ":" ]]; then
+    https_proxy_val="${meta_https_proxy}"
+  elif [[ -n "${meta_proxy_uri}" ]] && [[ "${meta_proxy_uri}" != ":" ]]; then
+    https_proxy_val="${meta_proxy_uri}"
+  fi
+
+  local proxy_protocol="http"
+  if [[ -n "${METADATA_HTTP_PROXY_PEM_URI}" ]]; then
+    proxy_protocol="https"
+  fi
+
+  # Export environment variables
+  if [[ -n "${http_proxy_val}" ]]; then
+    export HTTP_PROXY="${proxy_protocol}://${http_proxy_val}"
+    export http_proxy="${proxy_protocol}://${http_proxy_val}"
+  else
+    unset HTTP_PROXY
+    unset http_proxy
+  fi
+  # Default HTTPS_PROXY to HTTP_PROXY if not separately defined
+  if [[ -n "${https_proxy_val}" ]]; then
+    export HTTPS_PROXY="${proxy_protocol}://${https_proxy_val}"
+    export https_proxy="${proxy_protocol}://${https_proxy_val}"
+  elif [[ -n "${HTTP_PROXY:-}" ]]; then
+    export HTTPS_PROXY="${HTTP_PROXY}"
+    export https_proxy="${http_proxy}"
+  else
+    unset HTTPS_PROXY
+    unset https_proxy
+  fi
+
+  local default_no_proxy_list=(
+    "localhost" "127.0.0.1" "::1" "metadata.google.internal" "169.254.169.254"
+    ".google.com" ".googleapis.com"
+  )
+  local user_no_proxy
+  user_no_proxy=$(get_metadata_attribute 'no-proxy' '')
+  local user_no_proxy_list=()
+  if [[ -n "${user_no_proxy}" ]]; then
+    IFS=',' read -r -a user_no_proxy_list <<< "${user_no_proxy// /,}"
+  fi
+  local combined_no_proxy_list=( "${default_no_proxy_list[@]}" "${user_no_proxy_list[@]}" )
+  local no_proxy
+  no_proxy=$( IFS=',' ; echo "${combined_no_proxy_list[*]}" )
   export NO_PROXY="${no_proxy}"
+  export no_proxy="${no_proxy}"
+
+  # Set in /etc/environment
+  sed -i -e '/^http_proxy=/d' -e '/^https_proxy=/d' -e '/^no_proxy=/d' \
+    -e '/^HTTP_PROXY=/d' -e '/^HTTPS_PROXY=/d' -e '/^NO_PROXY=/d' /etc/environment
+  if [[ -n "${HTTP_PROXY:-}" ]]; then echo "HTTP_PROXY=${HTTP_PROXY}" >> /etc/environment; fi
+  if [[ -n "${http_proxy:-}" ]]; then echo "http_proxy=${http_proxy}" >> /etc/environment; fi
+  if [[ -n "${HTTPS_PROXY:-}" ]]; then echo "HTTPS_PROXY=${HTTPS_PROXY}" >> /etc/environment; fi
+  if [[ -n "${https_proxy:-}" ]]; then echo "https_proxy=${https_proxy}" >> /etc/environment; fi
+  if [[ -n "${NO_PROXY:-}" ]]; then echo "NO_PROXY=${NO_PROXY}" >> /etc/environment; fi
+  if [[ -n "${no_proxy:-}" ]]; then echo "no_proxy=${no_proxy}" >> /etc/environment; fi
+
+  echo "DEBUG: set_proxy: Effective HTTP_PROXY=${HTTP_PROXY:-}"
+  echo "DEBUG: set_proxy: Effective HTTPS_PROXY=${HTTPS_PROXY:-}"
+  echo "DEBUG: set_proxy: Effective NO_PROXY=${NO_PROXY:-}"
+
+  # Configure gcloud proxy
+  local gcloud_version
+  local -r min_gcloud_proxy_ver="547.0.0"
+  gcloud_version=$(gcloud version --format="value(google_cloud_sdk)")
+  if version_ge "${gcloud_version}" "${min_gcloud_proxy_ver}"; then
+    if [[ -n "${http_proxy_val}" ]]; then
+      local proxy_host=$(echo "${http_proxy_val}" | cut -d: -f1)
+      local proxy_port=$(echo "${http_proxy_val}" | cut -d: -f2)
+      gcloud config set proxy/type http
+      gcloud config set proxy/address "${proxy_host}"
+      gcloud config set proxy/port "${proxy_port}"
+    else
+      gcloud config unset proxy/type
+      gcloud config unset proxy/address
+      gcloud config unset proxy/port
+    fi
+  fi
+
+  # Install the HTTPS proxy's certificate
+  local proxy_ca_pem=""
+  if [[ -n "${METADATA_HTTP_PROXY_PEM_URI}" ]] ; then
+    if [[ ! "${METADATA_HTTP_PROXY_PEM_URI}" =~ ^gs:// ]] ; then echo "ERROR: http-proxy-pem-uri value must start with gs://" ; exit 1 ; fi
+    echo "DEBUG: set_proxy: Processing http-proxy-pem-uri='${METADATA_HTTP_PROXY_PEM_URI}'"
+    local trusted_pem_dir
+    if is_debuntu ; then
+      trusted_pem_dir="/usr/local/share/ca-certificates"
+      proxy_ca_pem="${trusted_pem_dir}/proxy_ca.crt"
+      mkdir -p "${trusted_pem_dir}"
+      ${gsutil_cmd} cp "${METADATA_HTTP_PROXY_PEM_URI}" "${proxy_ca_pem}" || { echo "ERROR: Failed to download proxy CA cert from GCS." ; exit 1 ; }
+      update-ca-certificates
+      export trusted_pem_path="/etc/ssl/certs/ca-certificates.crt"
+    elif is_rocky ; then
+      trusted_pem_dir="/etc/pki/ca-trust/source/anchors"
+      proxy_ca_pem="${trusted_pem_dir}/proxy_ca.crt"
+      mkdir -p "${trusted_pem_dir}"
+      ${gsutil_cmd} cp "${METADATA_HTTP_PROXY_PEM_URI}" "${proxy_ca_pem}" || { echo "ERROR: Failed to download proxy CA cert from GCS." ; exit 1 ; }
+      update-ca-trust
+      export trusted_pem_path="/etc/ssl/certs/ca-bundle.crt"
+    fi
+    export REQUESTS_CA_BUNDLE="${trusted_pem_path}"
+    echo "DEBUG: set_proxy: trusted_pem_path set to '${trusted_pem_path}'"
+
+    # TODO: try this on rocky - exercise the tls bypass code path
+    # Add to Java/Conda trust stores
+    if [[ -f "/etc/environment" ]]; then
+        JAVA_HOME="$(awk -F= '/^JAVA_HOME=/ {print $2}' /etc/environment)"
+        if [[ -n "${JAVA_HOME:-}" && -f "${JAVA_HOME}/bin/keytool" ]]; then
+            "${JAVA_HOME}/bin/keytool" -import -cacerts -storepass changeit -noprompt -alias swp_ca -file "${proxy_ca_pem}"
+        fi
+    fi
+    if command -v conda &> /dev/null ; then
+      local conda_cert_file="/opt/conda/default/ssl/cacert.pem"
+      if [[ -f "${conda_cert_file}" ]]; then
+        local ca_subject=$(openssl crl2pkcs7 -nocrl -certfile "${proxy_ca_pem}" | openssl pkcs7 -print_certs -noout | grep ^subject)
+        openssl crl2pkcs7 -nocrl -certfile "${conda_cert_file}" | openssl pkcs7 -print_certs -noout | grep -Fxq "${ca_subject}" || {
+          cat "${proxy_ca_pem}" >> "${conda_cert_file}"
+        }
+      fi
+    fi
+  else
+    export trusted_pem_path="" # Explicitly empty
+  fi
+
+  if [[ -z "${http_proxy_val}" && -z "${https_proxy_val}" ]]; then
+    echo "DEBUG: set_proxy: No proxy host/port configured, skipping proxy-specific setups."
+    return 0
+  fi
+
+  # Proxy is configured, proceed with tests and tool configs
+  local proxy_host=$(echo "${http_proxy_val}" | cut -d: -f1)
+  local proxy_port=$(echo "${http_proxy_val}" | cut -d: -f2)
+
+  # TCP test
+  if ! nc -zv -w 5 "${proxy_host}" "${proxy_port}"; then
+    echo "ERROR: Failed to establish TCP connection to proxy ${proxy_host}:${proxy_port}."
+    exit 1
+  fi
+
+  # External site test
+  local test_url="https://www.google.com"
+  local curl_test_args=(${curl_retry_args[@]:-})
+  if [[ -n "${trusted_pem_path}" ]]; then
+    curl_test_args+=(--cacert "${trusted_pem_path}")
+  fi
+  if ! curl "${curl_test_args[@]}" -vL -o /dev/null "${test_url}"; then
+    echo "ERROR: Failed to fetch ${test_url} via proxy ${HTTP_PROXY}."
+    exit 1
+  fi
+
+  # Configure package managers
+  if is_debuntu ; then
+    pkg_proxy_conf_file="/etc/apt/apt.conf.d/99proxy"
+    echo "Acquire::http::Proxy \"${HTTP_PROXY}\";" > "${pkg_proxy_conf_file}"
+    echo "Acquire::https::Proxy \"${HTTPS_PROXY}\";" >> "${pkg_proxy_conf_file}"
+  elif is_rocky ; then
+    pkg_proxy_conf_file="/etc/dnf/dnf.conf"
+    touch "${pkg_proxy_conf_file}"
+    sed -i.bak '/^proxy=/d' "${pkg_proxy_conf_file}"
+    if grep -q "^\[main\]" "${pkg_proxy_conf_file}"; then
+      sed -i.bak "/^\[main\]/a proxy=${HTTP_PROXY}" "${pkg_proxy_conf_file}"
+    else
+      echo -e "[main]\nproxy=${HTTP_PROXY}" >> "${pkg_proxy_conf_file}"
+    fi
+  fi
+
+  # Configure dirmngr
+  if is_debuntu ; then
+    if ! dpkg -l | grep -q dirmngr; then
+      execute_with_retries apt-get install -y -qq dirmngr
+    fi
+  elif is_rocky ; then
+    if ! rpm -q gnupg2-smime; then
+      execute_with_retries dnf install -y -q gnupg2-smime
+    fi
+  fi
+  mkdir -p /etc/gnupg
+  local dirmngr_conf="/etc/gnupg/dirmngr.conf"
+  touch "${dirmngr_conf}"
+  sed -i.bak '/^http-proxy/d' "${dirmngr_conf}"
+  if [[ -n "${HTTP_PROXY:-}" ]]; then
+    echo "http-proxy ${HTTP_PROXY}" >> "${dirmngr_conf}"
+  fi
+
+  if [[ -n "${METADATA_HTTP_PROXY_PEM_URI}" ]] ; then
+    pip install pip-system-certs
+    unset REQUESTS_CA_BUNDLE
+  fi
+  echo "DEBUG: set_proxy: Proxy setup complete."
 }
 
 function mount_ramdisk(){
@@ -2546,8 +3338,24 @@ function harden_sshd_config() {
 function prepare_to_install(){
   readonly uname_r=$(uname -r)
   # Verify OS compatability and Secure boot state
+  evaluate_network
   check_os
   check_secure_boot
+  # Setup temporary directories (potentially on RAM disk)
+  tmpdir=/tmp/ # Default
+  mount_ramdisk # Updates tmpdir if successful
+  install_log="${tmpdir}/install.log" # Set install log path based on final tmpdir
+  curl_retry_args="-fsSL --retry-connrefused --retry 10 --retry-max-time 30"
+  # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
+  # used as a more performant replacement for `gsutil`
+  gsutil_cmd="gcloud storage"
+  gsutil_stat_cmd="gcloud storage objects describe"
+  gcloud_sdk_version="$(gcloud --version | awk -F'SDK ' '/Google Cloud SDK/ {print $2}')"
+  if version_lt "${gcloud_sdk_version}" "402.0.0" ; then
+    gsutil_cmd="gsutil -o GSUtil:check_hashes=never"
+    gsutil_stat_cmd="gsutil stat"
+  fi
+  set_proxy
 
   # --- Detect Image Build Context ---
   # Use 'initialization-actions' as the default name for clarity
@@ -2560,24 +3368,26 @@ function prepare_to_install(){
     # echo "Running in initialization action mode (invocation-type=${INVOCATION_TYPE})." # Keep silent
   fi
 
-  # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
-  # used as a more performant replacement for `gsutil`
-  gsutil_cmd="gcloud storage"
-  gsutil_stat_cmd="gcloud storage objects describe"
-  gcloud_sdk_version="$(gcloud --version | awk -F'SDK ' '/Google Cloud SDK/ {print $2}')"
-  if version_lt "${gcloud_sdk_version}" "402.0.0" ; then
-    gsutil_cmd="gsutil -o GSUtil:check_hashes=never"
-    gsutil_stat_cmd="gsutil stat"
-  fi
-  curl_retry_args="-fsSL --retry-connrefused --retry 10 --retry-max-time 30"
+  # if fetches of nvidia packages fail, apply -k argument to the following.
 
-  # Setup temporary directories (potentially on RAM disk)
-  tmpdir=/tmp/ # Default
-  mount_ramdisk # Updates tmpdir if successful
-  install_log="${tmpdir}/install.log" # Set install log path based on final tmpdir
+  # After manually verifying the veracity of the asset, take note of sha256sum
+  # of the downloaded files in your gcs bucket and submit these data with an
+  # issue or pull request to the github repository
+  # GoogleCloudDataproc/initialization-actions and we will include those hashes
+  # with this script for manual validation at time of deployment.
 
-  # Prepare GPU environment variables (versions, URLs, counts)
-  prepare_gpu_env
+  # Please provide hash data in the following format:
+
+#      ["cuda_11.5.2_495.29.05_linux.run"]="2c33591bb5b33a3d4bffafdc7da76fe4"
+#      ["cuda_11.6.2_510.47.03_linux.run"]="2989d2d2a943fa5e2a1f29f660221788"
+#      ["cuda_12.1.1_530.30.02_linux.run"]="2f0a4127bf797bf4eab0be2a547cb8d0"
+#      ["cuda_12.4.1_550.54.15_linux.run"]="afc99bab1d8c6579395d851d948ca3c1"
+#      ["cuda_12.6.3_560.35.05_linux.run"]="29d297908c72b810c9ceaa5177142abd"
+#      ["NVIDIA-Linux-x86_64-495.46.run"]="db1d6b0f9e590249bbf940a99825f000"
+#      ["NVIDIA-Linux-x86_64-510.108.03.run"]="a225bcb0373cbf6c552ed906bc5c614e"
+#      ["NVIDIA-Linux-x86_64-530.30.02.run"]="655b1509b9a9ed0baa1ef6b2bcf80283"
+#      ["NVIDIA-Linux-x86_64-550.135.run"]="a8c3ae0076f11e864745fac74bfdb01f"
+#      ["NVIDIA-Linux-x86_64-550.142.run"]="e507e578ecf10b01a08e5424dddb25b8"
 
   workdir=/opt/install-dpgce
   # Set GCS bucket for caching
@@ -2587,9 +3397,11 @@ function prepare_to_install(){
   readonly bdcfg="/usr/local/bin/bdconfig"
   export DEBIAN_FRONTEND=noninteractive
 
+  # Prepare GPU environment variables (versions, URLs, counts)
+  prepare_gpu_env
+
   mkdir -p "${workdir}/complete"
   trap exit_handler EXIT
-  set_proxy
 
   is_complete prepare.common && return
 
@@ -2612,9 +3424,14 @@ function prepare_to_install(){
   fi
 
   # zero free disk space (only if creating image)
-  if [[ "${IS_CUSTOM_IMAGE_BUILD}" == "true" ]]; then ( set +e
-    time dd if=/dev/zero of=/zero status=none ; sync ; sleep 3s ; rm -f /zero
-  ) fi
+  if [[ "${IS_CUSTOM_IMAGE_BUILD}" == "true" ]]; then
+    set +e
+    time dd if=/dev/zero of=/zero status=none
+    sync
+    sleep 3s
+    rm -f /zero
+    set -e
+  fi
 
   install_dependencies
 
@@ -2695,7 +3512,7 @@ function dnf_add_repo() {
   local -r kr_path="${5:-/etc/pki/rpm-gpg/${repo_name}.gpg}"
   local -r repo_path="${6:-/etc/yum.repos.d/${repo_name}.repo}"
 
-  curl ${curl_retry_args} "${repo_url}" \
+  curl ${curl_retry_args[@]} "${repo_url}" \
     | dd of="${repo_path}" status=progress
 }
 
@@ -2714,8 +3531,7 @@ function os_add_repo() {
 
   mkdir -p "$(dirname "${kr_path}")"
 
-  curl ${curl_retry_args} "${signing_key_url}" \
-    | gpg --import --no-default-keyring --keyring "${kr_path}"
+  import_gpg_keys --keyring-file "${kr_path}" --key-url "${signing_key_url}"
 
   if is_debuntu ; then apt_add_repo "${repo_name}" "${signing_key_url}" "${repo_data}" "${4:-yes}" "${kr_path}" "${6:-}"
                   else dnf_add_repo "${repo_name}" "${signing_key_url}" "${repo_data}" "${4:-yes}" "${kr_path}" "${6:-}" ; fi
@@ -2729,24 +3545,27 @@ function install_spark_rapids() {
 
   # Update SPARK RAPIDS config
   local DEFAULT_SPARK_RAPIDS_VERSION
+  local nvidia_repo_url
   DEFAULT_SPARK_RAPIDS_VERSION="24.08.1"
-  if version_ge "${DATAPROC_IMAGE_VERSION}" "2.2" ; then
-    DEFAULT_SPARK_RAPIDS_VERSION="25.02.1"
+  if [[ "${DATAPROC_IMAGE_VERSION}" == "2.0" ]] ; then
+    DEFAULT_SPARK_RAPIDS_VERSION="23.08.2" # Final release to support spark 3.1.3
+    nvidia_repo_url='https://repo1.maven.org/maven2/com/nvidia'
+  elif version_ge "${DATAPROC_IMAGE_VERSION}" "2.2" ; then
+    DEFAULT_SPARK_RAPIDS_VERSION="25.08.0"
+    nvidia_repo_url='https://edge.urm.nvidia.com/artifactory/sw-spark-maven/com/nvidia'
+  elif version_ge "${DATAPROC_IMAGE_VERSION}" "2.1" ; then
+    DEFAULT_SPARK_RAPIDS_VERSION="25.08.0"
+    nvidia_repo_url='https://edge.urm.nvidia.com/artifactory/sw-spark-maven/com/nvidia'
   fi
   local DEFAULT_XGBOOST_VERSION="1.7.6" # 2.1.3
 
   # https://mvnrepository.com/artifact/ml.dmlc/xgboost4j-spark-gpu
   local -r scala_ver="2.12"
 
-  if [[ "${DATAPROC_IMAGE_VERSION}" == "2.0" ]] ; then
-    DEFAULT_SPARK_RAPIDS_VERSION="23.08.2" # Final release to support spark 3.1.3
-  fi
-
   readonly SPARK_RAPIDS_VERSION=$(get_metadata_attribute 'spark-rapids-version' ${DEFAULT_SPARK_RAPIDS_VERSION})
   readonly XGBOOST_VERSION=$(get_metadata_attribute 'xgboost-version' ${DEFAULT_XGBOOST_VERSION})
 
   local -r rapids_repo_url='https://repo1.maven.org/maven2/ai/rapids'
-  local -r nvidia_repo_url='https://repo1.maven.org/maven2/com/nvidia'
   local -r dmlc_repo_url='https://repo.maven.apache.org/maven2/ml/dmlc'
 
   local jar_basename
@@ -2768,6 +3587,152 @@ function install_spark_rapids() {
                         "${pkg_bucket}/rapids-4-spark_${scala_ver}/${SPARK_RAPIDS_VERSION}/${jar_basename}" \
                         "${spark_jars_dir}/${jar_basename}"
 }
+
+# Function to download GPG keys from URLs or Keyservers and import them to a specific keyring
+# Usage:
+#   import_gpg_keys --keyring-file <PATH> \
+#     [--key-url <URL1> [--key-url <URL2> ...]] \
+#     [--key-id <ID1> [--key-id <ID2> ...]] \
+#     [--keyserver <KEYSERVER_URI>]
+function import_gpg_keys() {
+  local keyring_file=""
+  local key_urls=()
+  local key_ids=()
+  local keyserver="hkp://keyserver.ubuntu.com:80" # Default keyserver
+
+  # Parse named arguments
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --keyring-file)
+        keyring_file="$2"
+        shift 2
+        ;;
+      --key-url)
+        key_urls+=("$2")
+        shift 2
+        ;;
+      --key-id)
+        key_ids+=("$2")
+        shift 2
+        ;;
+      --keyserver)
+        keyserver="$2"
+        shift 2
+        ;;
+      *)
+        echo "Unknown option: $1" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  # Validate arguments
+  if [[ -z "${keyring_file}" ]]; then
+    echo "ERROR: --keyring-file is required." >&2
+    return 1
+  fi
+  if [[ ${#key_urls[@]} -eq 0 && ${#key_ids[@]} -eq 0 ]]; then
+    echo "ERROR: At least one --key-url or --key-id must be specified." >&2
+    return 1
+  fi
+
+  # Ensure the directory for the keyring file exists
+  local keyring_dir
+  keyring_dir=$(dirname "${keyring_file}")
+  if [[ ! -d "${keyring_dir}" ]]; then
+    echo "Creating directory for keyring: ${keyring_dir}"
+    mkdir -p "${keyring_dir}"
+  fi
+
+  local tmp_key_file=""
+  local success=true
+
+  # Process Key URLs
+  for current_key_url in "${key_urls[@]}"; do
+    echo "Attempting to download GPG key from URL: ${current_key_url}"
+    tmp_key_file="${tmpdir}/key_$(basename "${current_key_url}")_$(date +%s).asc"
+
+    if curl ${curl_retry_args[@]} "${current_key_url}" -o "${tmp_key_file}"; then
+      if [[ -s "${tmp_key_file}" ]]; then
+        echo "Key file downloaded to ${tmp_key_file}."
+        if gpg --no-default-keyring --keyring "${keyring_file}" --import "${tmp_key_file}"; then
+          echo "Key from ${current_key_url} imported successfully to ${keyring_file}."
+        else
+          echo "ERROR: gpg --import failed for ${tmp_key_file} from ${current_key_url}." >&2
+          success=false
+        fi
+      else
+        echo "ERROR: Downloaded key file ${tmp_key_file} from ${current_key_url} is empty." >&2
+        success=false
+      fi
+    else
+      echo "ERROR: curl failed to download key from ${current_key_url}." >&2
+      success=false
+    fi
+    [[ -f "${tmp_key_file}" ]] && rm -f "${tmp_key_file}"
+  done
+
+  # Process Key IDs
+  for key_id in "${key_ids[@]}"; do
+    # Strip 0x prefix if present
+    clean_key_id="${key_id#0x}"
+    echo "Attempting to fetch GPG key ID ${clean_key_id} using curl from ${keyserver}"
+
+    local fallback_key_url
+    local server_host
+    server_host=$(echo "${keyserver}" | sed -e 's#hkp[s]*://##' -e 's#:[0-9]*##')
+
+    # Common keyserver URL patterns
+    if [[ "${server_host}" == "keyserver.ubuntu.com" ]]; then
+        fallback_key_url="https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${clean_key_id}"
+    elif [[ "${server_host}" == "pgp.mit.edu" ]]; then
+        fallback_key_url="https://pgp.mit.edu/pks/lookup?op=get&search=0x${clean_key_id}"
+    elif [[ "${server_host}" == "keys.openpgp.org" ]]; then
+        fallback_key_url="https://keys.openpgp.org/vks/v1/by-fpr/${clean_key_id}"
+    else
+        fallback_key_url="https://${server_host}/pks/lookup?op=get&search=0x${clean_key_id}"
+        echo "WARNING: Using best-guess fallback URL for ${keyserver}: ${fallback_key_url}"
+    fi
+
+    tmp_key_file="${tmpdir}/${clean_key_id}.asc"
+    if curl ${curl_retry_args[@]} "${fallback_key_url}" -o "${tmp_key_file}"; then
+      if [[ -s "${tmp_key_file}" ]]; then
+         if grep -q -iE '<html|<head|<!DOCTYPE' "${tmp_key_file}"; then
+          echo "ERROR: Output from keyserver for ${clean_key_id} appears to be HTML, not a key. Key likely not found at ${fallback_key_url}." >&2
+          success=false
+        elif gpg --no-default-keyring --keyring "${keyring_file}" --import "${tmp_key_file}"; then
+          echo "Key ${clean_key_id} imported successfully to ${keyring_file}."
+        else
+          echo "ERROR: gpg --import failed for ${clean_key_id} from ${fallback_key_url}." >&2
+          success=false
+        fi
+      else
+        echo "ERROR: Downloaded key file for ${clean_key_id} is empty from ${fallback_key_url}." >&2
+        success=false
+      fi
+    else
+      echo "ERROR: curl failed to download key ${clean_key_id} from ${fallback_key_url}." >&2
+      success=false
+    fi
+    [[ -f "${tmp_key_file}" ]] && rm -f "${tmp_key_file}"
+  done
+
+  if [[ "${success}" == "true" ]]; then
+    return 0
+  else
+    echo "ERROR: One or more keys failed to import." >&2
+    return 1
+  fi
+}
+
+# Example Usage (uncomment to test)
+# import_gpg_keys --keyring-file "/tmp/test-keyring.gpg" --key-url "https://nvidia.github.io/libnvidia-container/gpgkey"
+# import_gpg_keys --keyring-file "/tmp/test-keyring.gpg" --key-id "A040830F7FAC5991"
+# import_gpg_keys --keyring-file "/tmp/test-keyring.gpg" --key-id "B82D541C" --keyserver "hkp://keyserver.ubuntu.com:80"
+
+# To use this in another script:
+# source ./gpg-import.sh
+# import_gpg_keys --keyring-file "/usr/share/keyrings/my-repo.gpg" --key-url "https://example.com/repo.key"
 
 # --- Script Entry Point ---
 prepare_to_install # Run preparation steps first

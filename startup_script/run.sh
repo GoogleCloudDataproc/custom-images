@@ -27,6 +27,18 @@
 
 set -x
 
+# Ensure gcloud is configured for the correct universe to prevent b/454030974
+UNIVERSE_DOMAIN=$(/usr/share/google/get_metadata_value attributes/universe-domain || echo "googleapis.com")
+echo "INFO: Ensuring gcloud universe_domain is set to ${UNIVERSE_DOMAIN}..."
+if [[ "$(gcloud config get core/universe_domain 2>/dev/null)" != "${UNIVERSE_DOMAIN}" ]]; then
+  echo "INFO: Setting core/universe_domain to ${UNIVERSE_DOMAIN}"
+  gcloud config set core/universe_domain "${UNIVERSE_DOMAIN}"
+else
+  echo "INFO: core/universe_domain is already set to ${UNIVERSE_DOMAIN}."
+fi
+
+echo "DEBUG: Starting startup_script/run.sh"
+
 # get custom-sources-path
 CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sources-path)
 # get time to wait for stdout to flush
@@ -78,17 +90,37 @@ function wait_until_ready() {
 }
 
 function download_scripts() {
-
+  echo "DEBUG: Attempting to download scripts from ${CUSTOM_SOURCES_PATH}"
   ${gsutil_cp_cmd} -r "${CUSTOM_SOURCES_PATH}/*" ./
+  echo "DEBUG: gsutil exit code: $?"
+}
+
+function setup_proxy() {
+  # Setup HTTP proxy if configured
+  if [[ -f ./gce-proxy-setup.sh ]]; then
+    local has_proxy="false"
+    if /usr/share/google/get_metadata_value attributes/http-proxy >/dev/null 2>&1; then has_proxy="true"; fi
+    if /usr/share/google/get_metadata_value attributes/https-proxy >/dev/null 2>&1; then has_proxy="true"; fi
+    if /usr/share/google/get_metadata_value attributes/proxy-uri >/dev/null 2>&1; then has_proxy="true"; fi
+
+    if [[ "${has_proxy}" == "true" ]]; then
+      echo "DEBUG: Running gce-proxy-setup.sh"
+      bash -x ./gce-proxy-setup.sh
+      if [[ $? -ne 0 ]]; then
+        echo "BuildFailed: gce-proxy-setup.sh failed."
+        return 1
+      fi
+      echo "DEBUG: Finished gce-proxy-setup.sh"
+    else
+      echo "DEBUG: No proxy metadata found, skipping gce-proxy-setup.sh"
+    fi
+  fi
+  return 0
 }
 
 function run_custom_script() {
-  if ! download_scripts; then
-    echo "BuildFailed: failed to download scripts from ${CUSTOM_SOURCES_PATH}."
-    return 1
-  fi
-
   # run init actions
+  echo "DEBUG: Running init_actions.sh"
   bash -x ./init_actions.sh
 
   # get return code
@@ -111,6 +143,46 @@ function cleanup() {
   rm ./init_actions.sh ./run.sh
 }
 
+function patch_bdutil_universe() {
+  # Apply workaround for b/454030974 directly to bdutil scripts if they exist
+  local bdutil_universe_script="/usr/local/share/google/dataproc/bdutil/bdutil_universe.sh"
+  if [[ -f "${bdutil_universe_script}" ]] && ! grep -q 'if \[\[ -z "${universe_domain}" \]\]' "${bdutil_universe_script}"; then
+    echo "INFO: Patching ${bdutil_universe_script} to fix universe_domain resolution..."
+    cp "${bdutil_universe_script}" "${bdutil_universe_script}.bak"
+    cat << 'EOF' > /tmp/patch_universe.sh
+#!/bin/bash
+awk '
+/function get_universe_domain\(\) \{/ {
+    print
+    print "  local universe_domain"
+    print "  universe_domain=\"\$(gcloud config get core/universe_domain 2> /dev/null || true)\""
+    print "  if [[ -z \"\${universe_domain}\" ]]; then"
+    print "    echo \"googleapis.com\""
+    print "  else"
+    print "    echo \"\${universe_domain}\""
+    print "  fi"
+    print "}"
+    in_func = 1
+    next
+}
+in_func && /^\}/ {
+    in_func = 0
+    next
+}
+!in_func { print }
+' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+EOF
+    bash /tmp/patch_universe.sh "${bdutil_universe_script}"
+    rm -f /tmp/patch_universe.sh
+  fi
+
+  # Remove any corrupted boto.cfg generated during builder VM boot
+  if [[ -f /etc/boto.cfg ]] && grep -q 'gs_host[[:space:]]*=[[:space:]]*storage\.$' /etc/boto.cfg; then
+    echo "INFO: Removing corrupted /etc/boto.cfg"
+    rm -f /etc/boto.cfg
+  fi
+}
+
 function is_version_at_least() {
   local -r VERSION=$1
   if [[ $(echo "$DATAPROC_IMAGE_VERSION >= $VERSION" | bc -l) -eq 1 ]]; then
@@ -129,7 +201,9 @@ function run_install_optional_components_script() {
     export BDUTIL_DIR="/usr/local/share/google/dataproc/bdutil"
     # Install Optional components
     set -Ee
+    set -a
     source /etc/environment
+    set +a
     source "${BDUTIL_DIR}/bdutil_env.sh"
     source "${BDUTIL_DIR}/bdutil_helpers.sh"
     source "${BDUTIL_DIR}/bdutil_metadata.sh"
@@ -146,6 +220,7 @@ function run_install_optional_components_script() {
   # print failure message if install fails
   if [[ $RET_CODE -ne 0 ]]; then
     echo "BuildFailed: Dataproc optional component installation Failed. Please check logs."
+    exit ${RET_CODE}
   else
     echo "BuildSucceeded: Dataproc optional component installation Succeeded."
   fi
@@ -155,8 +230,18 @@ function main() {
   wait_until_ready
 
   if [[ "${ready}" == "true" ]]; then
+    if ! download_scripts; then
+      echo "BuildFailed: failed to download scripts from ${CUSTOM_SOURCES_PATH}."
+      exit 1
+    fi
+
+    if ! setup_proxy; then
+      exit 1
+    fi
+
     run_install_optional_components_script
     run_custom_script
+    patch_bdutil_universe
     cleanup
   fi
 

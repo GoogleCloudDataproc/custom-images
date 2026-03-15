@@ -23,33 +23,25 @@ function version_lt(){ [[ "$1" = "$2" ]]&& return 1 || version_le "$1" "$2";}
 
 set -e
 
+DEBUG="${DEBUG:-0}"
+if (( DEBUG != 0 )); then
+  set -x
+fi
+
+source examples/secure-boot/lib/env.sh
+source examples/secure-boot/lib/util.sh
+
 IMAGE_VERSION="$1"
 if [[ -z "${IMAGE_VERSION}" ]] ; then
-IMAGE_VERSION="$(jq    -r .IMAGE_VERSION        env.json)" ; fi
-PROJECT_ID="$(jq       -r .PROJECT_ID           env.json)"
-PURPOSE="$(jq          -r .PURPOSE              env.json)"
-BUCKET="$(jq           -r .BUCKET               env.json)"
-TEMP_BUCKET="$(jq      -r .TEMP_BUCKET          env.json)"
-ZONE="$(jq             -r .ZONE                 env.json)"
-SUBNET="$(jq           -r .SUBNET               env.json)"
-HIVE_NAME="$(jq        -r .HIVE_INSTANCE_NAME   env.json)"
-HIVEDB_PW_URI="$(jq    -r .DB_HIVE_PASSWORD_URI env.json)"
-SECRET_NAME="$(jq      -r .SECRET_NAME          env.json)"
-KMS_KEY_URI="$(jq      -r .KMS_KEY_URI          env.json)"
+  IMAGE_VERSION="$(jq    -r .IMAGE_VERSION        env.json)" ; fi
 
-PRINCIPAL_USER="$(jq   -r .PRINCIPAL            env.json)"
-PRINCIPAL_DOMAIN="$(jq -r .DOMAIN               env.json)"
-PRINCIPAL="${PRINCIPAL_USER}@${PRINCIPAL_DOMAIN}"
-gcloud config set project "${PROJECT_ID}"
-gcloud config set account "${PRINCIPAL}"
+export tmpdir="${REPRO_TMPDIR}/${IMAGE_VERSION}"
+mkdir -p "${tmpdir}/sentinels"
 
 region="$(echo "${ZONE}" | perl -pe 's/-[a-z]+$//')"
 
 custom_image_zone="${ZONE}"
 disk_size_gb="30" # greater than or equal to 30 (32 for rocky8)
-
-SA_NAME="sa-${PURPOSE}"
-GSA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 # If no OS family specified, default to debian
 if [[ "${IMAGE_VERSION}" != *-* ]] ; then
@@ -74,32 +66,32 @@ case "${dataproc_version}" in
   "2.1-rocky8"       ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-roc8 ;;
   "2.1-ubuntu20"     ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-ubu20 ;;
   "2.1-ubuntu20-arm" ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-ubu20-arm ;;
-  "2.2-debian12"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-deb12 ;;
-  "2.2-rocky9"       ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-roc9 ;;
-  "2.2-ubuntu22"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.2-ubu22 ;;
-  "2.3-debian12"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-deb12 ;;
-  "2.3-rocky9"       ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-roc9 ;;
-  "2.3-ubuntu22"     ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-ubu22 ;;
-  "2.3-ml-ubuntu22"  ) CUDA_VERSION="12.6.3" ; short_dp_ver=2.3-ml-ubu22 ; disk_size_gb="50";;
+  "2.2-debian12"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.2-deb12 ;;
+  "2.2-rocky9"       ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.2-roc9 ;;
+  "2.2-ubuntu22"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.2-ubu22 ;;
+  "2.3-debian12"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-deb12 ;;
+  "2.3-rocky9"       ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-roc9 ;;
+  "2.3-ubuntu22"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-ubu22 ;;
+  "2.3-ml-ubuntu22"  ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-ml-ubu22 ; disk_size_gb="50";;
 esac
 
 function create_h100_instance() {
-  python generate_custom_image.py \
-    --machine-type         "a3-highgpu-2g" \
-    --accelerator          "type=nvidia-h100-80gb,count=2" \
+  python3 generate_custom_image.py \
+    --machine-type "a3-highgpu-2g" \
+    --accelerator  "type=nvidia-h100-80gb,count=2" \
     $*
 }
 
 function create_t4_instance() {
-  python generate_custom_image.py \
-    --machine-type         "n1-standard-32" \
-    --accelerator          "type=nvidia-tesla-t4,count=1" \
+  python3 generate_custom_image.py \
+    --machine-type "n1-standard-32" \
+    --accelerator  "type=nvidia-tesla-t4,count=1" \
     $*
 }
 
 function create_unaccelerated_instance() {
-  python generate_custom_image.py \
-    --machine-type         "n1-standard-2" \
+  python3 generate_custom_image.py \
+    --machine-type "n1-standard-2" \
     $*
 }
 
@@ -107,101 +99,186 @@ OPTIONAL_COMPONENTS_ARG=""
 
 function generate() {
   local extra_args="$*"
+
 #  local image_name="${PURPOSE}-${timestamp}-${dataproc_version//\./-}"
   local image_name="dataproc-${short_dp_ver//\./-}-${timestamp}-${PURPOSE}"
 
-  local image="$(jq -r ".[] | select(.name == \"${image_name}\").name" "${tmpdir}/images.json")"
+  print_status "Processing image ${image_name} for ${dataproc_version}"
+
+  local images_json_file="${tmpdir}/images.json"
+  if [[ ! -s "${images_json_file}" ]]; then # Check if file is missing or empty
+    print_status "Fetching current images list for ${PROJECT_ID}... "
+    if gcloud compute images list --project="${PROJECT_ID}" --format json > "${images_json_file}"; then
+      report_result "Done"
+      if [[ ! -s "${images_json_file}" ]]; then
+         echo "ERROR: ${images_json_file} is empty after gcloud command."
+         exit 1
+      fi
+    else
+      report_result "FAIL"
+      echo "ERROR: Failed to fetch image list."
+      exit 1
+    fi
+  fi
+
+  local instances_json_file="${tmpdir}/instances.json"
+  if [[ ! -s "${instances_json_file}" ]]; then # Check if file is missing or empty
+    print_status "Fetching current instances list for ${PROJECT_ID}... "
+    if gcloud compute instances list --project="${PROJECT_ID}" --zones "${ZONE}" --format json > "${instances_json_file}"; then
+      report_result "Done"
+      if [[ ! -s "${instances_json_file}" ]]; then
+         echo "ERROR: ${instances_json_file} is empty after gcloud command."
+         exit 1
+      fi
+    else
+      report_result "FAIL"
+      echo "ERROR: Failed to fetch instance list."
+      exit 1
+    fi
+  fi
+
+  local image="$(jq -r ".[] | select(.name == \"${image_name}\").name" "${images_json_file}" 2>/dev/null || echo '')"
 
   if [[ -n "${image}" ]] ; then
-    echo "Image already exists"
-    return
-  fi
+    print_status "Image ${image_name} already exists. "
+    report_result "Skipped"
+  else
+    # Image doesn't exist, proceed with creation
+    declare -a metadata_args
+    metadata_args+=("invocation-type=custom-images")
+    metadata_args+=("dataproc-temp-bucket=${TEMP_BUCKET}")
 
-  local metadata="invocation-type=custom-images"
-  metadata="${metadata},dataproc-temp-bucket=${TEMP_BUCKET}"
+    create_function="create_unaccelerated_instance"
 
-  local install_image="$(jq -r ".[] | select(.name == \"${image_name}-install\").name" "${tmpdir}/images.json")"
-  if [[ -n "${install_image}" ]] ; then
-    echo "Install image already exists.  Cleaning up after aborted run."
-    gcloud -q compute images delete "${image_name}-install"
-  fi
-
-  local instance="$(jq -r ".[] | select(.name == \"${image_name}-install\").name" "${tmpdir}/instances.json")"
-
-  if [[ -n "${instance}" ]]; then
-    # if previous run ended without cleanup...
-    echo "cleaning up instance from previous run"
-    gcloud -q compute instances delete "${image_name}-install" --zone "${ZONE}"
-  fi
-
-  create_function="create_unaccelerated_instance"
-
-  if [[ "${customization_script}" =~ "cloud-sql-proxy.sh"  ]] ; then
-    metadata="${metadata},hive-metastore-instance=${PROJECT_ID}:${region}:${HIVE_NAME}"
-    metadata="${metadata},db-hive-password-uri=${HIVEDB_PW_URI}"
-    metadata="${metadata},kms-key-uri=${KMS_KEY_URI}"
-  fi
-
-  # For actions requiring access to the MOK during runtime, pass the requisite
-  # metadata to extract the signing material
-  if [[ "${customization_script}" =~ "install_gpu_driver.sh" ]] ; then
-    eval "$(bash examples/secure-boot/create-key-pair.sh)"
-    metadata="${metadata},public_secret_name=${public_secret_name}"
-    metadata="${metadata},private_secret_name=${private_secret_name}"
-    metadata="${metadata},secret_project=${secret_project}"
-    metadata="${metadata},secret_version=${secret_version}"
-    metadata="${metadata},modulus_md5sum=${modulus_md5sum}"
-  fi
-
-  if [[ "${customization_script}" =~ "install_gpu_driver.sh" ]] ; then
-    metadata="${metadata},cuda-version=${CUDA_VERSION}"
-    metadata="${metadata},include-pytorch=1"
-    create_function="create_t4_instance"
-  fi
-
-  if [[ "${customization_script}" =~ "spark-rapids.sh" ]] ; then
-    metadata="${metadata},rapids-runtime=SPARK"
-    create_function="create_t4_instance"
-  fi
-
-  if [[ "${customization_script}" =~ "rapids.sh" ]] ; then
-    metadata="${metadata},rapids-runtime=DASK"
-    create_function="create_t4_instance"
-  fi
-
-  # check for known retry-able errors after failed completion
-  local do_retry=1
-  set -x
-  while [[ "${do_retry}" == "1" ]]; do
-    do_retry=0
-    set +e
-    "${create_function}" \
-      --image-name           "${image_name}" \
-      --customization-script "${customization_script}" \
-      --service-account      "${GSA}" \
-      --metadata             "${metadata}" \
-      --zone                 "${custom_image_zone}" \
-      --disk-size            "${disk_size_gb}" \
-      --gcs-bucket           "${BUCKET}" \
-      --subnet               "${SUBNET}" \
-      ${OPTIONAL_COMPONENTS_ARG} \
-      --shutdown-instance-timer-sec=30 \
-      --no-smoke-test \
-      ${extra_args}
-    if [[ "$?" != "0" ]]; then
-      local img_build_dir="$(ls -d /tmp/custom-image-${image_name}-*)"
-      # retry if the startup-script.log file does not exist or is empty
-      local startup_script_log="${img_build_dir}/logs/startup-script.log"
-      if [[ ! -f "${startup_script_log}" ]] || [[ "$(wc -l < $startup-script.log)" == "0" ]]; then
-        do_retry=1
-        mkdir -p /tmp/old
-        mv "${img_build_dir}" /tmp/old
-      else
-        exit 1
-      fi
+    if [[ "${customization_script}" =~ "cloud-sql-proxy.sh"  ]] ; then
+      metadata_args+=(
+        "hive-metastore-instance=${PROJECT_ID}:${region}:${HIVE_NAME}"
+        "db-hive-password-uri=${HIVEDB_PW_URI}"
+        "kms-key-uri=${KMS_KEY_URI}"
+      )
     fi
-  done
-  set +x
+
+    # For actions requiring access to the MOK during runtime, pass the requisite
+    # metadata to extract the signing material
+    if [[ "${customization_script}" =~ "install_gpu_driver.sh" ]] ; then
+      eval "$(bash examples/secure-boot/create-key-pair.sh)"
+      metadata_args+=(
+        "public_secret_name=${public_secret_name}"
+        "private_secret_name=${private_secret_name}"
+        "secret_project=${secret_project}"
+        "secret_version=${secret_version}"
+        "modulus_md5sum=${modulus_md5sum}"
+        "cuda-version=${CUDA_VERSION}"
+        "include-pytorch=1"
+      )
+      create_function="create_t4_instance"
+    fi
+
+    if [[ "${customization_script}" =~ "spark-rapids.sh" ]] ; then
+      metadata_args+=("rapids-runtime=SPARK")
+      create_function="create_t4_instance"
+    fi
+
+    if [[ "${customization_script}" =~ "rapids.sh" ]] ; then
+      metadata_args+=("rapids-runtime=DASK")
+      create_function="create_t4_instance"
+    fi
+
+    # Add proxy metadata if defined in env.json
+    if [[ -n "${SWP_IP:-}" && -n "${SWP_PORT:-}" ]]; then
+      proxy_addr="${SWP_IP}:${SWP_PORT}"
+      proxy_metadata="http-proxy=${proxy_addr}"
+      if [[ -n "${PROXY_CERT_GCS_PATH:-}" && "${PROXY_CERT_GCS_PATH}" != "null" ]]; then
+        proxy_metadata="${proxy_metadata},http-proxy-pem-uri=${PROXY_CERT_GCS_PATH}"
+      fi
+      metadata_args+=("${proxy_metadata}")
+      echo "DEBUG: Added proxy metadata: ${proxy_metadata}"
+    fi
+
+    # Join metadata array with commas
+    local metadata_string=$(IFS=,; echo "${metadata_args[*]}")
+
+    print_status "Generating image ${image_name}..."
+    # check for known retry-able errors after failed completion
+    local do_retry=1
+    local retry_count=0
+    while [[ "${do_retry}" == "1" ]]; do
+      do_retry=0
+      print_status "Attempt $((${retry_count} + 1)) to generate ${image_name}"
+
+      # Cleanup install image from previous failed attempts of this PURPOSE
+      local install_image_name="${image_name}-install"
+      if gcloud compute images describe "${install_image_name}" --project="${PROJECT_ID}" > /dev/null 2>&1; then
+        print_status "Deleting leftover install image ${install_image_name}... "
+        run_gcloud "delete_install_image_${short_dp_ver}" gcloud -q compute images delete "${install_image_name}" --project="${PROJECT_ID}"
+      fi
+      # Cleanup instance from previous failed attempts of this PURPOSE
+      local instances_json_file="${tmpdir}/instances.json"
+      if [[ ! -s "${instances_json_file}" ]]; then
+        print_status "Fetching current instances list for ${PROJECT_ID}... "
+        run_gcloud "instance_list_${short_dp_ver}" gcloud compute instances list --project="${PROJECT_ID}" --zones "${ZONE}" --format json > "${instances_json_file}"
+        report_result "Done"
+      fi
+      if jq -e ".[] | select(.name == \"${install_image_name}\")" "${instances_json_file}" > /dev/null; then
+         print_status "Deleting leftover install instance ${install_image_name}... "
+        run_gcloud "delete_install_instance_${short_dp_ver}" gcloud -q compute instances delete "${install_image_name}" --zone "${ZONE}" --project="${PROJECT_ID}"
+      fi
+
+      if "${create_function}" \
+        --project-id           "${PROJECT_ID}" \
+        --image-name           "${image_name}" \
+        --customization-script "/custom-images/${customization_script}" \
+        --service-account      "${GSA}" \
+        --metadata             "${metadata_string}" \
+        --zone                 "${custom_image_zone}" \
+        --disk-size            "${disk_size_gb}" \
+        --gcs-bucket           "${BUCKET}" \
+        --subnet               "${SUBNET}" \
+        ${OPTIONAL_COMPONENTS_ARG} \
+        --trusted-cert "tls/db.der" \
+        --shutdown-instance-timer-sec=30 \
+        --no-smoke-test \
+        ${extra_args}
+      then
+        report_result "Success"
+        # Update the local images.json cache
+        run_gcloud "image_list_${short_dp_ver}" gcloud compute images list --project="${PROJECT_ID}" --format json > "${images_json_file}"
+      else
+        local exit_code=$?
+        report_result "Fail"
+        local img_build_dir="$(ls -d /tmp/custom-image-${image_name}-* 2>/dev/null || echo '')"
+        # retry if the startup-script.log file does not exist or is empty
+        if [[ -n "${img_build_dir}" ]]; then
+          local startup_script_log="${img_build_dir}/logs/startup-script.log"
+          if [[ ! -f "${startup_script_log}" ]] || [[ ! -s "${startup_script_log}" ]]; then
+            if [[ ${retry_count} -lt 2 ]]; then
+               print_status "Startup script log not found or empty, retrying..."
+               do_retry=1
+               retry_count=$((${retry_count} + 1))
+               mkdir -p /tmp/old
+               mv "${img_build_dir}" /tmp/old
+            else
+              print_status "Max retries reached, failing."
+              exit ${exit_code}
+            fi
+          else
+            print_status "Build failed, check logs in ${img_build_dir}/logs"
+            exit ${exit_code}
+          fi
+        else
+           # If img_build_dir doesn't exist, something failed very early. Retry.
+           if [[ ${retry_count} -lt 2 ]]; then
+             print_status "Build directory not found, retrying..."
+             do_retry=1
+             retry_count=$((${retry_count} + 1))
+           else
+             print_status "Max retries reached, failing."
+             exit ${exit_code}
+           fi
+        fi
+      fi
+    done
+  fi # end else for image exists
 }
 
 function generate_from_dataproc_version() { generate --dataproc-version "$1" ; }
@@ -247,40 +324,33 @@ function generate_from_base_purpose() {
 
 # base image -> secure-boot
 
+if [[ -f /custom-images/key.json ]]; then
+  echo "INFO: Activating service account using /custom-images/key.json"
+  gcloud auth activate-service-account --key-file=/custom-images/key.json
+else
+  echo "WARNING: /custom-images/key.json not found, gcloud calls might fail."
+fi
+
 # Install secure-boot certs without customization
 PURPOSE="secure-boot"
 customization_script="examples/secure-boot/no-customization.sh"
+print_status "=== Generating base secure-boot image for ${dataproc_version} ==="
 time generate_from_dataproc_version "${dataproc_version}"
 
+# Configure a proxy on secure-boot image
+PURPOSE="secure-proxy"
+customization_script="startup_script/gce-proxy-setup.sh"
+print_status "=== Generating base ${PURPOSE} image for ${dataproc_version} ==="
+time generate_from_base_purpose "secure-boot"
+
 #time generate_from_prerelease_version "${dataproc_version}"
-
-if version_ge "${IMAGE_VERSION}" "2.3" ; then
-
-  ## run the installer for the DOCKER optional component
-  PURPOSE="docker"
-  OPTIONAL_COMPONENTS_ARG='--optional-components=DOCKER'
-  customization_script="examples/secure-boot/no-customization.sh"
-  time generate_from_base_purpose "secure-boot"
-
-  ## run the installer for the ZEPPELIN optional component
-  PURPOSE="zeppelin"
-  OPTIONAL_COMPONENTS_ARG='--optional-components=ZEPPELIN'
-  customization_script="examples/secure-boot/no-customization.sh"
-  time generate_from_base_purpose "secure-boot"
-
-  ## run the installer for the DOCKER,PIG optional components
-  PURPOSE="docker-pig"
-  OPTIONAL_COMPONENTS_ARG='--optional-components=PIG'
-  customization_script="examples/secure-boot/no-customization.sh"
-  time generate_from_base_purpose "docker"
-
-fi
 
 OPTIONAL_COMPONENTS_ARG=""
 
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="cloud-sql-proxy"
 customization_script="examples/secure-boot/cloud-sql-proxy.sh"
+print_status "=== Generating cloud-sql-proxy image for ${dataproc_version} ==="
 echo time generate_from_base_purpose "secure-boot"
 
 # secure-boot -> tensorflow
@@ -298,30 +368,90 @@ case "${dataproc_version}" in
   "2.1-ubuntu20-arm" ) disk_size_gb="45" ;; # 39.55G 39.39G   0.15G 100% / # pre-init-2-1-ubuntu20
 
   "2.2-debian12"     ) disk_size_gb="51" ;; #  58.82G  43.88G   12.44G  78% / # 20250429-193537-tf
-  "2.2-rocky9"       ) disk_size_gb="51" ;; #  49.79G  43.51G    6.28G  88% / # 20250429-193537-tf
-  "2.2-ubuntu22"     ) disk_size_gb="50" ;; #  48.28G  43.32G    4.94G  90% / # 20250429-193537-tf
+  "2.2-rocky9"       ) disk_size_gb="60" ;; #  49.79G  43.51G    6.28G  88% / # 20250429-193537-tf
+  "2.2-ubuntu22"     ) disk_size_gb="60" ;; #  48.28G  43.32G    4.94G  90% / # 20250429-193537-tf
 
-  "2.3-debian12"     ) disk_size_gb="42" ;; #  41.11G  36.20G    3.12G  93% / # 20250507-083009-tf
-  "2.3-rocky9"       ) disk_size_gb="44" ;; #  49.79G  37.82G   11.98G  76% / # 20250507-083009-tf
-  "2.3-ubuntu22"     ) disk_size_gb="42" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
+  "2.3-debian12"     ) disk_size_gb="50" ;; #  41.11G  36.20G    3.12G  93% / # 20250507-083009-tf
+  "2.3-rocky9"       ) disk_size_gb="50" ;; #  49.79G  37.82G   11.98G  76% / # 20250507-083009-tf
+  "2.3-ubuntu22"     ) disk_size_gb="50" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
   "2.3-ml-ubuntu22"  ) disk_size_gb="70" ;; #  40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
 
 esac
 
-# Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
-PURPOSE="tf"
-customization_script="examples/secure-boot/install_gpu_driver.sh"
-time generate_from_base_purpose "secure-boot"
+# Extract major.minor version (e.g., 2.2 from 2.2-debian12)
+MAJOR_MINOR_VERSION=$(echo "${dataproc_version}" | cut -d'-' -f1)
+
+if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
+  print_status "=== Generating GPU/ML images for ${dataproc_version} (>=2.2) ==="
+
+  # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
+  PURPOSE="tf"
+  customization_script="examples/secure-boot/install_gpu_driver.sh"
+  print_status "=== Generating tf image for ${dataproc_version} ==="
+  time generate_from_base_purpose "secure-boot"
+  touch "${tmpdir}/sentinels/tf_build_complete"
+
+fi
+
+if [[ "1" == "0" ]] && version_ge "${IMAGE_VERSION}" "2.3" ; then
+  # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image on a proxy base
+  PURPOSE="proxy-tf"
+  customization_script="examples/secure-boot/install_gpu_driver.sh"
+  print_status "=== Waiting for TF build to complete to leverage cache... ==="
+  while [[ ! -f "${tmpdir}/sentinels/tf_build_complete" ]]; do
+    sleep 10
+  done
+  print_status "=== Generating proxy-tf image for ${dataproc_version} ==="
+  time generate_from_base_purpose "secure-proxy"
+
+  ## run the installer for the DOCKER optional component
+  PURPOSE="docker"
+  OPTIONAL_COMPONENTS_ARG='--optional-components=DOCKER'
+  customization_script="examples/secure-boot/no-customization.sh"
+  print_status "=== Generating ${PURPOSE} image for ${dataproc_version} ==="
+  time generate_from_base_purpose "proxy-tf"
+
+  ## run the installer for the DOCKER optional component
+  PURPOSE="jupyter"
+  OPTIONAL_COMPONENTS_ARG='--optional-components=JUPYTER'
+  customization_script="examples/secure-boot/no-customization.sh"
+  print_status "=== Generating ${PURPOSE} image for ${dataproc_version} ==="
+  time generate_from_base_purpose "docker"
+
+  ## run the installer for the ZEPPELIN optional component
+  PURPOSE="zeppelin"
+  OPTIONAL_COMPONENTS_ARG='--optional-components=ZEPPELIN'
+  customization_script="examples/secure-boot/no-customization.sh"
+  print_status "=== Generating ${PURPOSE} image for ${dataproc_version} ==="
+  time generate_from_base_purpose "jupyter"
+
+  ## run the installer for the PIG optional components
+  PURPOSE="pig"
+  OPTIONAL_COMPONENTS_ARG='--optional-components=PIG'
+  customization_script="examples/secure-boot/no-customization.sh"
+  print_status "=== Generating ${PURPOSE} image for ${dataproc_version} ==="
+  time generate_from_base_purpose "zeppelin"
+
+  ## run the installer for the DELTA LAKE optional components
+  PURPOSE="delta"
+  OPTIONAL_COMPONENTS_ARG='--optional-components=DELTA'
+  customization_script="examples/secure-boot/no-customization.sh"
+  print_status "=== Generating ${PURPOSE} image for ${dataproc_version} ==="
+  time generate_from_base_purpose "pig"
+fi
+
 
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="spark"
 customization_script="examples/secure-boot/spark-rapids.sh"
-time generate_from_base_purpose "tf"
+print_status "=== Generating spark image for ${dataproc_version} ==="
+echo time generate_from_base_purpose "tf"
 
 ## Execute spark-rapids/mig.sh init action on base image
-PURPOSE="mig-pre-init"
+PURPOSE="mig"
 customization_script="examples/secure-boot/mig.sh"
-echo time generate_from_base_purpose "tf"
+print_status "=== Generating mig-pre-init image for ${dataproc_version} ==="
+echo time generate_from_base_purpose "spark"
 
 # tf image -> rapids
 case "${dataproc_version}" in
@@ -342,12 +472,14 @@ esac
 # Install dask with rapids on base image
 PURPOSE="rapids"
 customization_script="examples/secure-boot/rapids.sh"
+print_status "=== Generating rapids image for ${dataproc_version} ==="
 echo time generate_from_base_purpose "tf"
 #time generate_from_base_purpose "cuda-pre-init"
 
 ## Install dask without rapids on base image
 PURPOSE="dask"
 customization_script="examples/secure-boot/dask.sh"
+print_status "=== Generating dask image for ${dataproc_version} ==="
 echo time generate_from_base_purpose "secure-boot"
 #time generate_from_base_purpose "cuda-pre-init"
 
@@ -364,13 +496,16 @@ case "${dataproc_version}" in
   "2.2-rocky9"       ) disk_size_gb="48" ;; # 44.79G 42.29G   2.51G  95% / # pre-init-2-2-rocky9
   "2.2-ubuntu22"     ) disk_size_gb="46" ;; # 42.46G 41.97G   0.48G  99% / # pre-init-2-2-ubuntu22
   "2.3-debian12"     ) disk_size_gb="42" ;; # 41.11G 36.20G   3.12G  93% / # 20250507-083009-tf
-  "2.3-rocky9"       ) disk_size_gb="44" ;; # 49.79G 37.82G  11.98G  76% / # 20250507-083009-tf
-  "2.3-ubuntu22"     ) disk_size_gb="42" ;; # 40.52G 36.18G   4.33G  90% / # 20250507-083009-tf
-  "2.3-ml-ubuntu22"  ) disk_size_gb="60" ;; # 40.52G 36.18G   4.33G  90% / # 20250507-083009-tf
+  "2.3-rocky9"       ) disk_size_gb="44" ;; # 49.79G  37.82G  11.98G  76% / # 20250507-083009-tf
+  "2.3-ubuntu22"     ) disk_size_gb="42" ;; # 40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
+  "2.3-ml-ubuntu22"  ) disk_size_gb="60" ;; # 40.52G  36.18G    4.33G  90% / # 20250507-083009-tf
 esac
 
 ## Install pytorch on base image
 PURPOSE="pytorch"
 customization_script="examples/secure-boot/pytorch.sh"
+print_status "=== Generating pytorch image for ${dataproc_version} ==="
 echo time generate_from_base_purpose "tf"
+
+
 
