@@ -209,7 +209,7 @@ function set_proxy(){
 
     echo "DEBUG: set_proxy: Testing external site access via proxy..."
     local test_url="https://www.google.com"
-    if curl -vL ${curl_retry_args} -o /dev/null "${test_url}"; then
+    if curl -vL --retry 3 --retry-delay 5 -o /dev/null "${test_url}"; then
       echo "DEBUG: set_proxy: Successfully fetched ${test_url} via proxy."
     else
       echo "ERROR: Failed to fetch ${test_url} via proxy ${HTTP_PROXY}."
@@ -341,6 +341,28 @@ function set_proxy(){
       fi
   fi
 
+  # Configure boto (gsutil)
+  local boto_file="/etc/boto.cfg"
+  if [[ -f "${boto_file}" ]]; then
+    echo "DEBUG: set_proxy: Repairing and configuring ${boto_file}" >&2
+    
+    # Deduplicate sections (fix for DuplicateSectionError)
+    perl -i -ne 'if (/^\[(.*)\]/) { $skip = $seen{$1}++; } print unless $skip;' "${boto_file}"
+    
+    if [[ -n "${effective_proxy}" ]]; then
+      local proxy_host="${effective_proxy%:*}"
+      local proxy_port="${effective_proxy##*:}"
+      
+      sed -i -e '/^proxy =/d' -e '/^proxy_port =/d' "${boto_file}"
+      if grep -q "^\[Boto\]" "${boto_file}"; then
+        sed -i "/^\[Boto\]/a proxy = ${proxy_host}\nproxy_port = ${proxy_port}" "${boto_file}"
+      else
+        echo -e "\n[Boto]\nproxy = ${proxy_host}\nproxy_port = ${proxy_port}" >> "${boto_file}"
+      fi
+    fi
+    echo "DEBUG: set_proxy: Updated ${boto_file}" >&2
+  fi
+
   echo "DEBUG: set_proxy: Verifying proxy connectivity..."
 
   # Test fetching a file through the proxy
@@ -350,7 +372,7 @@ function set_proxy(){
 
   echo "DEBUG: set_proxy: Attempting to download ${test_url} via proxy ${HTTPS_PROXY}"
 #  if curl --verbose --cacert "${trusted_pem_path}" -x "${HTTPS_PROXY}" -fsSL --retry-connrefused --retry 3 --retry-max-time 10 -o "${test_output}" "${test_url}"; then
-  if curl -vL ${curl_retry_args} -o /dev/null "${test_url}"; then
+  if curl -vL --retry 3 --retry-delay 5 -o /dev/null "${test_url}"; then
     echo "DEBUG: set_proxy: Successfully downloaded test file through proxy."
     rm -f "${test_output}"
   else
