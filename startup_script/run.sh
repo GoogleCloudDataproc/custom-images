@@ -96,24 +96,15 @@ function download_scripts() {
 }
 
 function setup_proxy() {
-  # Setup HTTP proxy if configured
+  # Always run setup/repair script if it exists
   if [[ -f ./gce-proxy-setup.sh ]]; then
-    local has_proxy="false"
-    if /usr/share/google/get_metadata_value attributes/http-proxy >/dev/null 2>&1; then has_proxy="true"; fi
-    if /usr/share/google/get_metadata_value attributes/https-proxy >/dev/null 2>&1; then has_proxy="true"; fi
-    if /usr/share/google/get_metadata_value attributes/proxy-uri >/dev/null 2>&1; then has_proxy="true"; fi
-
-    if [[ "${has_proxy}" == "true" ]]; then
-      echo "DEBUG: Running gce-proxy-setup.sh"
-      bash -x ./gce-proxy-setup.sh
-      if [[ $? -ne 0 ]]; then
-        echo "BuildFailed: gce-proxy-setup.sh failed."
-        return 1
-      fi
-      echo "DEBUG: Finished gce-proxy-setup.sh"
-    else
-      echo "DEBUG: No proxy metadata found, skipping gce-proxy-setup.sh"
+    echo "DEBUG: Running gce-proxy-setup.sh"
+    bash -x ./gce-proxy-setup.sh
+    if [[ $? -ne 0 ]]; then
+      echo "BuildFailed: gce-proxy-setup.sh failed."
+      return 1
     fi
+    echo "DEBUG: Finished gce-proxy-setup.sh"
   fi
   return 0
 }
