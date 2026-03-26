@@ -341,7 +341,7 @@ time generate_from_dataproc_version "${dataproc_version}"
 PURPOSE="secure-proxy"
 customization_script="startup_script/gce-proxy-setup.sh"
 print_status "=== Generating base ${PURPOSE} image for ${dataproc_version} ==="
-time generate_from_base_purpose "secure-boot"
+echo time generate_from_base_purpose "secure-boot"
 
 #time generate_from_prerelease_version "${dataproc_version}"
 
@@ -388,6 +388,7 @@ if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
   PURPOSE="tf"
   customization_script="examples/secure-boot/install_gpu_driver.sh"
   print_status "=== Generating tf image for ${dataproc_version} ==="
+# no complicated customizations.  just make sure secure-boot works
   time generate_from_base_purpose "secure-boot"
   touch "${tmpdir}/sentinels/tf_build_complete"
 

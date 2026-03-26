@@ -53,17 +53,17 @@ export -f report_result
 # Function to run a gcloud command and log it
 function run_gcloud() {
   local log_file="$1"; shift
-  local cmd_str="$*"
   local log_path="${REPRO_TMPDIR}/${log_file}"
+  local cmd_array=("$@")
 
-  print_status "  Executing: ${cmd_str}..."
+  print_status "  Executing: ${cmd_array[*]}..."
 
-  eval "${cmd_str}" > "${log_path}" 2>&1
+  "${cmd_array[@]}" > "${log_path}" 2>&1
   local retval=$?
 
   if [[ ${retval} -ne 0 ]]; then
     report_result "FAIL" "${log_path}"
-    echo -e "${RED}ERROR: The following gcloud command failed:${NC}\n  ${cmd_str}" >&2
+    echo -e "${RED}ERROR: The following gcloud command failed:${NC}\n  ${cmd_array[*]}" >&2
     echo -e "${YELLOW}See log for details: ${log_path}${NC}" >&2
     echo -e "--- Log Content (${log_path}) ---" >&2
     cat "${log_path}" >&2
