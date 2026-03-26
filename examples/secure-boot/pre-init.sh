@@ -148,6 +148,11 @@ function generate() {
     metadata_args+=("invocation-type=custom-images")
     metadata_args+=("dataproc-temp-bucket=${TEMP_BUCKET}")
 
+    # Ensure we pass the universe domain to the generator so it ends up in metadata
+    local universe_domain
+    universe_domain=$(gcloud config get core/universe_domain 2>/dev/null || echo "googleapis.com")
+    metadata_args+=("universe-domain=${universe_domain}")
+
     create_function="create_unaccelerated_instance"
 
     if [[ "${customization_script}" =~ "cloud-sql-proxy.sh"  ]] ; then
@@ -227,7 +232,7 @@ function generate() {
       if "${create_function}" \
         --project-id           "${PROJECT_ID}" \
         --image-name           "${image_name}" \
-        --customization-script "/custom-images/${customization_script}" \
+        --customization-script "${customization_script}" \
         --service-account      "${GSA}" \
         --metadata             "${metadata_string}" \
         --zone                 "${custom_image_zone}" \

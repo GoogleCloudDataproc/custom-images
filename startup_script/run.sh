@@ -28,16 +28,17 @@
 set -x
 
 # Ensure gcloud is configured for the correct universe to prevent b/454030974
-UNIVERSE_DOMAIN=$(/usr/share/google/get_metadata_value attributes/universe-domain || echo "googleapis.com")
-echo "INFO: Ensuring gcloud universe_domain is set to ${UNIVERSE_DOMAIN}..."
+# First try the metadata key 'universe-domain' which we now pass explicitly
+UNIVERSE_DOMAIN=$(/usr/share/google/get_metadata_value attributes/universe-domain || /usr/share/google/get_metadata_value attributes/universe_domain || echo "googleapis.com")
+echo "startup-script: INFO: Ensuring gcloud universe_domain is set to ${UNIVERSE_DOMAIN}..."
 if [[ "$(gcloud config get core/universe_domain 2>/dev/null)" != "${UNIVERSE_DOMAIN}" ]]; then
-  echo "INFO: Setting core/universe_domain to ${UNIVERSE_DOMAIN}"
+  echo "startup-script: INFO: Setting core/universe_domain to ${UNIVERSE_DOMAIN}"
   gcloud config set core/universe_domain "${UNIVERSE_DOMAIN}"
 else
-  echo "INFO: core/universe_domain is already set to ${UNIVERSE_DOMAIN}."
+  echo "startup-script: INFO: core/universe_domain is already set to ${UNIVERSE_DOMAIN}."
 fi
 
-echo "DEBUG: Starting startup_script/run.sh"
+echo "startup-script: DEBUG: Starting startup_script/run.sh"
 
 # get custom-sources-path
 CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sources-path)
@@ -81,7 +82,7 @@ function wait_until_ready() {
       sleep 5
 
       if ((i == 10)); then
-        echo "BuildFailed: timed out waiting for gsutil to be available on Ubuntu."
+        echo "startup-script: BuildFailed: timed out waiting for gsutil to be available on Ubuntu."
       fi
     done
   else
@@ -90,39 +91,34 @@ function wait_until_ready() {
 }
 
 function download_scripts() {
-  echo "DEBUG: Attempting to download scripts from ${CUSTOM_SOURCES_PATH}"
+  echo "startup-script: DEBUG: Attempting to download scripts from ${CUSTOM_SOURCES_PATH}"
   ${gsutil_cp_cmd} -r "${CUSTOM_SOURCES_PATH}/*" ./
-  echo "DEBUG: gsutil exit code: $?"
+  echo "startup-script: DEBUG: gsutil exit code: $?"
 }
 
 function setup_proxy() {
   # Always run setup/repair script if it exists
   if [[ -f ./gce-proxy-setup.sh ]]; then
-    echo "DEBUG: Running gce-proxy-setup.sh"
+    echo "startup-script: DEBUG: Running gce-proxy-setup.sh"
     bash -x ./gce-proxy-setup.sh
     if [[ $? -ne 0 ]]; then
-      echo "BuildFailed: gce-proxy-setup.sh failed."
+      echo "startup-script: BuildFailed: gce-proxy-setup.sh failed."
       return 1
     fi
-    echo "DEBUG: Finished gce-proxy-setup.sh"
+    echo "startup-script: DEBUG: Finished gce-proxy-setup.sh"
   fi
+  # Ensure boto.cfg is repaired even if customizations fail later
+  repair_boto
   return 0
 }
 
 function run_custom_script() {
   # run init actions
-  echo "DEBUG: Running init_actions.sh"
+  echo "startup-script: DEBUG: Running init_actions.sh"
   bash -x ./init_actions.sh
 
-  # get return code
-  RET_CODE=$?
-
-  # print failure message if install fails
-  if [[ $RET_CODE -ne 0 ]]; then
-    echo "BuildFailed: Dataproc Initialization Actions Failed. Please check your initialization script."
-  else
-    echo "BuildSucceeded: Dataproc Initialization Actions Succeeded."
-  fi
+  # return code
+  return $?
 }
 
 function cleanup() {
@@ -134,11 +130,52 @@ function cleanup() {
   rm ./init_actions.sh ./run.sh
 }
 
+function repair_boto() {
+  local boto_file="/etc/boto.cfg"
+  if [[ -f "${boto_file}" ]]; then
+    echo "startup-script: repair_boto: Repairing and deduplicating ${boto_file}" >&2
+    
+    # 1. Deduplicate sections (fix for DuplicateSectionError)
+    perl -i -ne '
+      if (/^\[(.*)\]/) {
+        $section = $1;
+        $skip = $seen{$section}++;
+      }
+      print unless $skip;
+    ' "${boto_file}"
+    
+    # 2. Fix universe_domain if it is still a variable
+    local universe_domain
+    universe_domain=$(/usr/share/google/get_metadata_value attributes/universe-domain || echo "googleapis.com")
+    UNIVERSE_DOMAIN="${universe_domain}" perl -i -pe 's/\$\{universe_domain\}/$ENV{UNIVERSE_DOMAIN}/g' "${boto_file}"
+    # Also fix cases where it might have been partially expanded to storage.$
+    UNIVERSE_DOMAIN="${universe_domain}" perl -i -pe 's/storage\.\$/storage.$ENV{UNIVERSE_DOMAIN}/g' "${boto_file}"
+
+    # 3. Apply proxy if set in metadata
+    local meta_http_proxy=$(/usr/share/google/get_metadata_value attributes/http-proxy || echo "")
+    local meta_proxy_uri=$(/usr/share/google/get_metadata_value attributes/proxy-uri || echo "")
+    local effective_proxy="${meta_http_proxy:-${meta_proxy_uri}}"
+    
+    if [[ -n "${effective_proxy}" ]] && [[ "${effective_proxy}" != ":" ]]; then
+      local proxy_host="${effective_proxy%:*}"
+      local proxy_port="${effective_proxy##*:}"
+      
+      sed -i -e '/^proxy =/d' -e '/^proxy_port =/d' "${boto_file}"
+      if grep -q "^\[Boto\]" "${boto_file}"; then
+        sed -i "/^\[Boto\]/a proxy = ${proxy_host}\nproxy_port = ${proxy_port}" "${boto_file}"
+      else
+        echo -e "\n[Boto]\nproxy = ${proxy_host}\nproxy_port = ${proxy_port}" >> "${boto_file}"
+      fi
+    fi
+    echo "startup-script: repair_boto: Updated ${boto_file}" >&2
+  fi
+}
+
 function patch_bdutil_universe() {
   # Apply workaround for b/454030974 directly to bdutil scripts if they exist
   local bdutil_universe_script="/usr/local/share/google/dataproc/bdutil/bdutil_universe.sh"
-  if [[ -f "${bdutil_universe_script}" ]] && ! grep -q 'if \[\[ -z "${universe_domain}" \]\]' "${bdutil_universe_script}"; then
-    echo "INFO: Patching ${bdutil_universe_script} to fix universe_domain resolution..."
+  if [[ -f "${bdutil_universe_script}" ]] && ! grep -q 'if [[ -z "${universe_domain}" ]]' "${bdutil_universe_script}"; then
+    echo "startup-script: Patching ${bdutil_universe_script} to fix universe_domain resolution..."
     cp "${bdutil_universe_script}" "${bdutil_universe_script}.bak"
     cat << 'EOF' > /tmp/patch_universe.sh
 #!/bin/bash
@@ -146,11 +183,11 @@ awk '
 /function get_universe_domain\(\) \{/ {
     print
     print "  local universe_domain"
-    print "  universe_domain=\"\$(gcloud config get core/universe_domain 2> /dev/null || true)\""
-    print "  if [[ -z \"\${universe_domain}\" ]]; then"
+    print "  universe_domain=\"$(gcloud config get core/universe_domain 2> /dev/null || true)\""
+    print "  if [[ -z \"${universe_domain}\" ]]; then"
     print "    echo \"googleapis.com\""
     print "  else"
-    print "    echo \"\${universe_domain}\""
+    print "    echo \"${universe_domain}\""
     print "  fi"
     print "}"
     in_func = 1
@@ -167,11 +204,8 @@ EOF
     rm -f /tmp/patch_universe.sh
   fi
 
-  # Remove any corrupted boto.cfg generated during builder VM boot
-  if [[ -f /etc/boto.cfg ]] && grep -q 'gs_host[[:space:]]*=[[:space:]]*storage\.$' /etc/boto.cfg; then
-    echo "INFO: Removing corrupted /etc/boto.cfg"
-    rm -f /etc/boto.cfg
-  fi
+  # Call repair_boto to ensure /etc/boto.cfg is clean before disk capture
+  repair_boto
 }
 
 function is_version_at_least() {
@@ -210,10 +244,10 @@ function run_install_optional_components_script() {
 
   # print failure message if install fails
   if [[ $RET_CODE -ne 0 ]]; then
-    echo "BuildFailed: Dataproc optional component installation Failed. Please check logs."
+    echo "startup-script: BuildFailed: Dataproc optional component installation Failed. Please check logs."
     exit ${RET_CODE}
   else
-    echo "BuildSucceeded: Dataproc optional component installation Succeeded."
+    echo "startup-script: BuildSucceeded: Dataproc optional component installation Succeeded."
   fi
 }
 
@@ -222,7 +256,7 @@ function main() {
 
   if [[ "${ready}" == "true" ]]; then
     if ! download_scripts; then
-      echo "BuildFailed: failed to download scripts from ${CUSTOM_SOURCES_PATH}."
+      echo "startup-script: BuildFailed: failed to download scripts from ${CUSTOM_SOURCES_PATH}."
       exit 1
     fi
 
@@ -232,11 +266,20 @@ function main() {
 
     run_install_optional_components_script
     run_custom_script
+    local script_ret_code=$?
+
     patch_bdutil_universe
     cleanup
+
+    if [[ ${script_ret_code} -ne 0 ]]; then
+      echo "startup-script: BuildFailed: Customization failed."
+      exit 1
+    else
+      echo "startup-script: BuildSucceeded: Customization complete."
+    fi
   fi
 
-  echo "Sleep ${SHUTDOWN_TIMER_IN_SEC}s before shutting down..."
+  echo "startup-script: Sleep ${SHUTDOWN_TIMER_IN_SEC}s before shutting down..."
   echo "You can change the timeout value with --shutdown-instance-timer-sec"
   sleep "${SHUTDOWN_TIMER_IN_SEC}" # wait for stdout to flush
   shutdown -h now
