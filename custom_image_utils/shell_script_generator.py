@@ -292,11 +292,9 @@ class Generator:
 
     all_sources = {
         "run.sh": "startup_script/run.sh",
-        "init_actions.sh": self.args["customization_script"]
+        "init_actions.sh": self.args["customization_script"],
+        "gce-proxy-setup.sh": "startup_script/gce-proxy-setup.sh"
     }
-    metadata = self.args.get("metadata")
-    if metadata and ("http-proxy" in metadata or "https-proxy" in metadata):
-        all_sources["gce-proxy-setup.sh"] = "startup_script/gce-proxy-setup.sh"
     all_sources.update(self.args["extra_sources"])
 
     sources_map_items = tuple(enumerate(all_sources.items()))
