@@ -3068,6 +3068,12 @@ print( "     samples-taken: ", scalar @siz, $/,
 }
 
 function set_proxy(){
+  # Idempotency Check for Proxy
+  if grep -q "http_proxy=" /etc/environment && [[ -n "${http_proxy:-}" ]]; then
+    echo "INFO: Proxy already configured in /etc/environment. Skipping proxy setup portion."
+    return 0
+  fi
+
   local meta_http_proxy meta_https_proxy meta_proxy_uri
   meta_http_proxy=$(get_metadata_attribute 'http-proxy' '')
   meta_https_proxy=$(get_metadata_attribute 'https-proxy' '')
@@ -3281,6 +3287,51 @@ function set_proxy(){
   echo "DEBUG: set_proxy: Proxy setup complete."
 }
 
+function repair_boto() {
+  local boto_file="/etc/boto.cfg"
+  if [[ -f "${boto_file}" ]]; then
+    echo "DEBUG: repair_boto: Repairing and deduplicating ${boto_file}" >&2
+    
+    # 1. Deduplicate sections (fix for DuplicateSectionError)
+    # Use a more robust perl one-liner that also handles the content within duplicate sections
+    # by only keeping the first occurrence of each section and its variables.
+    perl -i -ne '
+      if (/^\[(.*)\]/) {
+        $section = $1;
+        $skip = $seen{$section}++;
+      }
+      print unless $skip;
+    ' "${boto_file}"
+    
+    # 2. Fix universe_domain if it is still a variable
+    local universe_domain
+    universe_domain=$(get_metadata_attribute 'universe-domain' 'googleapis.com')
+    # Use a more robust replacement that handles potential escaping issues
+    UNIVERSE_DOMAIN="${universe_domain}" perl -i -pe 's/\$\{universe_domain\}/$ENV{UNIVERSE_DOMAIN}/g' "${boto_file}"
+    # Also fix cases where it might have been partially expanded to storage.$
+    UNIVERSE_DOMAIN="${universe_domain}" perl -i -pe 's/storage\.\$/storage.$ENV{UNIVERSE_DOMAIN}/g' "${boto_file}"
+
+    # 3. Apply proxy if set
+    local meta_http_proxy=$(get_metadata_attribute 'http-proxy' '')
+    local meta_proxy_uri=$(get_metadata_attribute 'proxy-uri' '')
+    local effective_proxy="${meta_http_proxy:-${meta_proxy_uri}}"
+    
+    if [[ -n "${effective_proxy}" ]]; then
+      local proxy_host="${effective_proxy%:*}"
+      local proxy_port="${effective_proxy##*:}"
+      
+      sed -i -e '/^proxy =/d' -e '/^proxy_port =/d' "${boto_file}"
+      if grep -q "^\[Boto\]" "${boto_file}"; then
+        sed -i "/^\[Boto\]/a proxy = ${proxy_host}\nproxy_port = ${proxy_port}" "${boto_file}"
+      else
+        echo -e "\n[Boto]\nproxy = ${proxy_host}\nproxy_port = ${proxy_port}" >> "${boto_file}"
+      fi
+    fi
+    echo "DEBUG: repair_boto: Updated ${boto_file}" >&2
+  fi
+}
+
+
 function mount_ramdisk(){
   local free_mem
   free_mem="$(awk '/^MemFree/ {print $2}' /proc/meminfo)"
@@ -3356,6 +3407,7 @@ function prepare_to_install(){
     gsutil_stat_cmd="gsutil stat"
   fi
   set_proxy
+  repair_boto
 
   # --- Detect Image Build Context ---
   # Use 'initialization-actions' as the default name for clarity
