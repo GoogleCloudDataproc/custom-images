@@ -39,7 +39,7 @@ function exit_handler() {
   fi
 
   echo 'Uploading local logs to GCS bucket.'
-  gsutil -m rsync -r /tmp/custom-image-my-image-20190611-160823/logs/ gs://my-bucket/custom-image-my-image-20190611-160823/logs/
+  gcloud storage rsync --recursive /tmp/custom-image-my-image-20190611-160823/logs/ gs://my-bucket/custom-image-my-image-20190611-160823/logs/
 
   if [[ -f /tmp/custom-image-my-image-20190611-160823/image_created ]]; then
     echo -e "${GREEN}Workflow succeeded, check logs at /tmp/custom-image-my-image-20190611-160823/logs/ or gs://my-bucket/custom-image-my-image-20190611-160823/logs/${NC}"
@@ -55,7 +55,7 @@ function main() {
   declare -a sources_k=([0]='run.sh' [1]='init_actions.sh' [2]='ext'\\''ra_src.txt')
   declare -a sources_v=([0]='startup_script/run.sh' [1]='/tmp/my-script.sh' [2]='/path/to/extra.txt')
   for i in "${!sources_k[@]}"; do
-    gsutil cp "${sources_v[i]}" "gs://my-bucket/custom-image-my-image-20190611-160823/sources/${sources_k[i]}"
+    gcloud storage cp "${sources_v[i]}" "gs://my-bucket/custom-image-my-image-20190611-160823/sources/${sources_k[i]}"
   done
 
   echo 'Creating disk.'
