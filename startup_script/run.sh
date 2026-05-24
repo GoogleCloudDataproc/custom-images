@@ -244,10 +244,9 @@ function run_install_optional_components_script() {
 
   # print failure message if install fails
   if [[ $RET_CODE -ne 0 ]]; then
+    BUILD_STATUS="failed"
     echo "startup-script: BuildFailed: Dataproc optional component installation Failed. Please check logs."
     exit ${RET_CODE}
-  else
-    echo "startup-script: BuildSucceeded: Dataproc optional component installation Succeeded."
   fi
 }
 
@@ -256,11 +255,13 @@ function main() {
 
   if [[ "${ready}" == "true" ]]; then
     if ! download_scripts; then
+      BUILD_STATUS="failed"
       echo "startup-script: BuildFailed: failed to download scripts from ${CUSTOM_SOURCES_PATH}."
       exit 1
     fi
 
     if ! setup_proxy; then
+      BUILD_STATUS="failed"
       exit 1
     fi
 
@@ -272,9 +273,11 @@ function main() {
     cleanup
 
     if [[ ${script_ret_code} -ne 0 ]]; then
+      BUILD_STATUS="failed"
       echo "startup-script: BuildFailed: Customization failed."
       exit 1
     else
+      BUILD_STATUS="succeeded"
       echo "startup-script: BuildSucceeded: Customization complete."
     fi
   fi

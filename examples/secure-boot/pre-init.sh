@@ -346,7 +346,7 @@ time generate_from_dataproc_version "${dataproc_version}"
 PURPOSE="secure-proxy"
 customization_script="startup_script/gce-proxy-setup.sh"
 print_status "=== Generating base ${PURPOSE} image for ${dataproc_version} ==="
-echo time generate_from_base_purpose "secure-boot"
+time generate_from_base_purpose "secure-boot"
 
 #time generate_from_prerelease_version "${dataproc_version}"
 
@@ -399,7 +399,7 @@ if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
 
 fi
 
-if [[ "1" == "0" ]] && version_ge "${IMAGE_VERSION}" "2.3" ; then
+if version_ge "${IMAGE_VERSION}" "2.3" ; then
   # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image on a proxy base
   PURPOSE="proxy-tf"
   customization_script="examples/secure-boot/install_gpu_driver.sh"
