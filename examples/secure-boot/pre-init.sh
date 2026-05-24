@@ -399,7 +399,7 @@ if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
 
 fi
 
-if version_ge "${IMAGE_VERSION}" "2.3" ; then
+if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
   # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image on a proxy base
   PURPOSE="proxy-tf"
   customization_script="examples/secure-boot/install_gpu_driver.sh"
