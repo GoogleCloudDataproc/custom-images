@@ -235,7 +235,7 @@ To run Dataproc clusters with NVIDIA GPUs and Shielded VM Secure Boot enabled:
 
 *   `custom-images/env.json`: Single source of truth for configuration.
 *   `custom-images/examples/secure-boot/create-key-pair.sh`: Manages Secure Boot signing keys.
-*   `custom-images/examples/secure-boot/install_gpu_driver.sh`: Installs and signs NVIDIA components.
+*   `initialization-actions/gpu/install_gpu_driver.sh`: Installs and signs NVIDIA components.
 *   `custom-images/startup_script/gce-proxy-setup.sh`: Configures OS proxy settings (used in image build and on cluster boot).
 *   `custom-images/examples/secure-boot/build-and-run-podman.sh`: Main build orchestrator.
 *   `cloud-dataproc/gcloud/bin/create-dpgce-private`: Sets up the network and proxy infrastructure.

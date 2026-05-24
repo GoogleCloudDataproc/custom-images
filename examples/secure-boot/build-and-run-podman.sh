@@ -140,11 +140,13 @@ time podman run -it --rm \
   -v $(pwd)/${KEY_FILE}:/custom-images/key.json:ro \
   -v $(pwd)/tmp/logs/${timestamp}:/tmp \
   -v $(pwd)/tmp/tls/${timestamp}:/custom-images/tls \
+  -v ${DATAPROC_EVOLUTION_DIR}:${DATAPROC_EVOLUTION_DIR}:ro \
   -e GOOGLE_APPLICATION_CREDENTIALS=/custom-images/key.json \
   -e GCE_METADATA_HOST=disabled \
   -e timestamp=${timestamp} \
   -e DEBUG=0 \
   -e REPRO_TMPDIR=/tmp \
+  -e DATAPROC_EVOLUTION_DIR=${DATAPROC_EVOLUTION_DIR} \
   ${image} \
   bash -x examples/secure-boot/pre-init.sh "${DATAPROC_IMAGE_VERSION}"
 #  bash examples/secure-boot/build-current-images.sh

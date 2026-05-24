@@ -391,7 +391,7 @@ if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
 
   # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
   PURPOSE="tf"
-  customization_script="examples/secure-boot/install_gpu_driver.sh"
+  customization_script="${DATAPROC_EVOLUTION_DIR}/initialization-actions/gpu/install_gpu_driver.sh"
   print_status "=== Generating tf image for ${dataproc_version} ==="
 # no complicated customizations.  just make sure secure-boot works
   time generate_from_base_purpose "secure-boot"
@@ -402,7 +402,7 @@ fi
 if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
   # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image on a proxy base
   PURPOSE="proxy-tf"
-  customization_script="examples/secure-boot/install_gpu_driver.sh"
+  customization_script="${DATAPROC_EVOLUTION_DIR}/initialization-actions/gpu/install_gpu_driver.sh"
   print_status "=== Waiting for TF build to complete to leverage cache... ==="
   while [[ ! -f "${tmpdir}/sentinels/tf_build_complete" ]]; do
     sleep 10

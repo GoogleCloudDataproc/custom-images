@@ -18,6 +18,11 @@ if [[ -z "${ENV_JSON_PATH}" ]]; then
   ENV_JSON_PATH="env.json"
 fi
 
+if [[ -z "${DATAPROC_EVOLUTION_DIR:-}" ]]; then
+  SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
+  export DATAPROC_EVOLUTION_DIR="$(realpath "${SCRIPT_DIR}/../../../..")"
+fi
+
 if [[ ! -f "${ENV_JSON_PATH}" ]]; then
   echo "Error: ${ENV_JSON_PATH} not found. Please create it by copying env.json.sample"
   exit 1
