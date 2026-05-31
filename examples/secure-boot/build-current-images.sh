@@ -26,171 +26,43 @@
 # cp examples/secure-boot/env.json.sample env.json
 # vi env.json
 # docker build -f Dockerfile -t custom-images-builder:latest .
-# time docker run -it custom-images-builder:latest bash examples/secure-boot/build-current-images.sh
+# export timestamp=$(date "+%Y%m%d-%H%M%S")
+# echo "Log directory: ./tmp/logs/${timestamp}"
+# mkdir -p ./tmp/logs/${timestamp}
+# time podman run -it \
+#   -v ~/.config/gcloud:/root/.config/gcloud \
+#   -v ./tmp/logs/${timestamp}:/tmp \
+#   -e DEBUG=0 \
+#   -e timestamp=${timestamp} \
+#   custom-images-builder:latest \
+#   bash examples/secure-boot/build-current-images.sh
 
 
-set -ex
+set -e
 
-function execute_with_retries() (
-  set +x
-  local -r cmd="$*"
-  local install_log="${tmpdir}/install.log"
-
-  for ((i = 0; i < 3; i++)); do
-    set -x
-    eval "$cmd" > "${install_log}" 2>&1 && retval=$? || { retval=$? ; cat "${install_log}" ; }
-    set +x
-    if [[ $retval == 0 ]] ; then return 0 ; fi
-    sleep 5
-  done
-  return 1
-)
-
-function configure_service_account() {
-  # Create service account
-  if gcloud iam service-accounts list --filter email="${GSA}" 2>&1 | grep -q 'Listed 0 items.' ; then
-    # Create service account for this purpose
-    echo "creating pre-init customization service account ${GSA}"
-    gcloud iam service-accounts create "${SA_NAME}" \
-      --description="Service account for pre-init customization" \
-      --display-name="${SA_NAME}"
-  fi
-
-  if [[ -d tls ]] ; then mv tls "tls-$(date +%s)" ; fi
-  eval "$(bash examples/secure-boot/create-key-pair.sh)"
-
-  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/dataproc.worker" \
-    --condition=None
-
-  # Grant the service account access to buckets in this project
-  # TODO: this is over-broad and should be limited only to the buckets
-  # used by these clusters
-  for storage_object_role in 'User' 'Creator' 'Viewer' ; do
-    execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-      --member="serviceAccount:${GSA}" \
-      --role="roles/storage.object${storage_object_role}" \
-      --condition=None
-  done
-
-  for secret in "${public_secret_name}" "${private_secret_name}" ; do
-    for sm_role in 'viewer' 'secretAccessor' ; do
-      # Grant the service account permission to list the secret
-      execute_with_retries gcloud secrets -q add-iam-policy-binding "${secret}" \
-        --member="serviceAccount:${GSA}" \
-        --role="roles/secretmanager.${sm_role}" \
-        --condition=None
-    done
-  done
-
-  execute_with_retries gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role=roles/compute.instanceAdmin.v1 \
-    --condition=None
-
-  execute_with_retries gcloud iam service-accounts add-iam-policy-binding "${GSA}" \
-    --member="serviceAccount:${GSA}" \
-    --role=roles/iam.serviceAccountUser \
-    --condition=None
-}
-
-function revoke_bindings() {
-  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role="roles/dataproc.worker" \
-    --condition=None
-
-  # Revoke the service account's access to buckets in this project
-  for storage_object_role in 'User' 'Creator' 'Viewer' ; do
-    execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
-      --member="serviceAccount:${GSA}" \
-      --role="roles/storage.object${storage_object_role}" \
-      --condition=None
-  done
-
-  for secret in "${public_secret_name}" "${private_secret_name}" ; do
-    # Revoke the service account's permission to list and access the secret
-    for sm_role in 'viewer' 'secretAccessor' ; do
-      execute_with_retries gcloud secrets -q remove-iam-policy-binding "${secret}" \
-        --member="serviceAccount:${GSA}" \
-        --role="roles/secretmanager.${sm_role}" \
-        --condition=None
-    done
-  done
-
-  execute_with_retries gcloud projects remove-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${GSA}" \
-    --role=roles/compute.instanceAdmin.v1 \
-    --condition=None
-
-  execute_with_retries gcloud iam service-accounts remove-iam-policy-binding "${GSA}" \
-    --member="serviceAccount:${GSA}" \
-    --role=roles/iam.serviceAccountUser \
-    --condition=None
-}
-
-
-export DOMAIN="$(jq           -r .DOMAIN        env.json)"
-export PROJECT_ID="$(jq       -r .PROJECT_ID    env.json)"
-export PURPOSE="$(jq          -r .PURPOSE       env.json)"
-export BUCKET="$(jq           -r .BUCKET        env.json)"
-export SECRET_NAME="$(jq      -r .SECRET_NAME   env.json)"
-export REGION="$(jq           -r .REGION        env.json)"
-export ZONE="$(jq             -r .ZONE          env.json)"
-export PRINCIPAL_USER="$(jq   -r .PRINCIPAL     env.json)"
-export PRINCIPAL_DOMAIN="$(jq -r .DOMAIN        env.json)"
-export PRINCIPAL="${PRINCIPAL_USER}@${PRINCIPAL_DOMAIN}"
-
-echo -n "setting gcloud config..."
-gcloud config set project "${PROJECT_ID}"
-gcloud config set account "${PRINCIPAL}"
-gcloud auth login
-
-CURRENT_COMPUTE_REGION="$(gcloud config get compute/region)"
-if [[ "${CURRENT_COMPUTE_REGION}" != "${REGION}" ]]; then
-    echo "setting compute region"
-    gcloud config set compute/region "${REGION}"
-fi
-CURRENT_DATAPROC_REGION="$(gcloud config get dataproc/region)"
-if [[ "${CURRENT_DATAPROC_REGION}" != "${REGION}" ]]; then
-    echo "setting dataproc region"
-    gcloud config set dataproc/region "${REGION}"
-fi
-CURRENT_COMPUTE_ZONE="$(gcloud config get compute/zone)"
-if [[ "${CURRENT_COMPUTE_ZONE}" != "${ZONE}" ]]; then
-    echo "setting compute zone"
-    gcloud config set compute/zone "${ZONE}"
-fi
-SA_NAME="sa-${PURPOSE}"
-
-if [[ "${PROJECT_ID}" =~ ":" ]] ; then
-  GSA="${SA_NAME}@${PROJECT_ID#*:}.${PROJECT_ID%:*}.iam.gserviceaccount.com"
-else
-  GSA="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+DEBUG="${DEBUG:-0}"
+if (( DEBUG != 0 )); then
+  set -x
 fi
 
-readonly timestamp="$(date "+%Y%m%d-%H%M%S")"
-export timestamp
+# Activate service account
+source examples/secure-boot/lib/env.sh
+source examples/secure-boot/lib/util.sh
 
-export tmpdir=/tmp/${timestamp};
-mkdir -p ${tmpdir}
-
-configure_service_account
+export tmpdir="${REPRO_TMPDIR}"
+mkdir -p "${tmpdir}/sentinels"
 
 # screen session name
 session_name="build-current-images"
 
-export ZONE="$(jq -r .ZONE env.json)"
-gcloud compute instances list --zones "${ZONE}" --format json > ${tmpdir}/instances.json
-gcloud compute images    list                   --format json > ${tmpdir}/images.json
-
-# Run generation scripts simultaneously for each dataproc image version
+print_status "Starting screen session ${session_name} to build images... "
 screen -L -US "${session_name}" -c examples/secure-boot/pre-init.screenrc
+#report_result "Done"
 
 function find_disk_usage() {
+  print_status "Analyzing disk usage... "
   #  grep maximum-disk-used /tmp/custom-image-*/logs/startup-script.log
-  grep -H 'Customization script' /tmp/custom-image-*/logs/workflow.log
+  grep -H '^[^\+].*Cust.*ript' /tmp/custom-image-*${timestamp}*/logs/workflow.log
   echo '# DP_IMG_VER       RECOMMENDED_DISK_SIZE   DSK_SZ  D_USED   D_FREE  D%F     PURPOSE'
 # workflow_log=/tmp/custom-image-dataproc-2-0-deb10-20250424-232955-tf-20250425-230559/logs/workflow.log
   for workflow_log in $(grep -Hl "Customization script" /tmp/custom-image-*/logs/workflow.log) ; do
@@ -199,6 +71,5 @@ function find_disk_usage() {
       | grep -A20 'Filesystem.*Avail' | tail -20 \
       | perl examples/secure-boot/genline.pl "${startup_log}"
   done
+  report_result "Done"
 }
-
-revoke_bindings
