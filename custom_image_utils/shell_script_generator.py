@@ -16,7 +16,10 @@ Shell script based image creation workflow generator.
 """
 
 from datetime import datetime
+import os
 import re
+import sys
+
 
 
 _template = """#!/usr/bin/env bash
@@ -128,7 +131,7 @@ function main() {{
     # build tls/ directory from variables defined near the header of
     # the examples/secure-boot/create-key-pair.sh file
 
-    eval "$(bash examples/secure-boot/create-key-pair.sh)"
+    eval "$(bash {create_key_pair_script})"
 
     # by default, a gcloud secret with the name of efi-db-pub-key-042 is
     # created in the current project to store the certificate installed
@@ -341,11 +344,38 @@ class Generator:
     if self.args["dataproc_version"]:
       dataproc_version = self.args["dataproc_version"]
       metadata_flag_template += ',dataproc_dataproc_version="{}"'.format(dataproc_version)
+    self.args["create_key_pair_script"] = "examples/secure-boot/create-key-pair.sh"
     if self.args.get("trusted_cert"):
       import subprocess
       import re
+
+      # Resolve the path to create-key-pair.sh
+      script_path = "examples/secure-boot/create-key-pair.sh"
+      resolved_path = None
+
+      # Candidate 1: Relative to CWD
+      if os.path.exists(script_path):
+        resolved_path = script_path
+      # Candidate 2: Relative to this file
+      else:
+        relative_to_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", script_path))
+        if os.path.exists(relative_to_file):
+          resolved_path = relative_to_file
+        # Candidate 3: Relative to sys.argv[0]
+        elif sys.argv:
+          relative_to_argv = os.path.abspath(os.path.join(os.path.dirname(sys.argv[0]), script_path))
+          if os.path.exists(relative_to_argv):
+            resolved_path = relative_to_argv
+
+      if resolved_path:
+        print(f"INFO: Resolved create-key-pair.sh to: {resolved_path}")
+        self.args["create_key_pair_script"] = resolved_path
+      else:
+        print("WARNING: Could not resolve path to create-key-pair.sh, falling back to default.")
+        resolved_path = script_path
+
       try:
-        script_output = subprocess.check_output(['bash', 'examples/secure-boot/create-key-pair.sh'], text=True)
+        script_output = subprocess.check_output(['bash', resolved_path], text=True)
         secret_vars = {}
         for line in script_output.splitlines():
           if '=' in line:
@@ -360,7 +390,7 @@ class Generator:
         print(f"ERROR: Failed to source secret names from create-key-pair.sh: {e}")
         # Handle error appropriately, maybe exit or raise
       except FileNotFoundError:
-        print("ERROR: examples/secure-boot/create-key-pair.sh not found")
+        print(f"ERROR: {resolved_path} not found")
         # Handle error
     self.args["shielded_secure_boot_flag"] = ""
     if self.args["metadata"]:
