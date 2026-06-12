@@ -1,0 +1,34 @@
+#!/bin/bash
+# SSH into the latest builder VM for a given image prefix.
+
+set -e
+
+source examples/secure-boot/lib/env.sh
+source examples/secure-boot/lib/util.sh
+
+IMAGE_PREFIX="${1:-dataproc-2-2-deb10}"
+PURPOSE="${2:-secure-boot}"
+
+print_status "Finding latest builder instance for ${IMAGE_PREFIX}*${PURPOSE}"...
+
+INSTANCE_NAME=$(gcloud compute instances list \
+  --project="${PROJECT_ID}" \
+  --zones="${ZONE}" \
+  --filter="name~'${IMAGE_PREFIX}.*${PURPOSE}-install' AND status=RUNNING" \
+  --format="value(name)" \
+  --sort-by=\"~creationTimestamp\" \
+  | head -n 1)
+
+if [[ -z "${INSTANCE_NAME}" ]]; then
+  report_result "Not Found"
+  echo "No RUNNING builder instance found matching the prefix." >&2
+#  exit 1
+fi
+
+report_result "Found: ${INSTANCE_NAME}"
+
+print_status "SSHing into ${INSTANCE_NAME}"...
+
+INSTANCE_NAME=debug-deb12-build
+
+gcloud compute ssh "${INSTANCE_NAME}" --zone "${ZONE}" --project "${PROJECT_ID}"

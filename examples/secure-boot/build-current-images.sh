@@ -65,7 +65,7 @@ function find_disk_usage() {
   grep -H '^[^\+].*Cust.*ript' /tmp/custom-image-*${timestamp}*/logs/workflow.log
   echo '# DP_IMG_VER       RECOMMENDED_DISK_SIZE   DSK_SZ  D_USED   D_FREE  D%F     PURPOSE'
 # workflow_log=/tmp/custom-image-dataproc-2-0-deb10-20250424-232955-tf-20250425-230559/logs/workflow.log
-  for workflow_log in $(grep -Hl "Customization script" /tmp/custom-image-*/logs/workflow.log) ; do
+  for workflow_log in $(grep -Hl "Customization script" /tmp/custom-image-*${timestamp}*/logs/workflow.log 2>/dev/null || true) ; do
     startup_log="${workflow_log/workflow/startup-script}"
     grep -v '^\['  "${startup_log}" \
       | grep -A20 'Filesystem.*Avail' | tail -20 \
