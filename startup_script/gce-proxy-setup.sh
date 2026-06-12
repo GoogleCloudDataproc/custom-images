@@ -497,7 +497,7 @@ function configure_systemd_proxy() {
   if [[ -n "${HTTP_PROXY:-}" || -n "${HTTPS_PROXY:-}" || -n "${http_proxy:-}" || -n "${https_proxy:-}" ]]; then
     if [[ "$(get_cached_state 'system/systemd_is_pid1')" != "true" ]]; then
       echo "ERROR: configure_systemd_proxy: systemd is not running as PID 1. This environment is unsupported." >&2
-      exit 1
+      return 1
     fi
 
     echo "DEBUG: configure_systemd_proxy: Injecting proxy overrides into systemd manager..." >&2
@@ -524,8 +524,12 @@ EOF
     echo "DEBUG: configure_systemd_proxy: Executing systemd daemon-reexec..." >&2
     # NOTE: daemon-reexec is a heavy operation but required to make systemd
     # propagate the new DefaultEnvironment to subsequent services (like dataproc agent).
-    systemctl daemon-reexec || true
+    systemctl daemon-reexec || {
+      echo "ERROR: configure_systemd_proxy: systemd daemon-reexec failed!" >&2
+      return 1
+    }
   fi
+  return 0
 }
 
 function repair_boto() {
