@@ -14,13 +14,25 @@
 #
 # This script loads and validates environment variables from env.json
 
-if [[ -z "${ENV_JSON_PATH}" ]]; then
+if [[ -z "${ENV_JSON_PATH:-}" ]]; then
   ENV_JSON_PATH="env.json"
 fi
 
 if [[ -z "${DATAPROC_EVOLUTION_DIR:-}" ]]; then
-  SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
-  export DATAPROC_EVOLUTION_DIR="$(realpath "${SCRIPT_DIR}/../../../..")"
+  # Traverse upwards from env.sh's directory to resolve the repository root
+  # containing both custom-images and cloud-dataproc, bypassing nested git boundaries.
+  current_dir=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+  while [[ "${current_dir}" != "/" ]]; do
+    if [[ -d "${current_dir}/custom-images" && -d "${current_dir}/cloud-dataproc" ]]; then
+      export DATAPROC_EVOLUTION_DIR="${current_dir}"
+      break
+    fi
+    current_dir=$(dirname "${current_dir}")
+  done
+  if [[ -z "${DATAPROC_EVOLUTION_DIR:-}" ]]; then
+    echo "ERROR: Cannot resolve dataproc-evolution repository root from ${BASH_SOURCE[0]}." >&2
+    exit 1
+  fi
 fi
 
 if [[ ! -f "${ENV_JSON_PATH}" ]]; then
@@ -43,6 +55,10 @@ PRINCIPAL_USER="$(jq   -r .PRINCIPAL            "${ENV_JSON_PATH}")"
 DOMAIN="$(jq -r .DOMAIN               "${ENV_JSON_PATH}")"
 IMAGE_VERSION="$(jq    -r .IMAGE_VERSION        "${ENV_JSON_PATH}")"
 CUSTOMIZATION_SCRIPT="$(jq -r .CUSTOMIZATION_SCRIPT  "${ENV_JSON_PATH}")"
+
+SWP_IP="$(jq -r .SWP_IP "${ENV_JSON_PATH}")"; [[ "${SWP_IP}" == "null" ]] && SWP_IP=""
+SWP_PORT="$(jq -r .SWP_PORT "${ENV_JSON_PATH}")"; [[ "${SWP_PORT}" == "null" ]] && SWP_PORT=""
+PROXY_CERT_GCS_PATH="$(jq -r .PROXY_CERT_GCS_PATH "${ENV_JSON_PATH}")"; [[ "${PROXY_CERT_GCS_PATH}" == "null" ]] && PROXY_CERT_GCS_PATH=""
 
 # Validate all required variables from env.json
 missing_vars=()
@@ -70,7 +86,7 @@ if [ ${#missing_vars[@]} -gt 0 ]; then
   exit 1
 fi
 
-export PROJECT_ID PURPOSE BUCKET TEMP_BUCKET ZONE SUBNET HIVE_NAME HIVEDB_PW_URI SECRET_NAME KMS_KEY_URI PRINCIPAL_USER DOMAIN IMAGE_VERSION CUSTOMIZATION_SCRIPT
+export PROJECT_ID PURPOSE BUCKET TEMP_BUCKET ZONE SUBNET HIVE_NAME HIVEDB_PW_URI SECRET_NAME KMS_KEY_URI PRINCIPAL_USER DOMAIN IMAGE_VERSION CUSTOMIZATION_SCRIPT SWP_IP SWP_PORT PROXY_CERT_GCS_PATH
 
 PRINCIPAL="${PRINCIPAL_USER}@${DOMAIN}"
 export PRINCIPAL

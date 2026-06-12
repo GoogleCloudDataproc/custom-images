@@ -66,13 +66,15 @@ case "${dataproc_version}" in
   "2.1-rocky8"       ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-roc8 ;;
   "2.1-ubuntu20"     ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-ubu20 ;;
   "2.1-ubuntu20-arm" ) CUDA_VERSION="12.4.1" ; short_dp_ver=2.1-ubu20-arm ;;
-  "2.2-debian12"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.2-deb12 ;;
-  "2.2-rocky9"       ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.2-roc9 ;;
-  "2.2-ubuntu22"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.2-ubu22 ;;
-  "2.3-debian12"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-deb12 ;;
-  "2.3-rocky9"       ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-roc9 ;;
-  "2.3-ubuntu22"     ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-ubu22 ;;
-  "2.3-ml-ubuntu22"  ) CUDA_VERSION="13.1.0" ; short_dp_ver=2.3-ml-ubu22 ; disk_size_gb="50";;
+  "2.2-debian12"     ) CUDA_VERSION="13.2.0" ; short_dp_ver=2.2-deb12 ;;
+  "2.2-rocky9"       ) CUDA_VERSION="13.2.0" ; short_dp_ver=2.2-roc9 ;;
+  "2.2-ubuntu22"     ) CUDA_VERSION="13.2.0" ; short_dp_ver=2.2-ubu22 ;;
+  "2.2-ubuntu22-arm" ) CUDA_VERSION="13.2.0" ; short_dp_ver=2.2-ubu22-arm ;;
+  "2.3-debian12"     ) CUDA_VERSION="13.2.0" ; short_dp_ver=2.3-deb12 ;;
+  "2.3-rocky9"       ) CUDA_VERSION="13.2.0" ; short_dp_ver=2.3-roc9 ;;
+  "2.3-ubuntu22"     ) CUDA_VERSION="13.2.0" ; short_dp_ver=2.3-ubu22 ;;
+  "2.3-ubuntu22-arm" ) CUDA_VERSION="13.2.0" ; short_dp_ver=2.3-ubu22-arm ;;
+  "2.3-ml-ubuntu22"  ) CUDA_VERSION="13.2.0" ; short_dp_ver=2.3-ml-ubu22 ; disk_size_gb="50";;
 esac
 
 function create_h100_instance() {
@@ -92,6 +94,12 @@ function create_t4_instance() {
 function create_unaccelerated_instance() {
   python3 generate_custom_image.py \
     --machine-type "n1-standard-2" \
+    $*
+}
+
+function create_arm_instance() {
+  python3 generate_custom_image.py \
+    --machine-type "t2a-standard-2" \
     $*
 }
 
@@ -154,6 +162,9 @@ function generate() {
     metadata_args+=("universe-domain=${universe_domain}")
 
     create_function="create_unaccelerated_instance"
+    if [[ "${dataproc_version}" == *arm* ]]; then
+      create_function="create_arm_instance"
+    fi
 
     if [[ "${customization_script}" =~ "cloud-sql-proxy.sh"  ]] ; then
       metadata_args+=(
@@ -251,7 +262,7 @@ function generate() {
       else
         local exit_code=$?
         report_result "Fail"
-        local img_build_dir="$(ls -d /tmp/custom-image-${image_name}-* 2>/dev/null || echo '')"
+        local img_build_dir="$(ls -d /tmp/custom-image-${image_name}-* 2>/dev/null | sort | tail -n1 || echo '')"
         # retry if the startup-script.log file does not exist or is empty
         if [[ -n "${img_build_dir}" ]]; then
           local startup_script_log="${img_build_dir}/logs/startup-script.log"
@@ -344,7 +355,7 @@ time generate_from_dataproc_version "${dataproc_version}"
 
 # Configure a proxy on secure-boot image
 PURPOSE="secure-proxy"
-customization_script="startup_script/gce-proxy-setup.sh"
+customization_script="${DATAPROC_EVOLUTION_DIR}/initialization-actions/http-proxy/http-proxy.sh"
 print_status "=== Generating base ${PURPOSE} image for ${dataproc_version} ==="
 time generate_from_base_purpose "secure-boot"
 
@@ -386,7 +397,7 @@ esac
 # Extract major.minor version (e.g., 2.2 from 2.2-debian12)
 MAJOR_MINOR_VERSION=$(echo "${dataproc_version}" | cut -d'-' -f1)
 
-if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
+if version_ge "${MAJOR_MINOR_VERSION}" "2.2" && [[ "${dataproc_version}" != *arm* ]] ; then
   print_status "=== Generating GPU/ML images for ${dataproc_version} (>=2.2) ==="
 
   # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image
@@ -400,22 +411,28 @@ if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
 fi
 
 if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
-  # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image on a proxy base
-  PURPOSE="proxy-tf"
-  customization_script="${DATAPROC_EVOLUTION_DIR}/initialization-actions/gpu/install_gpu_driver.sh"
-  print_status "=== Waiting for TF build to complete to leverage cache... ==="
-  while [[ ! -f "${tmpdir}/sentinels/tf_build_complete" ]]; do
-    sleep 10
-  done
-  print_status "=== Generating proxy-tf image for ${dataproc_version} ==="
-  time generate_from_base_purpose "secure-proxy"
+  DOCKER_BASE_IMAGE="secure-proxy"
+
+  if [[ "${dataproc_version}" != *arm* ]] ; then
+    # Install GPU drivers + cuda + rapids + cuDNN + nccl + tensorflow + pytorch on dataproc base image on a proxy base
+    PURPOSE="proxy-tf"
+    customization_script="${DATAPROC_EVOLUTION_DIR}/initialization-actions/gpu/install_gpu_driver.sh"
+    print_status "=== Waiting for TF build to complete to leverage cache... ==="
+    while [[ ! -f "${tmpdir}/sentinels/tf_build_complete" ]]; do
+      sleep 10
+    done
+    print_status "=== Generating proxy-tf image for ${dataproc_version} ==="
+    time generate_from_base_purpose "secure-proxy"
+
+    DOCKER_BASE_IMAGE="proxy-tf"
+  fi
 
   ## run the installer for the DOCKER optional component
   PURPOSE="docker"
   OPTIONAL_COMPONENTS_ARG='--optional-components=DOCKER'
   customization_script="examples/secure-boot/no-customization.sh"
   print_status "=== Generating ${PURPOSE} image for ${dataproc_version} ==="
-  time generate_from_base_purpose "proxy-tf"
+  time generate_from_base_purpose "${DOCKER_BASE_IMAGE}"
 
   ## run the installer for the DOCKER optional component
   PURPOSE="jupyter"
@@ -446,6 +463,7 @@ if version_ge "${MAJOR_MINOR_VERSION}" "2.2" ; then
   time generate_from_base_purpose "pig"
 fi
 
+if [[ "${dataproc_version}" != *arm* ]]; then
 
 ## Execute spark-rapids/spark-rapids.sh init action on base image
 PURPOSE="spark"
@@ -512,6 +530,8 @@ PURPOSE="pytorch"
 customization_script="examples/secure-boot/pytorch.sh"
 print_status "=== Generating pytorch image for ${dataproc_version} ==="
 echo time generate_from_base_purpose "tf"
+
+fi
 
 
 
