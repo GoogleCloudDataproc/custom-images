@@ -45,6 +45,25 @@ CUSTOM_SOURCES_PATH=$(/usr/share/google/get_metadata_value attributes/custom-sou
 # get time to wait for stdout to flush
 SHUTDOWN_TIMER_IN_SEC=$(/usr/share/google/get_metadata_value attributes/shutdown-timer-in-sec)
 
+function shutdown_vm() {
+  local exit_code=$?
+  if [[ ${exit_code} -ne 0 ]]; then
+    local retain_on_failure
+    retain_on_failure=$(/usr/share/google/get_metadata_value attributes/retain-on-failure || echo "false")
+    if [[ "${retain_on_failure}" == "true" ]]; then
+      echo "startup-script: Build failed with exit code ${exit_code}."
+      echo "startup-script: retain-on-failure=true is set. Keeping VM running for debugging."
+      return 0
+    fi
+  fi
+
+  echo "startup-script: Sleep ${SHUTDOWN_TIMER_IN_SEC}s before shutting down..."
+  echo "You can change the timeout value with --shutdown-instance-timer-sec"
+  sleep "${SHUTDOWN_TIMER_IN_SEC}" # wait for stdout to flush
+  shutdown -h now
+}
+trap shutdown_vm EXIT
+
 USER_DATAPROC_COMPONENTS=$( /usr/share/google/get_metadata_value attributes/optional-components | tr '[:upper:]' '[:lower:]' | tr '.' ' ' || echo "")
 DATAPROC_IMAGE_VERSION=$(/usr/share/google/get_metadata_value attributes/dataproc_dataproc_version | cut -c1-3 | tr '-' '.' || echo "")
 DATAPROC_IMAGE_TYPE=$(/usr/share/google/get_metadata_value attributes/dataproc_image_type || echo "standard")
@@ -281,11 +300,6 @@ function main() {
       echo "startup-script: BuildSucceeded: Customization complete."
     fi
   fi
-
-  echo "startup-script: Sleep ${SHUTDOWN_TIMER_IN_SEC}s before shutting down..."
-  echo "You can change the timeout value with --shutdown-instance-timer-sec"
-  sleep "${SHUTDOWN_TIMER_IN_SEC}" # wait for stdout to flush
-  shutdown -h now
 }
 
 main "$@"

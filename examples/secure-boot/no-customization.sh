@@ -43,6 +43,18 @@ print( "     samples-taken: ", scalar @siz, $/,
 # Monitor disk usage in a screen session
 df / | tee "/run/disk-usage.log"
 touch "/run/keep-running-df"
+
+# Ensure screen is installed for disk monitoring
+if ! command -v screen >/dev/null 2>&1; then
+  echo "INFO: Installing screen for disk usage monitoring..." >&2
+  if command -v dnf >/dev/null 2>&1; then
+    sudo dnf -y -q install epel-release && sudo dnf -y -q install screen
+  elif command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update -y -qq >/dev/null 2>&1
+    sudo apt-get install -y -qq screen >/dev/null 2>&1
+  fi
+fi
+
 screen -d -m -LUS keep-running-df \
   bash -c "while [[ -f /run/keep-running-df ]] ; do df / | tee -a /run/disk-usage.log ; sleep 5s ; done"
 

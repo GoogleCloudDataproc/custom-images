@@ -593,9 +593,12 @@ function setup_deferred_service() {
     chmod +x "${target_path}"
   fi
 
-  # 2. Write the systemd unit file (runs BEFORE google-dataproc-agent)
-  echo "INFO: setup_deferred_service: Writing systemd service file ${service_file}" >&2
-  cat <<EOF > "${service_file}"
+  # 2. Write and enable the systemd unit file (runs BEFORE google-dataproc-agent) if not already present
+  if [[ -f "${service_file}" ]]; then
+    echo "INFO: setup_deferred_service: Systemd service file ${service_file} already exists. Skipping write and enable." >&2
+  else
+    echo "INFO: setup_deferred_service: Writing systemd service file ${service_file}" >&2
+    cat <<EOF > "${service_file}"
 [Unit]
 Description=Inject Dynamic Dataproc Proxy Overrides into Systemd Manager
 DefaultDependencies=no
@@ -615,17 +618,18 @@ StandardError=journal+console
 WantedBy=multi-user.target
 EOF
 
-  chmod 644 "${service_file}"
+    chmod 644 "${service_file}"
 
-  # 3. Enable the service so it runs on every boot
-  if ! command -v systemctl >/dev/null 2>&1 || [[ "$(get_cached_state 'system/systemd_is_pid1')" != "true" ]]; then
-    echo "ERROR: setup_deferred_service: systemd is not running as PID 1. Cannot enable deferred service." >&2
-    exit 1
+    # 3. Enable the service so it runs on every boot
+    if ! command -v systemctl >/dev/null 2>&1 || [[ "$(get_cached_state 'system/systemd_is_pid1')" != "true" ]]; then
+      echo "ERROR: setup_deferred_service: systemd is not running as PID 1. Cannot enable deferred service." >&2
+      exit 1
+    fi
+
+    echo "INFO: setup_deferred_service: Enabling systemd service ${service_name}" >&2
+    systemctl enable "${service_name}.service"
+    echo "INFO: setup_deferred_service: Deferred proxy service enabled successfully." >&2
   fi
-
-  echo "INFO: setup_deferred_service: Enabling systemd service ${service_name}" >&2
-  systemctl enable "${service_name}.service"
-  echo "INFO: setup_deferred_service: Deferred proxy service enabled successfully." >&2
 }
 
 function print_introspection_report() {
@@ -660,6 +664,43 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   echo -e "${BLUE}[PHASE 3/3] MUTATION: Applying system modifications...${NC}" >&2
   configure_systemd_proxy
   repair_boto
+
+  # ============================================================================
+  # Dynamic Deferred Config Script Execution
+  # ============================================================================
+  DEFERRED_URI=$(get_metadata_attribute 'deferred-config-script-uri' '')
+  if [[ -n "${DEFERRED_URI}" ]]; then
+    if [[ "${DEFERRED_URI}" != gs://* ]]; then
+      echo "ERROR: deferred-config-script-uri must be a GCS URI starting with gs://"
+      exit 1
+    fi
+
+    LOCAL_SCRIPT="/tmp/deferred-config-script.sh"
+    echo "INFO: Fetching deferred script from ${DEFERRED_URI}..."
+    if ! gsutil cp "${DEFERRED_URI}" "${LOCAL_SCRIPT}"; then
+      echo "ERROR: Failed to download deferred config script from ${DEFERRED_URI}"
+      exit 1
+    fi
+
+    DEFERRED_SHA=$(get_metadata_attribute 'deferred-config-script-sha256' '')
+    if [[ -n "${DEFERRED_SHA}" ]]; then
+      CALCULATED_SHA=$(sha256sum "${LOCAL_SCRIPT}" | cut -d ' ' -f 1)
+      if [[ "${CALCULATED_SHA}" != "${DEFERRED_SHA}" ]]; then
+        echo "ERROR: SHA256 checksum mismatch for deferred config script!"
+        rm -f "${LOCAL_SCRIPT}"
+        exit 1
+      fi
+    fi
+
+    chmod +x "${LOCAL_SCRIPT}"
+    echo "INFO: Executing deferred config script..."
+    if ! "${LOCAL_SCRIPT}"; then
+      echo "ERROR: Deferred config script execution failed!"
+      rm -f "${LOCAL_SCRIPT}"
+      exit 1
+    fi
+    rm -f "${LOCAL_SCRIPT}"
+  fi
 
   if [[ "${IS_CUSTOM_IMAGE_BUILD:-}" == "true" || -n "$(get_metadata_attribute 'custom-sources-path' '')" ]]; then
     setup_deferred_service

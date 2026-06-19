@@ -1,0 +1,38 @@
+#!/bin/bash
+# Get the full serial port output of the latest builder VM for a given image prefix.
+
+set -e
+
+DEBUG="${DEBUG:-0}"
+if (( DEBUG != 0 )); then
+  set -x
+fi
+
+source examples/secure-boot/lib/env.sh
+source examples/secure-boot/lib/util.sh
+
+IMAGE_PREFIX="${1:-dataproc-2-0-deb10}"
+PURPOSE="${2:-secure-boot}"
+
+print_status "Finding latest builder instance for ${IMAGE_PREFIX}*${PURPOSE}"...
+
+INSTANCE_NAME=$(gcloud compute instances list \
+  --project="${PROJECT_ID}" \
+  --zones="${ZONE}" \
+  --filter="name~'${IMAGE_PREFIX}.*${PURPOSE}-install'" \
+  --format="value(name)" \
+  --sort-by="~creationTimestamp" \
+  | head -n 1)
+
+if [[ -z "${INSTANCE_NAME}" ]]; then
+  report_result "Not Found"
+  echo "No builder instance found matching the prefix." >&2
+  exit 1
+fi
+
+report_result "Found: ${INSTANCE_NAME}"
+
+print_status "Getting serial port output for ${INSTANCE_NAME}"...
+echo "" # Add a newline after the status
+
+gcloud compute instances get-serial-port-output "${INSTANCE_NAME}" --zone "${ZONE}" --project "${PROJECT_ID}" --port 1 | less
