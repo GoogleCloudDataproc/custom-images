@@ -1,0 +1,5 @@
+# Requirements for API-based custom image generation
+google-cloud-compute
+google-cloud-storage
+google-auth
+ruff

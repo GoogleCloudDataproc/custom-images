@@ -34,61 +34,61 @@ Once this script is completed, the custom Dataproc image should be ready to use.
 
 import logging
 import os
-import subprocess
 import sys
 
-from custom_image_utils import args_inferer
 from custom_image_utils import args_parser
-from custom_image_utils import expiration_notifier
-from custom_image_utils import image_labeller
-from custom_image_utils import shell_image_creator
-from custom_image_utils import smoke_test_runner
 
 logging.basicConfig()
 _LOG = logging.getLogger(__name__)
 _LOG.setLevel(logging.WARN)
 
 
-def parse_args(raw_args):
-  """Parses and infers command line arguments."""
+def get_execution_engine(args):
+  """Instantiates the appropriate execution engine."""
+  if args.execution_engine == "api":
+    from custom_image_utils.api_execution_engine import ApiExecutionEngine
 
-  args = args_parser.parse_args(raw_args)
-  _LOG.info("Parsed args: {}".format(args))
-  args_inferer.infer_args(args)
-  _LOG.info("Inferred args: {}".format(args))
-  return args
+    credentials = None
+    if args.oauth:
+      import google.auth
 
+      credentials, _ = google.auth.load_credentials_from_file(args.oauth)
 
-def perform_sanity_checks(args):
-  _LOG.info("Performing sanity checks...")
+    return ApiExecutionEngine(credentials=credentials)
+  else:
+    from custom_image_utils.cli_execution_engine import CliExecutionEngine
 
-  # Customization script
-  if not os.path.isfile(args.customization_script):
-    raise Exception("Invalid path to customization script: '{}' is not a file.".format(
-        args.customization_script))
-
-  # Check the image doesn't already exist.
-  command = "gcloud compute images describe {} --project={}".format(
-      args.image_name, args.project_id)
-  with open(os.devnull, 'w') as devnull:
-    pipe = subprocess.Popen(
-        [command], stdout=devnull, stderr=devnull, shell=True)
-    pipe.wait()
-    if pipe.returncode == 0:
-      raise RuntimeError("Image {} already exists.".format(args.image_name))
-
-  _LOG.info("Passed sanity checks...")
+    return CliExecutionEngine()
 
 
 def main():
   """Generates custom image."""
 
-  args = parse_args(sys.argv[1:])
-  perform_sanity_checks(args)
-  shell_image_creator.create(args)
-  image_labeller.add_label(args)
-  smoke_test_runner.run(args)
-  expiration_notifier.notify(args)
+  # Parse args
+  args = args_parser.parse_args(sys.argv[1:])
+  _LOG.info("Parsed args: {}".format(args))
+
+  # Get selected execution engine
+  engine = get_execution_engine(args)
+
+  # Infer remaining arguments and check customization script path
+  is_gcs_script = args.customization_script.startswith("gs://")
+  if not is_gcs_script and not os.path.isfile(args.customization_script):
+    raise Exception(
+        "Invalid path to customization script: '{}' is not a file.".format(
+            args.customization_script
+        )
+    )
+
+  engine.infer_args(args)
+  _LOG.info("Inferred args: {}".format(args))
+
+  # Run custom image creation workflow
+  engine.perform_sanity_checks(args)
+  engine.create_image(args)
+  engine.add_label(args)
+  engine.run_smoke_test(args)
+  engine.notify_expiration(args)
 
 
 if __name__ == "__main__":

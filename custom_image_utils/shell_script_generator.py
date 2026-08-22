@@ -287,6 +287,10 @@ class Generator:
 
   def _init_args(self, args):
     self.args = args
+    self.args.setdefault("optional_components", None)
+    self.args.setdefault("dataproc_version", None)
+    self.args.setdefault("universe_domain", "googleapis.com")
+    self.args.setdefault("trusted_cert", "tls/db.der")
     if "run_id" not in self.args:
       self.args["run_id"] = "custom-image-{image_name}-{timestamp}".format(
           timestamp=datetime.now().strftime("%Y%m%d-%H%M%S"), **self.args)

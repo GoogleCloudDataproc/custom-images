@@ -29,7 +29,7 @@ from custom_image_utils import constants
 _VERSION_REGEX = re.compile(r"^\d+\.\d+\.\d+(-RC\d+)?(-[a-z\-]+\d+)?$")
 _FULL_IMAGE_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/([^/]+)$")
 _FULL_IMAGE_FAMILY_URI = re.compile(r"^(https://www\.googleapis\.com/compute/([^/]+)/)?projects/([^/]+)/global/images/family/([^/]+)$")
-_LATEST_FROM_MINOR_VERSION = re.compile(r"^(\d+)\.(\d+)-((?:debian|ubuntu|rocky)\d+)$")
+_LATEST_FROM_MINOR_VERSION = re.compile(r"^(\d+)\.(\d+)-(?:[a-zA-Z0-9\-]+-)?((?:debian|ubuntu|rocky|centos)\d+)$")
 _ARM_ARCH_REGEX = re.compile(r"""
   (?:^|[-_./])  # Non-alphanumeric separator or start of string
   (?:           # Match one of the ARM architecture terms:
@@ -264,6 +264,16 @@ def parse_args(args):
       default="googleapis.com",
       help="""(Optional) The universe domain to configure for gcloud. Defaults to 'googleapis.com'."""
   )
+  parser.add_argument(
+      "--execution-engine",
+      type=str,
+      required=False,
+      choices=["cli", "api"],
+      default="cli",
+      help="""(Optional) The execution engine used to create the image.
+      Defaults to 'cli' (gcloud / gsutil command line tools).
+      Use 'api' to use native Google Cloud client libraries.
+      """)
 
   parsed_args = parser.parse_args(args)
 

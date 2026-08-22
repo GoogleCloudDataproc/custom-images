@@ -228,6 +228,8 @@ def _infer_base_image(args):
         "Neither --dataproc-version nor --base-image-uri nor --source-image-family-uri is specified.")
   _LOG.info("Returned Dataproc base image: %s", args.dataproc_base_image)
   _LOG.info("Returned Dataproc version   : %s", args.dataproc_version)
+  print("Returned Dataproc base image: {}".format(args.dataproc_base_image))
+  print("Returned Dataproc version   : {}".format(args.dataproc_version))
 
 
 def _infer_oauth(args):
