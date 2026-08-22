@@ -286,9 +286,11 @@ class ApiExecutionEngine(ExecutionEngine):
 
         _LOG.info("Returned Dataproc base image: %s", args.dataproc_base_image)
         _LOG.info("Returned Dataproc version   : %s", args.dataproc_version)
+        print(f"Returned Dataproc base image: {args.dataproc_base_image}")
+        print(f"Returned Dataproc version   : {args.dataproc_version}")
 
     def perform_sanity_checks(self, args):
-        """Checks if the target image already exists using Images API client."""
+        """Checks if the target image already exists using API Client."""
         _LOG.info("Performing sanity checks using API Client...")
         try:
             self.images_client.get(
@@ -300,6 +302,7 @@ class ApiExecutionEngine(ExecutionEngine):
             pass
         except GoogleAPIError as e:
             raise RuntimeError(f"Error describing image {args.image_name}: {e}")
+
         _LOG.info("Passed sanity checks...")
 
     def create_image(self, args):
@@ -449,8 +452,15 @@ class ApiExecutionEngine(ExecutionEngine):
 
         # Resolve zone and region
         region = "-".join(args.zone.split("-")[:-1])
-        disk_name = f"{args.image_name}-install"
-        instance_name = f"{args.image_name}-install"
+
+        # Generate unique intermediate disk and VM instance names using SHA-256 hash of run_id
+        import hashlib
+
+        unique_suffix = hashlib.sha256(args.run_id.encode("utf-8")).hexdigest()[:6]
+        max_prefix_len = 63 - len(f"-install-{unique_suffix}")
+        prefix = args.image_name[:max_prefix_len].rstrip("-")
+        disk_name = f"{prefix}-install-{unique_suffix}"
+        instance_name = f"{prefix}-install-{unique_suffix}"
 
         state = BuildState()
 
@@ -539,11 +549,17 @@ class ApiExecutionEngine(ExecutionEngine):
             self.compute_helper.wait_for_zone_operation(
                 args.project_id, args.zone, op.name
             )
+        except Conflict as e:
+            raise RuntimeError(
+                f"Boot disk '{disk_name}' already exists in project '{args.project_id}' and zone '{args.zone}'. "
+                "A previous build may have failed or was interrupted. "
+                f"Please delete the existing disk (e.g. gcloud compute disks delete {disk_name} --zone={args.zone}) "
+                "or specify a different --image-name."
+            ) from e
         except (
             GoogleAPIError,
             NotFound,
             PermissionDenied,
-            Conflict,
             DeadlineExceeded,
         ) as e:
             raise RuntimeError(f"Error creating boot disk {disk_name}: {e}")
@@ -663,11 +679,17 @@ class ApiExecutionEngine(ExecutionEngine):
             self.compute_helper.wait_for_zone_operation(
                 args.project_id, args.zone, op.name
             )
+        except Conflict as e:
+            raise RuntimeError(
+                f"VM instance '{instance_name}' already exists in project '{args.project_id}' and zone '{args.zone}'. "
+                "A previous build may have failed or was interrupted. "
+                f"Please delete the existing instance (e.g. gcloud compute instances delete {instance_name} --zone={args.zone}) "
+                "or specify a different --image-name."
+            ) from e
         except (
             GoogleAPIError,
             NotFound,
             PermissionDenied,
-            Conflict,
             DeadlineExceeded,
         ) as e:
             raise RuntimeError(f"Error creating VM instance {instance_name}: {e}")

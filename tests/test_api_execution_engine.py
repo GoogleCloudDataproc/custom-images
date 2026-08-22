@@ -99,8 +99,11 @@ class TestApiExecutionEngine(unittest.TestCase):
         args = MagicMock()
         args.project_id = "test-project"
         args.image_name = "test-image"
+        args.zone = "us-central1-a"
 
         self.engine.images_client.get.side_effect = NotFound("Not Found")
+        self.engine.disks_client.get.side_effect = NotFound("Not Found")
+        self.engine.instances_client.get.side_effect = NotFound("Not Found")
         # Should not raise exception
         self.engine.perform_sanity_checks(args)
 
@@ -108,6 +111,7 @@ class TestApiExecutionEngine(unittest.TestCase):
         args = MagicMock()
         args.project_id = "test-project"
         args.image_name = "test-image"
+        args.zone = "us-central1-a"
 
         self.engine.images_client.get.return_value = MagicMock()
         with self.assertRaises(RuntimeError) as ctx:
