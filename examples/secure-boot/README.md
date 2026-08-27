@@ -20,7 +20,7 @@ This directory contains scripts to build Google Dataproc custom images compatibl
 
 A single `env.json` file in the root of the `custom-images` repository is used to configure both the network/proxy environment setup and the image building process.
 
-1.  **Clone Repositories:** You need all complete setup:
+1.  **Clone Repositories:** You need all three repositories for the complete setup:
     ```bash
     git clone https://github.com/GoogleCloudDataproc/cloud-dataproc.git
     git clone https://github.com/GoogleCloudDataproc/custom-images.git
