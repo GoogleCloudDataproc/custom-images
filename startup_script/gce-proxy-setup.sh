@@ -56,19 +56,18 @@ function initialize_guest_state() {
 
   # 2. GCE Metadata Probe: Fetch only instance attributes recursively,
   # and project-id non-recursively. This avoids downloading massive project-wide SSH keys.
-  local instance_json
-  instance_json=$(curl -s -f -H "Metadata-Flavor: Google" \
-    --connect-timeout 2 --max-time 5 "${MDS_PREFIX}/instance/?recursive=true" 2>/dev/null) || instance_json="{}"
-
   local project_id
   project_id=$(curl -s -f -H "Metadata-Flavor: Google" \
     --connect-timeout 2 --max-time 5 "${MDS_PREFIX}/project/project-id" 2>/dev/null) || project_id=""
 
-  # Construct a clean, lightweight metadata_root.json to mimic the GCE MDS structure
-  if ! jq -n \
-    --argjson inst "${instance_json}" \
-    --arg proj_id "${project_id}" \
-    '{instance: $inst, project: {"project-id": $proj_id}}' \
+  # Construct a clean, lightweight metadata_root.json to mimic the GCE MDS structure.
+  # Stream curl directly into jq so `bash -x` does not dump startup-script
+  # source text (containing BuildSucceeded:/BuildFailed:) into serial logs.
+  if ! { curl -s -f -H "Metadata-Flavor: Google" \
+      --connect-timeout 2 --max-time 5 "${MDS_PREFIX}/instance/?recursive=true" 2>/dev/null || echo "{}"; } \
+    | jq \
+      --arg proj_id "${project_id}" \
+      '{instance: ., project: {"project-id": $proj_id}}' \
     > "${cache_dir}/metadata_root.json" 2>/dev/null; then
     # Fallback if jq compilation fails
     echo "{}" > "${cache_dir}/metadata_root.json"

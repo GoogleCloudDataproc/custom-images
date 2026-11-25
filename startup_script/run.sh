@@ -25,6 +25,28 @@
 #    message.
 # 4. Shutdown GCE instance.
 
+# Mirror stdout/stderr to /dev/ttyS0 when the kernel serial console is disabled
+# (e.g., Dataproc 3.0+ base images omit console=ttyS0,115200 from GRUB). Placed
+# before `set -x` so the logging subshell does not inherit xtrace. Lines written to /dev/ttyS0 are prefixed with "startup-script: " so
+# `grep 'startup-script'` in shell_script_generator.py captures init_actions.sh
+# logs as well, and capped at 4096 chars (similar to rsyslog) so huge single
+# lines cannot stall the 115200-baud serial port.
+if [[ -c /dev/ttyS0 && -w /dev/ttyS0 ]] && ! grep -Eq '(^|[[:space:]])console=ttyS0([,[:space:]]|$)' /proc/cmdline 2>/dev/null; then
+  exec 3>&1
+  exec > >(
+    exec 4>/dev/ttyS0 2>/dev/null || exec 4>/dev/null
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+      printf '%s\n' "${line}" >&3
+      serial_line="${line:0:4096}"
+      if [[ "${serial_line}" != \[* && "${serial_line}" == *startup-script* ]]; then
+        printf '%s\n' "${serial_line}" >&4 2>/dev/null || true
+      else
+        printf 'startup-script: %s\n' "${serial_line}" >&4 2>/dev/null || true
+      fi
+    done
+  ) 2>&1
+fi
+
 set -x
 
 # Ensure gcloud is configured for the correct universe to prevent b/454030974
@@ -246,7 +268,7 @@ function run_install_optional_components_script() {
   if [[ $RET_CODE -ne 0 ]]; then
     BUILD_STATUS="failed"
     echo "startup-script: BuildFailed: Dataproc optional component installation Failed. Please check logs."
-    exit ${RET_CODE}
+    return ${RET_CODE}
   fi
 }
 
@@ -257,28 +279,24 @@ function main() {
     if ! download_scripts; then
       BUILD_STATUS="failed"
       echo "startup-script: BuildFailed: failed to download scripts from ${CUSTOM_SOURCES_PATH}."
-      exit 1
-    fi
-
-    if ! setup_proxy; then
+    elif ! setup_proxy; then
       BUILD_STATUS="failed"
-      exit 1
-    fi
-
-    run_install_optional_components_script
-    run_custom_script
-    local script_ret_code=$?
-
-    patch_bdutil_universe
-    cleanup
-
-    if [[ ${script_ret_code} -ne 0 ]]; then
+    elif ! run_install_optional_components_script; then
       BUILD_STATUS="failed"
-      echo "startup-script: BuildFailed: Customization failed."
-      exit 1
     else
-      BUILD_STATUS="succeeded"
-      echo "startup-script: BuildSucceeded: Customization complete."
+      run_custom_script
+      local script_ret_code=$?
+
+      patch_bdutil_universe
+      cleanup
+
+      if [[ ${script_ret_code} -ne 0 ]]; then
+        BUILD_STATUS="failed"
+        echo "startup-script: BuildFailed: Customization failed."
+      else
+        BUILD_STATUS="succeeded"
+        echo "startup-script: BuildSucceeded: Customization complete."
+      fi
     fi
   fi
 
