@@ -156,7 +156,7 @@ To run Dataproc clusters with NVIDIA GPUs and Shielded VM Secure Boot enabled:
 
     GCS_STARTUP_SCRIPT="gs://$(jq -r .BUCKET env.json)/custom-image-deps/gce-proxy-setup.sh"
     # Ensure gce-proxy-setup.sh is uploaded:
-    # gsutil cp startup_script/gce-proxy-setup.sh gs://$(jq -r .BUCKET env.json)/custom-image-deps/
+    # gcloud storage cp startup_script/gce-proxy-setup.sh gs://$(jq -r .BUCKET env.json)/custom-image-deps/
 
     gcloud dataproc clusters create "${CLUSTER_NAME}" \
         --project "${GCP_PROJECT}" \
@@ -213,7 +213,7 @@ To run Dataproc clusters with NVIDIA GPUs and Shielded VM Secure Boot enabled:
     *   `--shielded-secure-boot`: Enables Secure Boot.
     *   `--metadata=startup-script-url=.../gce-proxy-setup.sh`: **Essential** for proxied environments. This ensures the cluster nodes also get the OS-level proxy settings on boot. You must upload `startup_script/gce-proxy-setup.sh` to your bucket.
         ```bash
-        gsutil cp startup_script/gce-proxy-setup.sh gs://$(jq -r .BUCKET env.json)/custom-image-deps/
+        gcloud storage cp startup_script/gce-proxy-setup.sh gs://$(jq -r .BUCKET env.json)/custom-image-deps/
         ```
     *   The `${PROXY_METADATA:+...}` part conditionally adds the proxy metadata flags if SWP_IP is set in `env.json`.
 

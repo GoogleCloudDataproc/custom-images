@@ -81,8 +81,8 @@ function run_gcloud() {
 }
 export -f run_gcloud
 
-# Function to run a gsutil command and log it
-function run_gsutil() {
+# Function to run a gcloud storage command and log it
+function run_gcloud() {
   local log_file="$1"; shift
   local cmd_str="$*"
   local log_path="${REPRO_TMPDIR}/${log_file}"
@@ -94,7 +94,7 @@ function run_gsutil() {
 
   if [[ ${retval} -ne 0 ]]; then
     report_result "FAIL" "${log_path}"
-    echo -e "${RED}ERROR: The following gsutil command failed:${NC}\n  ${cmd_str}" >&2
+    echo -e "${RED}ERROR: The following gcloud storage command failed:${NC}\n  ${cmd_str}" >&2
     echo -e "${YELLOW}See log for details: ${log_path}${NC}" >&2
     echo -e "--- Log Content (${log_path}) ---" >&2
     cat "${log_path}" >&2
@@ -104,7 +104,7 @@ function run_gsutil() {
   fi
   return ${retval}
 }
-export -f run_gsutil
+export -f run_gcloud
 
 function execute_with_retries() {
   set +x
