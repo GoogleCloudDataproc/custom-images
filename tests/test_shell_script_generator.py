@@ -16,119 +16,259 @@ import unittest
 
 from custom_image_utils import shell_script_generator
 
-_expected_script = """
+_expected_script = r"""
 #!/usr/bin/env bash
 
 # Script for creating Dataproc custom image.
 
-set -euxo pipefail
+set -euo pipefail
 
-RED='\\e[0;31m'
-GREEN='\\e[0;32m'
-NC='\\e[0m'
+RED='\e[0;31m'
+GREEN='\e[0;32m'
+NC='\e[0m'
+
+base_obj_type="images"
+
+function execute_with_retries() (
+  set +x
+  local -r cmd="$*"
+
+  for ((i = 0; i < 3; i++)); do
+    if eval "$cmd"; then return 0 ; fi
+    sleep 12
+  done
+  return 1
+)
+
+function prepare() {
+  # With the 402.0.0 release of gcloud sdk, `gcloud storage` can be
+  # used as a more performant replacement for `gsutil`
+  if gcloud --help >/dev/null 2>&1 && gcloud storage --help >/dev/null 2>&1; then
+    gsutil_cmd="gcloud storage"
+    rsync_cmd="${gsutil_cmd} rsync"
+  else
+    gsutil_cmd="gsutil -o GSUtil:check_hashes=never"
+    rsync_cmd="${gsutil_cmd} -m rsync"
+  fi
+}
 
 function exit_handler() {
   echo 'Cleaning up before exiting.'
 
   if [[ -f /tmp/custom-image-my-image-20190611-160823/vm_created ]]; then
     echo 'Deleting VM instance.'
-    gcloud compute instances delete my-image-install         --project=my-project --zone=us-west1-a -q
+    execute_with_retries       gcloud compute instances delete my-image-install --project=my-project --zone=us-west1-a -q
   elif [[ -f /tmp/custom-image-my-image-20190611-160823/disk_created ]]; then
     echo 'Deleting disk.'
-    gcloud compute disks delete my-image-install --project=my-project --zone=us-west1-a -q
+    execute_with_retries gcloud compute ${base_obj_type} delete my-image-install --project=my-project -q
   fi
 
   echo 'Uploading local logs to GCS bucket.'
-  gcloud storage rsync --recursive /tmp/custom-image-my-image-20190611-160823/logs/ gs://my-bucket/custom-image-my-image-20190611-160823/logs/
+  ${rsync_cmd} -r /tmp/custom-image-my-image-20190611-160823/logs/ gs://my-bucket/custom-image-my-image-20190611-160823/logs/
 
   if [[ -f /tmp/custom-image-my-image-20190611-160823/image_created ]]; then
-    echo -e "${GREEN}Workflow succeeded, check logs at /tmp/custom-image-my-image-20190611-160823/logs/ or gs://my-bucket/custom-image-my-image-20190611-160823/logs/${NC}"
+    echo -e "${GREEN}Workflow succeeded${NC}, check logs at /tmp/custom-image-my-image-20190611-160823/logs/ or gs://my-bucket/custom-image-my-image-20190611-160823/logs/"
     exit 0
   else
-    echo -e "${RED}Workflow failed, check logs at /tmp/custom-image-my-image-20190611-160823/logs/ or gs://my-bucket/custom-image-my-image-20190611-160823/logs/${NC}"
+    echo -e "${RED}Workflow failed${NC}, check logs at /tmp/custom-image-my-image-20190611-160823/logs/ or gs://my-bucket/custom-image-my-image-20190611-160823/logs/"
     exit 1
   fi
 }
 
-function main() {
-  echo 'Uploading files to GCS bucket.'
-  declare -a sources_k=([0]='run.sh' [1]='init_actions.sh' [2]='ext'\\''ra_src.txt')
-  declare -a sources_v=([0]='startup_script/run.sh' [1]='/tmp/my-script.sh' [2]='/path/to/extra.txt')
-  for i in "${!sources_k[@]}"; do
-    gcloud storage cp "${sources_v[i]}" "gs://my-bucket/custom-image-my-image-20190611-160823/sources/${sources_k[i]}"
+function test_element_in_array {
+  local test_element="$1" ; shift
+  local -a test_array=("$@")
+
+  for item in "${test_array[@]}"; do
+    if [[ "${item}" == "${test_element}" ]]; then return 0 ; fi
+  done
+  return 1
+}
+
+function print_modulus_md5sum {
+  local derfile="$1"
+  openssl x509 -noout -modulus -in "${derfile}" | openssl md5 | awk '{print $2}'
+}
+
+function print_img_dbs_modulus_md5sums() {
+  local long_img_name="$1"
+  local img_name="$(echo ${long_img_name} | sed -e 's:^.*/::')"
+  local json_tmpfile="/tmp/custom-image-my-image-20190611-160823/${img_name}.json"
+  gcloud compute images describe ${long_img_name} --format json > "${json_tmpfile}"
+
+  local -a db_certs=()
+  mapfile -t db_certs < <( cat ${json_tmpfile} | jq -r 'try .shieldedInstanceInitialState.dbs[].content' )
+
+  local -a modulus_md5sums=()
+  for key in "${!db_certs[@]}" ; do
+    local derfile="/tmp/custom-image-my-image-20190611-160823/${img_name}.${key}.der"
+    echo "${db_certs[${key}]}" |       perl -M'MIME::Base64(decode_base64url)' -ne 'chomp; print( decode_base64url($_) )'       > "${derfile}"
+    modulus_md5sums+=( $(print_modulus_md5sum "${derfile}") )
   done
 
-  echo 'Creating disk.'
-  if [[ 'projects/my-dataproc-project/global/images/family/debian-10' = '' ||  'projects/my-dataproc-project/global/images/family/debian-10' = 'None' ]]; then
-     IMAGE_SOURCE="--image=projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01"
-  else
-     IMAGE_SOURCE="--image-family=projects/my-dataproc-project/global/images/family/debian-10"
+  echo "${modulus_md5sums[@]}"
+}
+
+function main() {
+  echo 'Uploading files to GCS bucket.'
+  declare -a sources_k=([0]='run.sh' [1]='init_actions.sh' [2]='gce-proxy-setup.sh' [3]='ext'\''ra_src.txt')
+  declare -a sources_v=([0]='startup_script/run.sh' [1]='/tmp/my-script.sh' [2]='startup_script/gce-proxy-setup.sh' [3]='/path/to/extra.txt')
+  for i in "${!sources_k[@]}"; do
+    ${gsutil_cmd} cp "${sources_v[i]}" "gs://my-bucket/custom-image-my-image-20190611-160823/sources/${sources_k[i]}" > /dev/null 2>&1
+  done
+
+  local cert_args=""
+  local num_src_certs="0"
+  if [[ -n '' ]] && [[ -f '' ]]; then
+    # build tls/ directory from variables defined near the header of
+    # the examples/secure-boot/create-key-pair.sh file
+
+    eval "$(bash examples/secure-boot/create-key-pair.sh)"
+
+    # by default, a gcloud secret with the name of efi-db-pub-key-042 is
+    # created in the current project to store the certificate installed
+    # as the signature database file for this disk image
+
+    # The MS UEFI CA is a reasonable base from which to build trust.  We
+    # will trust code signed by this CA as well as code signed by
+    # trusted_cert (tls/db.der)
+
+    # The Microsoft Corporation UEFI CA 2011
+    local -r MS_UEFI_CA="tls/MicCorUEFCA2011_2011-06-27.crt"
+    test -f "${MS_UEFI_CA}" ||       curl -L -o ${MS_UEFI_CA} 'https://go.microsoft.com/fwlink/p/?linkid=321194'
+
+    local -a cert_list=()
+
+    local -a default_cert_list
+    default_cert_list=("" "${MS_UEFI_CA}")
+    local -a src_img_modulus_md5sums=()
+
+    mapfile -t src_img_modulus_md5sums < <(print_img_dbs_modulus_md5sums projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01)
+    num_src_certs="${#src_img_modulus_md5sums[@]}"
+    echo "${num_src_certs} db certificates attached to source image"
+    if [[ "${num_src_certs}" -eq "0" ]]; then
+      echo "no db certificates in source image"
+      cert_list=( "${default_cert_list[@]}" )
+    else
+      echo "db certs exist in source image"
+      for cert in ${default_cert_list[*]}; do
+        if test_element_in_array "$(print_modulus_md5sum ${cert})" ${src_img_modulus_md5sums[@]} ; then
+          echo "cert ${cert} is already in source image's db list"
+        else
+          cert_list+=("${cert}")
+        fi
+      done
+      # append source image's cert list
+      local img_name="$(echo projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01 | sed -e 's:^.*/::')"
+      if [[ ${#cert_list[@]} -ne 0 ]] && compgen -G "/tmp/custom-image-my-image-20190611-160823/${img_name}.*.der" > /dev/null ; then
+        cert_list+=(/tmp/custom-image-my-image-20190611-160823/${img_name}.*.der)
+      fi
+    fi
+
+    if [[ ${#cert_list[@]} -eq 0 ]]; then
+      echo "all certificates already included in source image's db list"
+    else
+      cert_args="--signature-database-file=$(IFS=, ; echo "${cert_list[*]}") --guest-os-features=UEFI_COMPATIBLE"
+    fi
   fi
-  
-  gcloud compute disks create my-image-install       --project=my-project       --zone=us-west1-a       ${IMAGE_SOURCE}       --type=pd-ssd       --size=40GB
 
-  touch "/tmp/custom-image-my-image-20190611-160823/disk_created"
+  date
 
+  if [[ -z "${cert_args}" && "${num_src_certs}" -ne "0" ]]; then
+    echo 'Re-using base image'
+    base_obj_type="reuse"
+    instance_disk_args='--image-project=my-project --image=projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01 --boot-disk-size=40G --boot-disk-type=pd-ssd'
+
+  elif [[ -n "${cert_args}" ]] ; then
+    echo 'Creating image.'
+    base_obj_type="images"
+    instance_disk_args='--image-project=my-project --image=my-image-install --boot-disk-size=40G --boot-disk-type=pd-ssd'
+    execute_with_retries       gcloud compute images create my-image-install       --project=my-project       --source-image=projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01       ${cert_args}       --storage-location=us-east1       --family=debian9
+    touch "/tmp/custom-image-my-image-20190611-160823/disk_created"
+  else
+    echo 'Creating disk.'
+    base_obj_type="disks"
+    instance_disk_args='--disk=auto-delete=yes,boot=yes,mode=rw,name=my-image-install'
+    execute_with_retries gcloud compute disks create my-image-install       --project=my-project       --zone=us-west1-a       --image=projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01       --type=pd-ssd       --size=40GB
+    touch "/tmp/custom-image-my-image-20190611-160823/disk_created"
+  fi
+
+  date
   echo 'Creating VM instance to run customization script.'
-  gcloud compute instances create my-image-install       --project=my-project       --zone=us-west1-a              --subnet=my-subnet       --no-address       --machine-type=n1-standard-2       --disk=auto-delete=yes,boot=yes,mode=rw,name=my-image-install       --accelerator=type=nvidia-tesla-v100,count=2 --maintenance-policy terminate       --service-account=my-service-account       --scopes=cloud-platform       --metadata=shutdown-timer-in-sec=500,custom-sources-path=gs://my-bucket/custom-image-my-image-20190611-160823/sources,key1=value1,key2=value2       --metadata-from-file startup-script=startup_script/run.sh
+  execute_with_retries gcloud compute instances create my-image-install       --project=my-project       --zone=us-west1-a              --subnet=my-subnet       --no-address       --machine-type=n1-standard-2       ${instance_disk_args}       --accelerator=type=nvidia-tesla-v100,count=2 --maintenance-policy terminate       --service-account=my-service-account       --scopes=cloud-platform              --metadata=shutdown-timer-in-sec=500,custom-sources-path=gs://my-bucket/custom-image-my-image-20190611-160823/sources,universe-domain=googleapis.com,dataproc-region="us-west1",key1=value1,key2=value2       --metadata-from-file startup-script=startup_script/run.sh
+
   touch /tmp/custom-image-my-image-20190611-160823/vm_created
 
-  echo 'Waiting for customization script to finish and VM shutdown.'
-  gcloud compute instances tail-serial-port-output my-image-install       --project=my-project       --zone=us-west1-a       --port=1 2>&1       | grep 'startup-script'       | tee /tmp/custom-image-my-image-20190611-160823/logs/startup-script.log       || true
+  # clean up intermediate install image
+  if [[ "${base_obj_type}" == "images" ]] ; then
+    gcloud compute images delete -q my-image-install --project=my-project
+  fi
 
+  echo "Monitor startup logs in /tmp/custom-image-my-image-20190611-160823/logs/startup-script.log"
+  echo 'Waiting for customization script to finish and VM shutdown.'
+  set -x
+  # too many serial port output requests per minute occur if they all occur at once
+  sleep $(( ( RANDOM % 60 ) + 20 ))
+
+  execute_with_retries gcloud compute instances tail-serial-port-output my-image-install       --project=my-project       --zone=us-west1-a       --port=1 2>&1       | grep 'startup-script' | grep -v '^\['       | sed -e 's/ my-image-install.*startup-script://g'       | dd bs=1 status=none of=/tmp/custom-image-my-image-20190611-160823/logs/startup-script.log       || true
   echo 'Checking customization script result.'
-  if grep 'BuildFailed:' /tmp/custom-image-my-image-20190611-160823/logs/startup-script.log; then
-    echo -e "${RED}Customization script failed.${NC}"
-    exit 1
-  elif grep 'BuildSucceeded:' /tmp/custom-image-my-image-20190611-160823/logs/startup-script.log; then
+  date
+  if grep -q 'BuildSucceeded:' /tmp/custom-image-my-image-20190611-160823/logs/startup-script.log; then
     echo -e "${GREEN}Customization script succeeded.${NC}"
+  elif grep -q 'BuildFailed:' /tmp/custom-image-my-image-20190611-160823/logs/startup-script.log; then
+    echo -e "${RED}Customization script failed.${NC}"
+    echo "See /tmp/custom-image-my-image-20190611-160823/logs/startup-script.log for details"
+    exit 1
   else
     echo 'Unable to determine the customization script result.'
     exit 1
   fi
 
+  date
   echo 'Creating custom image.'
-  gcloud compute images create my-image       --project=my-project       --source-disk-zone=us-west1-a       --source-disk=my-image-install       --storage-location=us-east1       --family=debian9
+  execute_with_retries gcloud compute images create my-image     --project=my-project     --source-disk-zone=us-west1-a     --source-disk=my-image-install     --storage-location=us-east1     --family=debian9
+
   touch /tmp/custom-image-my-image-20190611-160823/image_created
 }
 
 trap exit_handler EXIT
 mkdir -p /tmp/custom-image-my-image-20190611-160823/logs
+prepare
 main "$@" 2>&1 | tee /tmp/custom-image-my-image-20190611-160823/logs/workflow.log
 """
 
 
 class TestShellScriptGenerator(unittest.TestCase):
-  def test_generate_shell_script(self):
-    args = {
-        'run_id': 'custom-image-my-image-20190611-160823',
-        'family': 'debian9',
-        'image_name': 'my-image',
-        'customization_script': '/tmp/my-script.sh',
-        'metadata': 'key1=value1,key2=value2',
-        'extra_sources': {"ext'ra_src.txt": "/path/to/extra.txt"},
-        'machine_type': 'n1-standard-2',
-        'disk_size': 40,
-        'accelerator': 'type=nvidia-tesla-v100,count=2',
-        'gcs_bucket': 'gs://my-bucket',
-        'network': 'my-network',
-        'subnetwork': 'my-subnet',
-        'no_external_ip': True,
-        'zone': 'us-west1-a',
-        'dataproc_base_image':
-          'projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01',
-        'service_account': 'my-service-account',
-        'oauth': '',
-        'project_id': 'my-project',
-        'storage_location': 'us-east1',
-        'shutdown_timer_in_sec': 500,
-        'base_image_family': 'projects/my-dataproc-project/global/images/family/debian-10'
-    }
+    def test_generate_shell_script(self):
+        args = {
+            "run_id": "custom-image-my-image-20190611-160823",
+            "family": "debian9",
+            "image_name": "my-image",
+            "customization_script": "/tmp/my-script.sh",
+            "metadata": "key1=value1,key2=value2",
+            "extra_sources": {"ext'ra_src.txt": "/path/to/extra.txt"},
+            "machine_type": "n1-standard-2",
+            "disk_size": 40,
+            "accelerator": "type=nvidia-tesla-v100,count=2",
+            "gcs_bucket": "gs://my-bucket",
+            "network": "my-network",
+            "subnetwork": "my-subnet",
+            "no_external_ip": True,
+            "zone": "us-west1-a",
+            "dataproc_base_image": "projects/cloud-dataproc/global/images/dataproc-1-4-deb9-20190510-000000-rc01",
+            "service_account": "my-service-account",
+            "oauth": "",
+            "project_id": "my-project",
+            "storage_location": "us-east1",
+            "shutdown_timer_in_sec": 500,
+            "base_image_family": "projects/my-dataproc-project/global/images/family/debian-10",
+            "trusted_cert": "",
+        }
 
-    script = shell_script_generator.Generator().generate(args)
+        script = shell_script_generator.Generator().generate(args)
 
-    self.assertEqual(script, _expected_script)
+        self.assertEqual(script.strip(), _expected_script.strip())
 
 
-if __name__ == '__main__':
-  unittest.main()
+if __name__ == "__main__":
+    unittest.main()

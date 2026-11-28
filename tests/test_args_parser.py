@@ -208,6 +208,10 @@ class TestArgsParser(unittest.TestCase):
       raise e
 
   def _make_expected_result(self, **kwargs):
+    if "execution_engine" not in kwargs:
+      kwargs["execution_engine"] = "cli"
+    if "universe_domain" not in kwargs:
+      kwargs["universe_domain"] = "googleapis.com"
     return argparse.Namespace(**kwargs)
 
 if __name__ == '__main__':
