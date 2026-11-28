@@ -29,3 +29,15 @@ env.json
 # failed patches
 *.orig
 *.rej
+
+# --- Generic ignores for credentials and logs ---
+key*.json
+*env*.json
+env-*.json
+*.log
+*.bz2
+*.zst
+
+# Temporary directories
+temp/
+tmp/

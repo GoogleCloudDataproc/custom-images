@@ -147,6 +147,9 @@ time podman run -it --rm \
   -e DEBUG=0 \
   -e REPRO_TMPDIR=/tmp \
   -e DATAPROC_EVOLUTION_DIR=${DATAPROC_EVOLUTION_DIR} \
+  -e SWP_IP="${SWP_IP}" \
+  -e SWP_PORT="${SWP_PORT}" \
+  -e PROXY_CERT_GCS_PATH="${PROXY_CERT_GCS_PATH}" \
   ${image} \
   bash -x examples/secure-boot/pre-init.sh "${DATAPROC_IMAGE_VERSION}"
 #  bash examples/secure-boot/build-current-images.sh

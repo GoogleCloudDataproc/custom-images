@@ -50,15 +50,26 @@ dmesg | grep -iE "Secure Boot|NVRM|nvidia"
 
 ---
 
-## Measured Custom Image Build Timing Reference
+## Boot and Build Durations
 
-The following table lists the empirical, real-world durations of the various image building and compilation phases observed during sequential and parallel builds inside a standard `us-east4` project:
+Comparison of cluster boot times and image creation times.
 
-| Image Build Phase | Customization Script / Action | Typical Duration | Performance & Cache Notes |
+### Cluster Boot Times (VM Boot to Dataproc READY)
+
+| Method | Mechanism | Boot Time | Details |
 | :--- | :--- | :--- | :--- |
-| **GCE Base Secure Boot Image** | `examples/secure-boot/no-customization.sh` | `~7m 20s` - `11m 05s` | Boots the unaccelerated VM instance, registers UEFI db public certs, and snapshots the `secure-boot` GCE image. Rocky Linux builds take ~11m, Debian/Ubuntu take ~7m. |
-| **Total Baseline Custom Image Build** | `examples/secure-boot/build-and-run-podman.sh` | `~7m` - `11m` | Total OCI/Podman Stage 1 parallel compilation time to generate the UEFI baseline custom images. |
-| **GPU/Conda Pre-bake Build (Cold Cache)** | `initialization-actions/gpu/install_gpu_driver.sh` | `~21m` - `24m` | Boots a T4 GPU VM instance, compiles the NVIDIA modules, compiles NCCL, and builds TensorFlow, PyTorch, and RAPIDS Conda environments via Mamba. |
-| **GPU/Conda Pre-bake Build (GCS Cache Hit)** | `initialization-actions/gpu/install_gpu_driver.sh` | **`1m 45s`** | Downloads pre-compiled Blackwell drivers and zipped Conda tarballs directly from GCS over Private Google Access routes. |
-| **Total Production custom image Build** | `examples/secure-boot/build-and-run-podman.sh` | `~25m` - `35m` | Total end-to-end parallel OCI build duration to generate the final, fully pre-baked production custom images (`-tf`). |
+| **Standard Image + Init Action** | `install_gpu_driver.sh` (as Init Action) | **`7m` - `9m`** | Downloads ~4.5 GB of drivers and packages from GCS, compiles kernel modules, and configures YARN/Spark on every boot. |
+| **Pre-baked Custom Image** | Pre-installed drivers + deferred systemd config | **`~4m`** | No downloads or installations. Adds ~30s to the first boot for hardware probing and writing configuration files. |
+
+---
+
+### Image Creation Times (Baking)
+
+Image creation times using the Podman pipeline in `us-east4`:
+
+| Phase | Script | Duration | Notes |
+| :--- | :--- | :--- | :--- |
+| **GCE Base Secure Boot Image** | `pre-init.sh` (Base Stage) | `~7m` - `11m` | Provisions VM, registers UEFI certs, and snapshots base image. (Rocky: ~11m, Debian/Ubuntu: ~7m). |
+| **GPU/Conda Pre-bake Layer** | `install_gpu_driver.sh` (during baking) | `~21m` - `24m` | Compiles NVIDIA modules and builds Conda environments on a GPU VM. |
+| **Total Image Suite** | `build-and-run-podman.sh` | `~25m` - `35m` | Total duration to generate the image suite. |
 

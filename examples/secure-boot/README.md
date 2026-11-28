@@ -231,6 +231,52 @@ To run Dataproc clusters with NVIDIA GPUs and Shielded VM Secure Boot enabled:
 3.  **Verify module signature:** `sudo modinfo nvidia | grep signer` (Expected: `Cloud Dataproc Custom Image CA`)
 4.  **Check dmesg:** `dmesg | grep -iE "Secure Boot|NVRM|nvidia"`
 
+## Manual Customization & Interactive Debugging
+
+For complex troubleshooting, hot-patching, or script development, developers can bypass the automated containerized pipeline and run an **idempotent, interactive debugging loop** from their workstation.
+
+This workflow is orchestrated by a single, powerful workstation-side script: **`customize-in-screen.sh`**.
+
+### 1. Configure the Target
+In `custom-images/env.json`, configure the target Dataproc version and the script you wish to test/debug:
+```json
+{
+  "IMAGE_VERSION": "2.1-debian11",
+  "CUSTOMIZATION_SCRIPT": "examples/secure-boot/no-customization.sh"
+}
+```
+
+### 2. Run the Idempotent Customizer
+From the `custom-images` directory on your workstation, execute the orchestrator:
+```bash
+bash examples/secure-boot/bin/customize-in-screen.sh
+```
+
+**How it behaves (Idempotency in Action)**:
+*   **First-Time Run (Cold Start)**: If the debug VM does not exist, it automatically calls `create-debug-vm.sh` to provision a raw, persistent VM (configured with a 24-hour shutdown timer and no automated startup script). It syncs your local code to GCS, triggers a remote background launch of `install-in-screen.sh`, and instantly attaches your terminal to the live screen session.
+*   **Subsequent Runs (Warm Start / Re-use)**: If the VM is already online, **it bypasses GCE provisioning entirely!** It instantly uploads your latest local edits to GCS, SSHes into the VM, downloads the new scripts, restarts the customization inside a detached `screen` session, and attaches your terminal. **Time to execution is under 5 seconds.**
+*   **Re-attaching to a Live Build**: If you run the script while a customization build is *already active* on the VM, it detects the running session, bypasses launching, and **instantly attaches your terminal to the live build.**
+
+### 3. Interactive Attachment & Control
+Once attached, you are inside a live, interactive `screen` session on the VM:
+*   **Real-Time Debugging**: You can watch the compilation, press `Ctrl+C` to halt, edit files locally in `/tmp/sources/` on the VM, and manually re-run steps to test fixes.
+*   **Safe Detachment**: To detach from the screen session and leave it running in the background on the VM (allowing you to close your laptop or disconnect), press:
+    `Ctrl+A` followed by `D`.
+*   **Re-attaching**: To re-attach later, simply run `bash examples/secure-boot/bin/customize-in-screen.sh` again from your workstation.
+
+### 4. Run Workstation-Side Diagnostics
+While the customization is running (or after a failure), you can audit the VM's active network and proxy state with a single command from your workstation terminal:
+```bash
+bash examples/secure-boot/audit-image-customizer.sh
+```
+This remote prober connects via IAP SSH in non-interactive batch mode and prints a pretty-printed JSON **System Audit Report** showing GCS and external network connectivity (verifying if Private Google Access and the SWP proxy are routing correctly).
+
+### 5. Cleanup
+Once debugging is complete, delete the GCE VM and clean up the GCS staging assets:
+```bash
+bash examples/secure-boot/bin/destroy-debug-vm.sh
+```
+
 ## Key Scripts Involved
 
 *   `custom-images/env.json`: Single source of truth for configuration.

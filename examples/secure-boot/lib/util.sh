@@ -58,8 +58,9 @@ function run_gcloud() {
 
   print_status "  Executing: ${cmd_array[*]}..."
 
-  "${cmd_array[@]}" > "${log_path}" 2>&1
-  local retval=$?
+  local retval=0
+  "${cmd_array[@]}" > "${log_path}" 2>&1 || retval=$?
+  readonly retval
 
   if [[ ${retval} -ne 0 ]]; then
     report_result "FAIL" "${log_path}"
